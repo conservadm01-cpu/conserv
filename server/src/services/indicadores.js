@@ -71,18 +71,27 @@ export function vendasPorCategoria(ano, db = getDb()) {
     .all(String(ano));
 }
 
-/** Quantas peças/ordens estão paradas em cada etapa do processo. */
+/**
+ * Fila de cada etapa. Uma ordem conta uma única vez, na etapa onde de fato está parada
+ * (a primeira do roteiro ainda não concluída) — é a mesma leitura do quadro do PCP.
+ */
 export function producaoPorEtapa(db = getDb()) {
   return db
     .prepare(
-      `SELECT e.codigo, e.nome, e.ordem AS sequencia,
-              SUM(CASE WHEN oe.status = 'PENDENTE' THEN 1 ELSE 0 END)      AS pendentes,
-              SUM(CASE WHEN oe.status = 'EM_ANDAMENTO' THEN 1 ELSE 0 END)  AS em_andamento,
-              SUM(CASE WHEN oe.status = 'CONCLUIDA' THEN 1 ELSE 0 END)     AS concluidas,
-              COALESCE(SUM(CASE WHEN oe.status IN ('PENDENTE','EM_ANDAMENTO') THEN o.quantidade ELSE 0 END),0) AS pecas_na_fila
+      `WITH atual AS (
+         SELECT o.id AS ordem_id, o.quantidade,
+                (SELECT oe.etapa_id FROM ordem_etapas oe
+                  JOIN etapas e2 ON e2.id = oe.etapa_id
+                  WHERE oe.ordem_id = o.id AND oe.status IN ('PENDENTE','EM_ANDAMENTO')
+                  ORDER BY e2.ordem LIMIT 1) AS etapa_id
+         FROM ordens_producao o WHERE o.status IN ('ABERTA','EM_PRODUCAO')
+       )
+       SELECT e.codigo, e.nome, e.ordem AS sequencia,
+              COUNT(a.ordem_id)                    AS ordens_na_fila,
+              COALESCE(SUM(a.quantidade), 0)       AS pecas_na_fila,
+              (SELECT COUNT(*) FROM ordem_etapas oe WHERE oe.etapa_id = e.id AND oe.status = 'CONCLUIDA') AS concluidas
        FROM etapas e
-       LEFT JOIN ordem_etapas oe ON oe.etapa_id = e.id
-       LEFT JOIN ordens_producao o ON o.id = oe.ordem_id AND o.status IN ('ABERTA','EM_PRODUCAO')
+       LEFT JOIN atual a ON a.etapa_id = e.id
        WHERE e.ativo = 1
        GROUP BY e.id ORDER BY e.ordem`
     )
