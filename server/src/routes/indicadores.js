@@ -11,6 +11,7 @@ import {
   itensAtrasados,
   alertasEstoque,
 } from '../services/indicadores.js';
+import { custoRealOrdem, custoCompletoProduto, taxaCustoIndireto } from '../services/custeio.js';
 
 export const router = Router();
 
@@ -70,6 +71,43 @@ router.get(
           };
         })
     );
+  })
+);
+
+/** Custo realizado de uma ordem: material baixado + MO apontada + indireto. */
+router.get(
+  '/custos/ordens/:id',
+  asyncHandler((req, res) => res.json(custoRealOrdem(Number(req.params.id))))
+);
+
+/** Custo formado de cada produto — a base para revisar preço. */
+router.get(
+  '/custos/produtos',
+  asyncHandler((req, res) => {
+    const db = getDb();
+    const limite = Math.min(Number(req.query.limite) || 200, 1000);
+    const produtos = db
+      .prepare(
+        `SELECT p.id FROM produtos p
+         WHERE p.ativo = 1
+           AND (EXISTS (SELECT 1 FROM ficha_tecnica f WHERE f.produto_id = p.id)
+             OR EXISTS (SELECT 1 FROM produto_processo pp WHERE pp.produto_id = p.id))
+         ORDER BY p.descricao LIMIT ?`
+      )
+      .all(limite);
+    res.json({
+      taxa_indireta: taxaCustoIndireto(db),
+      produtos: produtos.map((p) => {
+        const c = custoCompletoProduto(p.id, db);
+        return {
+          id: c.produto.id, produto: c.produto.descricao, grupo: c.produto.grupo,
+          preco: c.produto.preco_padrao, material: c.material, mao_de_obra: c.mao_de_obra,
+          indireto: c.indireto, total: c.total, margem: c.margem,
+          margem_percentual: c.margem_percentual, minutos_por_peca: c.minutos_por_peca,
+          completo: c.completo,
+        };
+      }),
+    });
   })
 );
 

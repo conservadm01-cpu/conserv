@@ -13,6 +13,10 @@ import { router as pedidosRouter } from './routes/pedidos.js';
 import { router as producaoRouter } from './routes/producao.js';
 import { router as indicadoresRouter } from './routes/indicadores.js';
 import { router as importacaoRouter } from './routes/importacao.js';
+import { router as engenhariaRouter } from './routes/engenharia.js';
+import { router as pessoasRouter } from './routes/pessoas.js';
+import { router as apontamentosRouter, ocorrencias as ocorrenciasRouter } from './routes/apontamentos.js';
+import { router as canalRouter, publico as canalPublicoRouter } from './routes/canal.js';
 
 export function criarApp() {
   migrate();
@@ -24,6 +28,8 @@ export function criarApp() {
   app.get('/api/saude', (_req, res) => res.json({ ok: true, versao: '1.0.0' }));
   app.use('/api/auth', authRouter);
   app.use('/api/usuarios', usuariosRouter);
+  // Conversa aberta: quem registra uma sugestão ou um risco não precisa ter login.
+  app.use('/api/canal', canalPublicoRouter);
 
   // Todo o resto exige sessão.
   app.use('/api', autenticar);
@@ -33,6 +39,11 @@ export function criarApp() {
   app.use('/api/ordens', producaoRouter);
   app.use('/api/indicadores', indicadoresRouter);
   app.use('/api/importacao', importacaoRouter);
+  app.use('/api/engenharia', engenhariaRouter);
+  app.use('/api/colaboradores', pessoasRouter);
+  app.use('/api/apontamentos', apontamentosRouter);
+  app.use('/api/ocorrencias', ocorrenciasRouter);
+  app.use('/api/canal', canalRouter);
 
   app.use('/api', naoEncontrado);
 

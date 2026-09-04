@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "db:init": "node src/scripts/init-db.js",
     "db:seed": "node src/scripts/seed.js",
+    "db:seed-fabrica": "node src/scripts/seed-fabrica.js",
     "import": "node src/scripts/import-xlsx.js",
     "test": "node --test test/*.test.js"
   },

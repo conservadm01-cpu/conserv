@@ -2,6 +2,7 @@ import { getDb } from '../db/index.js';
 import { notFound, badRequest, conflict } from '../lib/errors.js';
 import { round2 } from '../lib/numbers.js';
 import { hoje } from '../lib/dates.js';
+import { custoMinutoDepartamento } from './custeio.js';
 
 /**
  * Gera o próximo número de OP no formato OP-<ano>-<sequencial>.
@@ -34,10 +35,7 @@ export function abrirOrdem(itemId, { observacao = null, dataPrevista = null } = 
   if (existente) throw conflict('Este item já possui ordem de produção', { ordem_id: existente.id });
 
   const etapas = db.prepare(`SELECT * FROM etapas WHERE ativo = 1 ORDER BY ordem`).all();
-  const custos = db
-    .prepare(`SELECT etapa_id, custo_por_peca FROM custos_processo WHERE produto_id = ?`)
-    .all(item.produto_id);
-  const custoPorEtapa = new Map(custos.map((c) => [c.etapa_id, c.custo_por_peca]));
+  const custoPorEtapa = custoPadraoPorPeca(item.produto_id, db);
 
   const tx = db.transaction(() => {
     const numero = proximoNumeroOP(db);
@@ -113,13 +111,51 @@ export function recalcularCustosMO(ordemId, db = getDb()) {
   const atualizar = db.prepare(
     `UPDATE ordem_etapas SET custo_mo = ? WHERE ordem_id = ? AND etapa_id = ?`
   );
-  const custos = db
-    .prepare(`SELECT etapa_id, custo_por_peca FROM custos_processo WHERE produto_id = ?`)
-    .all(ordem.produto_id);
-  for (const c of custos) {
-    atualizar.run(round2(c.custo_por_peca * ordem.quantidade), ordemId, c.etapa_id);
+  const custos = custoPadraoPorPeca(ordem.produto_id, db);
+  for (const [etapaId, porPeca] of custos) {
+    atualizar.run(round2(porPeca * ordem.quantidade), ordemId, etapaId);
   }
-  return custos.length;
+  return custos.size;
+}
+
+/**
+ * Custo de mão de obra por peça de cada etapa do produto.
+ *
+ * A fonte preferida é a engenharia — tempo padrão da etapa × custo do minuto do
+ * setor —, porque acompanha sozinha qualquer mudança de folha ou de jornada.
+ * Produtos que ainda não têm processo cadastrado caem na tabela de custo fixo
+ * por etapa, que era como o sistema funcionava antes.
+ */
+export function custoPadraoPorPeca(produtoId, db = getDb()) {
+  const processo = db
+    .prepare(
+      `SELECT pp.etapa_id, pp.tempo_por_peca_min, e.departamento_id
+       FROM produto_processo pp JOIN etapas e ON e.id = pp.etapa_id
+       WHERE pp.produto_id = ?`
+    )
+    .all(produtoId);
+
+  if (processo.length > 0) {
+    const porSetor = new Map();
+    const mapa = new Map();
+    for (const linha of processo) {
+      if (!porSetor.has(linha.departamento_id)) {
+        porSetor.set(
+          linha.departamento_id,
+          linha.departamento_id ? custoMinutoDepartamento(linha.departamento_id, db).custo_minuto : 0
+        );
+      }
+      mapa.set(linha.etapa_id, linha.tempo_por_peca_min * porSetor.get(linha.departamento_id));
+    }
+    return mapa;
+  }
+
+  return new Map(
+    db
+      .prepare(`SELECT etapa_id, custo_por_peca FROM custos_processo WHERE produto_id = ?`)
+      .all(produtoId)
+      .map((c) => [c.etapa_id, c.custo_por_peca])
+  );
 }
 
 const STATUS_ETAPA = ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA', 'NAO_APLICAVEL'];

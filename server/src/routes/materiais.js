@@ -7,10 +7,13 @@ import { registrarMovimento, necessidadeMateriais } from '../services/estoque.js
 
 export const router = crudRouter({
   tabela: 'materiais',
-  campos: ['codigo', 'descricao', 'tipo', 'unidade', 'custo_unitario', 'estoque_min', 'localizacao', 'fornecedor_id', 'ativo'],
+  campos: ['codigo', 'descricao', 'tipo', 'unidade', 'custo_unitario', 'estoque_min',
+           'localizacao', 'fornecedor_id', 'grupo_id', 'local_padrao_id', 'ativo'],
   schema: z.object({
     codigo: z.string().trim().nullish(),
     descricao: z.string().trim().min(1),
+    grupo_id: z.number().int().nullish(),
+    local_padrao_id: z.number().int().nullish(),
     tipo: z.enum(['TECIDO', 'AVIAMENTO', 'EMBALAGEM', 'TINTA', 'ETIQUETA', 'SERVICO', 'OUTRO']).optional(),
     unidade: z.enum(['UN', 'MT', 'M2', 'KG', 'L', 'PC', 'CX', 'RL']).optional(),
     custo_unitario: z.number().min(0).optional(),
@@ -61,6 +64,7 @@ router.get(
 
 const movimentoSchema = z.object({
   material_id: z.number().int(),
+  local_id: z.number().int().nullish(),
   tipo: z.enum(['ENTRADA', 'SAIDA', 'AJUSTE']),
   quantidade: z.number().positive(),
   custo_unitario: z.number().min(0).optional(),
@@ -114,6 +118,29 @@ router.get(
            ORDER BY mv.data DESC, mv.id DESC LIMIT ?`
         )
         .all(...params, limite)
+    );
+  })
+);
+
+/** Saldo do material em cada local de estoque. */
+router.get(
+  '/estoque/por-local',
+  asyncHandler((req, res) => {
+    res.json(
+      getDb()
+        .prepare(
+          `SELECT m.id AS material_id, m.descricao AS material, m.unidade,
+                  COALESCE(l.nome, 'SEM LOCAL') AS local, mv.local_id,
+                  ROUND(SUM(CASE WHEN mv.tipo = 'SAIDA' THEN -mv.quantidade ELSE mv.quantidade END), 3) AS saldo
+           FROM movimentos_estoque mv
+           JOIN materiais m ON m.id = mv.material_id
+           LEFT JOIN locais_estoque l ON l.id = mv.local_id
+           ${req.query.material_id ? 'WHERE mv.material_id = ?' : ''}
+           GROUP BY m.id, mv.local_id
+           HAVING saldo <> 0
+           ORDER BY m.descricao, local`
+        )
+        .all(...(req.query.material_id ? [Number(req.query.material_id)] : []))
     );
   })
 );

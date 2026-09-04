@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
+import { processoDoProduto, custoCompletoProduto } from '../services/custeio.js';
 
 const texto = z.string().trim().min(1);
 const opcional = z.string().trim().nullish();
@@ -86,18 +87,52 @@ router.use(
 );
 
 router.use(
+  '/grupos-material',
+  crudRouter({
+    tabela: 'grupos_material',
+    campos: ['nome', 'pai_id'],
+    schema: z.object({ nome: texto, pai_id: z.number().int().nullish() }),
+    listaSql: `SELECT g.*, p.nome AS pai FROM grupos_material g
+               LEFT JOIN grupos_material p ON p.id = g.pai_id`,
+    ordem: 'g.nome',
+    busca: ['g.nome'],
+  })
+);
+
+router.use(
+  '/locais-estoque',
+  crudRouter({
+    tabela: 'locais_estoque',
+    campos: ['nome', 'tipo', 'ativo'],
+    schema: z.object({
+      nome: texto,
+      tipo: z.enum(['ALMOXARIFADO', 'PRODUCAO', 'EXPEDICAO', 'TERCEIRO', 'OUTRO']).optional(),
+      ativo: z.number().int().optional(),
+    }),
+    ordem: 'nome',
+    busca: ['nome'],
+  })
+);
+
+router.use(
   '/etapas',
   crudRouter({
     tabela: 'etapas',
-    campos: ['codigo', 'nome', 'ordem', 'consome_material', 'ativo'],
+    campos: ['codigo', 'nome', 'ordem', 'consome_material', 'departamento_id', 'equipamento_id', 'tempo_por_peca_min', 'ativo'],
     schema: z.object({
       codigo: texto,
       nome: texto,
       ordem: z.number().int(),
       consome_material: z.number().int().optional(),
+      departamento_id: z.number().int().nullish(),
+      equipamento_id: z.number().int().nullish(),
+      tempo_por_peca_min: z.number().min(0).optional(),
       ativo: z.number().int().optional(),
     }),
-    ordem: 'ordem',
+    listaSql: `SELECT e.*, d.nome AS departamento, eq.nome AS equipamento FROM etapas e
+               LEFT JOIN departamentos d ON d.id = e.departamento_id
+               LEFT JOIN equipamentos eq ON eq.id = e.equipamento_id`,
+    ordem: 'e.ordem',
   })
 );
 
@@ -206,6 +241,70 @@ produtoRouter.put(
     })();
     res.json({ ok: true });
   })
+);
+
+/* ---- Processo produtivo: a sequência de etapas com tempo por peça ---- */
+
+produtoRouter.get(
+  '/:id/processo',
+  asyncHandler((req, res) => res.json(processoDoProduto(Number(req.params.id))))
+);
+
+produtoRouter.put(
+  '/:id/processo',
+  asyncHandler((req, res) => {
+    const linhas = z
+      .array(
+        z.object({
+          etapa_id: z.number().int(),
+          sequencia: z.number().int().min(1).default(1),
+          tempo_por_peca_min: z.number().min(0),
+          equipamento_id: z.number().int().nullish(),
+          observacao: z.string().trim().nullish(),
+        })
+      )
+      .parse(req.body);
+
+    const db = getDb();
+    const produtoId = Number(req.params.id);
+    const upsert = db.prepare(
+      `INSERT INTO produto_processo (produto_id, etapa_id, sequencia, tempo_por_peca_min, equipamento_id, observacao)
+       VALUES (@produto_id, @etapa_id, @sequencia, @tempo_por_peca_min, @equipamento_id, @observacao)
+       ON CONFLICT(produto_id, etapa_id) DO UPDATE SET
+         sequencia = excluded.sequencia,
+         tempo_por_peca_min = excluded.tempo_por_peca_min,
+         equipamento_id = excluded.equipamento_id,
+         observacao = excluded.observacao`
+    );
+
+    db.transaction(() => {
+      // Etapa com tempo zero sai do roteiro: é assim que se remove uma operação.
+      const manter = linhas.filter((l) => l.tempo_por_peca_min > 0);
+      for (const l of manter) {
+        upsert.run({
+          produto_id: produtoId,
+          etapa_id: l.etapa_id,
+          sequencia: l.sequencia,
+          tempo_por_peca_min: l.tempo_por_peca_min,
+          equipamento_id: l.equipamento_id ?? null,
+          observacao: l.observacao ?? null,
+        });
+      }
+      const ids = manter.map((l) => l.etapa_id);
+      db.prepare(
+        `DELETE FROM produto_processo WHERE produto_id = ?
+         AND etapa_id NOT IN (${ids.length ? ids.map(() => '?').join(',') : 'NULL'})`
+      ).run(produtoId, ...ids);
+    })();
+
+    res.json(processoDoProduto(produtoId, db));
+  })
+);
+
+/** A conta fechada da peça: material + mão de obra + indireto. */
+produtoRouter.get(
+  '/:id/custo',
+  asyncHandler((req, res) => res.json(custoCompletoProduto(Number(req.params.id))))
 );
 
 router.use('/produtos', produtoRouter);

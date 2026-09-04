@@ -34,8 +34,8 @@ export function registrarMovimento(dados, db = getDb()) {
   const info = db
     .prepare(
       `INSERT INTO movimentos_estoque
-         (material_id, tipo, quantidade, custo_unitario, data, documento, ordem_id, fornecedor_id, usuario_id, observacao)
-       VALUES (@material_id, @tipo, @quantidade, @custo_unitario, @data, @documento, @ordem_id, @fornecedor_id, @usuario_id, @observacao)`
+         (material_id, tipo, quantidade, custo_unitario, data, documento, ordem_id, fornecedor_id, usuario_id, observacao, local_id)
+       VALUES (@material_id, @tipo, @quantidade, @custo_unitario, @data, @documento, @ordem_id, @fornecedor_id, @usuario_id, @observacao, @local_id)`
     )
     .run({
       material_id: material.id,
@@ -48,6 +48,7 @@ export function registrarMovimento(dados, db = getDb()) {
       fornecedor_id: dados.fornecedor_id || null,
       usuario_id: dados.usuario_id || null,
       observacao: dados.observacao || null,
+      local_id: dados.local_id ?? material.local_padrao_id ?? null,
     });
 
   // Entrada com custo informado atualiza o custo de referência do material.

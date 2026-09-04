@@ -278,3 +278,198 @@ LEFT JOIN vendedores v ON v.id = p.vendedor_id
 JOIN produtos  pr ON pr.id = i.produto_id
 LEFT JOIN grupos_produto g ON g.id = pr.grupo_id
 LEFT JOIN ordens_producao o ON o.pedido_item_id = i.id;
+
+-- ============================================================
+-- ENGENHARIA — setores, máquinas e jornada
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS departamentos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome        TEXT    NOT NULL UNIQUE,
+  responsavel TEXT,
+  produtivo   INTEGER NOT NULL DEFAULT 1,
+  observacao  TEXT,
+  ativo       INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS equipamentos (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome            TEXT    NOT NULL UNIQUE,
+  tipo            TEXT,
+  departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL,
+  patrimonio      TEXT,
+  quantidade      INTEGER NOT NULL DEFAULT 1,
+  status          TEXT    NOT NULL DEFAULT 'ATIVO'
+                  CHECK (status IN ('ATIVO','MANUTENCAO','PARADO','BAIXADO')),
+  observacao      TEXT,
+  ativo           INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_equip_depto ON equipamentos(departamento_id);
+
+-- Configuração única da fábrica (uma linha, id = 1).
+CREATE TABLE IF NOT EXISTS parametros (
+  id                 INTEGER PRIMARY KEY CHECK (id = 1),
+  jornada_inicio     TEXT NOT NULL DEFAULT '06:00',
+  jornada_fim        TEXT NOT NULL DEFAULT '15:48',
+  intervalo_min      INTEGER NOT NULL DEFAULT 75,
+  dias_semana        TEXT NOT NULL DEFAULT '1,2,3,4,5',
+  dias_uteis_mes     INTEGER NOT NULL DEFAULT 22,
+  encargos_percentual REAL NOT NULL DEFAULT 80,
+  ocupacao_percentual REAL NOT NULL DEFAULT 85,
+  extensao_fim       TEXT,
+  sabado_inicio      TEXT,
+  sabado_fim         TEXT,
+  atualizado_em      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ============================================================
+-- PESSOAS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS colaboradores (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome            TEXT    NOT NULL UNIQUE,
+  cpf             TEXT,
+  cargo           TEXT,
+  departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL,
+  data_admissao   TEXT,
+  salario         REAL    NOT NULL DEFAULT 0,
+  vale_transporte REAL    NOT NULL DEFAULT 0,
+  produtivo       INTEGER NOT NULL DEFAULT 1,
+  telefone        TEXT,
+  email           TEXT,
+  status          TEXT    NOT NULL DEFAULT 'ATIVO'
+                  CHECK (status IN ('ATIVO','AFASTADO','INATIVO')),
+  observacao      TEXT,
+  ativo           INTEGER NOT NULL DEFAULT 1,
+  criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_colab_depto ON colaboradores(departamento_id);
+
+-- ============================================================
+-- CUSTOS FIXOS (rateados por minuto de fábrica)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS custos_fixos (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  descricao    TEXT    NOT NULL,
+  tipo         TEXT    NOT NULL DEFAULT 'OUTRO'
+               CHECK (tipo IN ('ALUGUEL','ENERGIA','AGUA','MANUTENCAO','ADMINISTRATIVO',
+                               'IMPOSTO','SEGURO','DEPRECIACAO','SOFTWARE','OUTRO')),
+  valor_mensal REAL    NOT NULL DEFAULT 0,
+  observacao   TEXT,
+  ativo        INTEGER NOT NULL DEFAULT 1
+);
+
+-- ============================================================
+-- PROCESSO PRODUTIVO DO PRODUTO
+-- Substitui o custo fixo por etapa: agora é tempo × custo do setor.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS produto_processo (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id         INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  etapa_id           INTEGER NOT NULL REFERENCES etapas(id) ON DELETE CASCADE,
+  sequencia          INTEGER NOT NULL DEFAULT 1,
+  tempo_por_peca_min REAL    NOT NULL DEFAULT 0 CHECK (tempo_por_peca_min >= 0),
+  equipamento_id     INTEGER REFERENCES equipamentos(id) ON DELETE SET NULL,
+  observacao         TEXT,
+  UNIQUE (produto_id, etapa_id)
+);
+CREATE INDEX IF NOT EXISTS idx_processo_produto ON produto_processo(produto_id);
+
+-- ============================================================
+-- MATERIAIS — grupos e locais de estoque
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS grupos_material (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome   TEXT    NOT NULL UNIQUE,
+  pai_id INTEGER REFERENCES grupos_material(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS locais_estoque (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome   TEXT    NOT NULL UNIQUE,
+  tipo   TEXT    NOT NULL DEFAULT 'ALMOXARIFADO'
+         CHECK (tipo IN ('ALMOXARIFADO','PRODUCAO','EXPEDICAO','TERCEIRO','OUTRO')),
+  ativo  INTEGER NOT NULL DEFAULT 1
+);
+
+-- ============================================================
+-- APONTAMENTO DE PRODUÇÃO E PARADAS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS apontamentos (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordem_id        INTEGER NOT NULL REFERENCES ordens_producao(id) ON DELETE CASCADE,
+  etapa_id        INTEGER NOT NULL REFERENCES etapas(id) ON DELETE RESTRICT,
+  colaborador_id  INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+  equipamento_id  INTEGER REFERENCES equipamentos(id) ON DELETE SET NULL,
+  data            TEXT    NOT NULL DEFAULT (date('now')),
+  quantidade      REAL    NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
+  refugo          REAL    NOT NULL DEFAULT 0 CHECK (refugo >= 0),
+  minutos         REAL    NOT NULL DEFAULT 0 CHECK (minutos >= 0),
+  custo_mo        REAL    NOT NULL DEFAULT 0,
+  observacao      TEXT,
+  usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_apont_ordem ON apontamentos(ordem_id);
+CREATE INDEX IF NOT EXISTS idx_apont_data ON apontamentos(data);
+CREATE INDEX IF NOT EXISTS idx_apont_colab ON apontamentos(colaborador_id);
+
+CREATE TABLE IF NOT EXISTS ocorrencias (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  data            TEXT    NOT NULL DEFAULT (date('now')),
+  departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL,
+  ordem_id        INTEGER REFERENCES ordens_producao(id) ON DELETE SET NULL,
+  equipamento_id  INTEGER REFERENCES equipamentos(id) ON DELETE SET NULL,
+  motivo          TEXT    NOT NULL DEFAULT 'OUTRO'
+                  CHECK (motivo IN ('FALTA_MATERIAL','QUEBRA_EQUIPAMENTO','FALTA_PESSOAL',
+                                    'RETRABALHO','ENERGIA','AGUARDANDO_SETOR','TREINAMENTO','OUTRO')),
+  minutos_parado  REAL    NOT NULL DEFAULT 0 CHECK (minutos_parado >= 0),
+  descricao       TEXT,
+  acao            TEXT,
+  resolvida       INTEGER NOT NULL DEFAULT 0,
+  usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ocorr_data ON ocorrencias(data);
+
+-- ============================================================
+-- CONVERSA ABERTA — canal de sugestões, problemas e riscos
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS manifestacoes (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo          TEXT    NOT NULL DEFAULT 'SUGESTAO'
+                CHECK (tipo IN ('SUGESTAO','PROBLEMA','RISCO','RELATO','ELOGIO')),
+  assunto       TEXT,
+  mensagem      TEXT    NOT NULL,
+  autor         TEXT,
+  anonima       INTEGER NOT NULL DEFAULT 1,
+  setor         TEXT,
+  status        TEXT    NOT NULL DEFAULT 'ABERTA'
+                CHECK (status IN ('ABERTA','EM_ANALISE','RESOLVIDA','ARQUIVADA')),
+  tratativa     TEXT,
+  respondido_em TEXT,
+  criado_em     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_manif_status ON manifestacoes(status);
+
+-- ============================================================
+-- AUDITORIA
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  usuario    TEXT,
+  acao       TEXT NOT NULL,
+  entidade   TEXT,
+  entidade_id INTEGER,
+  detalhe    TEXT,
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_logs_data ON logs(criado_em);
