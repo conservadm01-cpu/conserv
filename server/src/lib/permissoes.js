@@ -79,6 +79,7 @@ export const AREAS = [
     itens: [
       { id: 'canal.tratar', nome: 'Tratar manifestações da conversa aberta' },
       { id: 'importacao', nome: 'Importar planilhas' },
+      { id: 'qualidade', nome: 'Higienizar o cadastro (juntar duplicados, corrigir datas)' },
       { id: 'admin', nome: 'Administrar o sistema e os usuários' },
     ],
   },

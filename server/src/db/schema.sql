@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   uf           TEXT,
   observacao   TEXT,
   ativo        INTEGER NOT NULL DEFAULT 1,
+  mesclado_em  INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
   criado_em    TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_clientes_categoria ON clientes(categoria_id);

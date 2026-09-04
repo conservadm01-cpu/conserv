@@ -47,6 +47,8 @@ export function aplicarMigracoes(db) {
     ['prazo_pagamento_dias', 'INTEGER NOT NULL DEFAULT 0'],
     ['limite_credito', 'REAL NOT NULL DEFAULT 0'],
     ['condicao_pagamento', 'TEXT'],
+    // Cadastro juntado a outro: guarda para onde foi, para não voltar como duplicata.
+    ['mesclado_em', 'INTEGER'],
   ]) alterar('clientes', coluna, tipo);
 
   for (const [coluna, tipo] of [

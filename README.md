@@ -106,6 +106,25 @@ e margem.
 - Registro com histórico nunca é apagado: pedido com entrega, título com baixa, ordem com
   apontamento e orçamento convertido são **cancelados**, preservando a trilha.
 
+### Qualidade do cadastro
+Planilha importada traz sujeira, e sujeira vira número errado no painel. A tela reúne o que
+encontrou e deixa a decisão com quem conhece o negócio — nada é corrigido sozinho:
+- **Cadastros repetidos**: o mesmo cliente escrito de dois jeitos, separado por confiança —
+  *mesmo nome* (só muda acento ou ponto), *provável* (muda um "LTDA") e *confira* (difere por
+  uma ou duas letras). Ao juntar, pedidos, orçamentos, oportunidades, títulos e interações
+  passam para o cadastro escolhido, e o outro fica inativo apontando para onde foi.
+- **Pedidos repetidos**: a mesma venda lançada duas vezes. *Mesma venda* quando cliente, data e
+  número batem; *confira* quando só o valor bate — uma confecção repete SKU, e o cliente pode
+  ter comprado duas vezes no mesmo dia.
+- **Nomes**: número de pedido colado na frente ("69PATAGONIA CAFÉ"), espaço repetido, pontuação
+  sobrando.
+- **Pedidos parados**: venda que passou da entrega e ninguém baixou. Quase sempre foi entregue e
+  o sistema nunca soube; enquanto ficar assim, entra na carteira e no indicador de atraso.
+- **Datas**: entrega marcada antes da venda — o ano digitado errado, que faz um pedido aparecer
+  com 900 dias de espera.
+
+Registro com produção apontada nunca é cancelado: o trabalho aconteceu e o histórico fica.
+
 ### Acesso e permissões
 - **31 áreas** em oito grupos, de "ver estoque" a "alterar jornada e encargos".
 - **Oito níveis prontos** — total, gerencial, PCP, comercial, almoxarifado, financeiro,
@@ -276,6 +295,7 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |
+| Qualidade | `GET /api/qualidade/resumo`, `/duplicatas`, `/pedidos-repetidos`, `/nomes`, `/parados`, `/datas`; `POST /api/qualidade/duplicatas/mesclar`, `/pedidos-repetidos/cancelar`, `/parados/encerrar`; `PUT /api/qualidade/nomes/:id`, `/datas/:itemId` |
 
 **Todas as listagens aceitam os mesmos parâmetros**: `?busca=`, os recortes próprios de cada
 recurso (situação, período, faixa de valor), `?ordenar_por=` + `?direcao=` — que só aceitam

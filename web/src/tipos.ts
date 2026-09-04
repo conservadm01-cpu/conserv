@@ -492,3 +492,55 @@ export type Inventario = {
 };
 
 export type LocalEstoque = Simples & { tipo: string | null; observacao: string | null; ativo: number };
+
+/* ------------------------------------------------------- qualidade de dados */
+
+export type CandidatoDuplicata = {
+  id: number; nome: string; cnpj: string | null; cidade: string | null; uf: string | null;
+  ativo: number; pedidos: number; orcamentos: number; oportunidades: number; titulos: number;
+  ultimo_pedido: string | null;
+};
+
+export type GrupoDuplicata = {
+  confianca: 'identico' | 'nucleo' | 'parecido';
+  chave: string; manter: number; movimento: number; membros: CandidatoDuplicata[];
+};
+
+export type NomeSuspeito = {
+  id: number; nome: string; sugestao: string; motivos: string[];
+  conflito: { id: number; nome: string } | null;
+};
+
+export type PedidoParado = {
+  id: number; numero: string; cliente: string;
+  data_pedido: string; data_entrega: string | null; situacao: string;
+  itens: number; pecas: number; valor: number;
+  primeira_entrega: string | null; dias_atraso: number; ordens_abertas: number;
+};
+
+export type DataInvertida = {
+  item_id: number; pedido_id: number; numero: string; cliente: string; produto: string;
+  data_pedido: string; data_entrega: string; no_item: number; dias: number;
+  sugestao: string | null;
+};
+
+export type ResumoQualidade = {
+  duplicatas: { grupos: number; cadastros: number; identicos: number; a_confirmar: number };
+  nomes: number;
+  parados: { pedidos: number; valor: number; com_ordem_aberta: number; maior_atraso: number };
+  datas: { itens: number; com_sugestao: number };
+  pedidos_repetidos: { grupos: number; repetidos: number; a_confirmar: number; valor: number };
+};
+
+export type PedidoRepetido = {
+  id: number; numero: string; cliente_id: number; cliente: string;
+  data_pedido: string; situacao: string;
+  itens: number; pecas: number; valor: number;
+  ordens: number; apontamentos: number; titulos: number;
+};
+
+export type GrupoPedidoRepetido = {
+  confianca: 'repetido' | 'confira';
+  motivo: string; chave: string; cliente: string; data_pedido: string;
+  valor: number; manter: number; membros: PedidoRepetido[];
+};

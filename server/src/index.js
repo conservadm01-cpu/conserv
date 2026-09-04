@@ -20,6 +20,7 @@ import { router as canalRouter, publico as canalPublicoRouter } from './routes/c
 import { router as financeiroRouter } from './routes/financeiro.js';
 import { crm as crmRouter, orcamentos as orcamentosRouter } from './routes/comercial.js';
 import { router as comprasRouter } from './routes/compras.js';
+import { router as qualidadeRouter } from './routes/qualidade.js';
 
 export function criarApp() {
   migrate();
@@ -50,6 +51,7 @@ export function criarApp() {
   app.use('/api/crm', exigir('crm.ver'), crmRouter);
   app.use('/api/orcamentos', exigir('orcamentos.ver'), orcamentosRouter);
   app.use('/api/compras', exigir('compras.ver'), comprasRouter);
+  app.use('/api/qualidade', exigir('cadastros.ver'), qualidadeRouter);
   app.use('/api/indicadores', exigir('producao.ver', 'pedidos.ver', 'financeiro.ver', 'orcamentos.ver'), indicadoresRouter);
   app.use('/api', cadastrosRouter);
 

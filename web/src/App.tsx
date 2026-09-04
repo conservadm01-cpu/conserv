@@ -18,6 +18,7 @@ import Clientes from './pages/Clientes';
 import Cadastros from './pages/Cadastros';
 import Relatorios from './pages/Relatorios';
 import Importacao from './pages/Importacao';
+import Qualidade from './pages/Qualidade';
 import Financeiro from './pages/Financeiro';
 import Permissoes from './pages/Permissoes';
 import Crm from './pages/Crm';
@@ -86,6 +87,7 @@ const MENU = [
       { para: '/clientes', rotulo: 'Clientes', icone: '⌂', area: 'cadastros.ver' },
       { para: '/cadastros', rotulo: 'Tabelas auxiliares', icone: '≡', area: 'cadastros.ver' },
       { para: '/importacao', rotulo: 'Importar planilha', icone: '⇪', area: 'importacao' },
+      { para: '/qualidade', rotulo: 'Qualidade do cadastro', icone: '⚕', area: 'cadastros.ver' },
     ],
   },
   {
@@ -166,6 +168,7 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/importacao" element={<Importacao />} />
+          <Route path="/qualidade" element={<Qualidade />} />
           <Route path="/engenharia" element={<Engenharia />} />
           <Route path="/colaboradores" element={<Colaboradores />} />
           <Route path="/apontamento" element={<Apontamento />} />
