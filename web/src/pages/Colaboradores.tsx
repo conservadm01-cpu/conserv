@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useApi } from '../lib/hooks';
 import { moeda, data } from '../lib/formato';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
 import { Etiqueta, Indicador } from '../components/ui';
+import { NovoUsuario } from './Permissoes';
+import { pode } from '../lib/api';
 import type { CampoFiltro } from '../components/Filtros';
-import type { Colaborador, Departamento, CustoSetor } from '../tipos';
+import type { Colaborador, Departamento, CustoSetor, CatalogoPermissoes, UsuarioSistema } from '../tipos';
 
 const COLUNAS: Coluna<Colaborador>[] = [
   { chave: 'nome', rotulo: 'Nome' },
@@ -20,8 +23,18 @@ const COLUNAS: Coluna<Colaborador>[] = [
 ];
 
 export default function Colaboradores() {
+  const [acessoPara, setAcessoPara] = useState<Colaborador | null>(null);
+  const [recarga, setRecarga] = useState(0);
   const { dados: setores } = useApi<Departamento[]>('/engenharia/departamentos');
   const { dados: custos, recarregar } = useApi<CustoSetor[]>('/engenharia/custo-setores');
+
+  const gerenciaAcesso = pode('pessoas.permissoes');
+  const { dados: catalogo } = useApi<CatalogoPermissoes>(gerenciaAcesso ? '/auth/areas' : null);
+  // Quem já entra no sistema não aparece com o botão de criar acesso.
+  const { dados: usuarios } = useApi<UsuarioSistema[]>(
+    gerenciaAcesso ? '/usuarios' : null, [recarga]
+  );
+  const comAcesso = new Set((usuarios ?? []).filter((u) => u.ativo).map((u) => u.colaborador_id));
 
   const folha = (custos ?? []).reduce((s, c) => s + c.folha_por_pessoa * c.com_salario, 0);
   const pessoas = (custos ?? []).reduce((s, c) => s + c.pessoas, 0);
@@ -106,6 +119,19 @@ export default function Colaboradores() {
         aoMudar={recarregar}
         filtros={filtros}
         filtrosIniciais={{ ativo: 'true' }}
+        acoesExtras={gerenciaAcesso ? (c) => (
+          comAcesso.has(c.id)
+            ? <Etiqueta texto="tem acesso" tom="verde" />
+            : <button className="pequeno" onClick={() => setAcessoPara(c)}>Criar acesso</button>
+        ) : undefined}
+      />
+
+      <NovoUsuario
+        aberto={acessoPara !== null}
+        catalogo={catalogo ?? null}
+        inicial={acessoPara ? { nome: acessoPara.nome, colaborador_id: acessoPara.id } : null}
+        aoFechar={() => setAcessoPara(null)}
+        aoSalvar={() => { setAcessoPara(null); setRecarga((n) => n + 1); }}
       />
     </>
   );

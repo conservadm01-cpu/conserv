@@ -18,14 +18,23 @@ import { montarFiltros, montarOrdem } from './filtros.js';
  * @param {string} [opts.escrita]  área exigida para criar, editar e remover
  * @param {object} [opts.filtros]  filtros extras aceitos na listagem (ver lib/filtros.js)
  * @param {string[]} [opts.ordenaveis] colunas que o parâmetro ?ordenar_por= aceita
+ * @param {string[]} [opts.ocultar] colunas que nunca saem na resposta (ex.: senha_hash)
  */
 export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [],
-                             alias, escrita, filtros = {}, ordenaveis = [] }) {
+                             alias, escrita, filtros = {}, ordenaveis = [], ocultar = [] }) {
   const router = Router();
   // Ler é uma permissão; alterar é outra. O guarda de escrita fica só nos verbos
   // que gravam, para que quem só consulta não seja barrado na listagem.
   const guardaEscrita = escrita ? exigir(escrita) : (_req, _res, next) => next();
   const base = listaSql || `SELECT * FROM ${tabela}`;
+  // Um "SELECT *" traria colunas que não devem sair do servidor; a limpeza é
+  // feita na saída para valer em todos os verbos, inclusive no POST e no PUT.
+  const limpar = (linha) => {
+    if (!linha || ocultar.length === 0) return linha;
+    const copia = { ...linha };
+    for (const coluna of ocultar) delete copia[coluna];
+    return copia;
+  };
   // Consultas com join apelidam a tabela; o filtro precisa usar o mesmo apelido.
   const prefixo = alias || apelidoDe(listaSql, tabela) || tabela;
 
@@ -49,7 +58,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
 
       const ordenacao = montarOrdem(req.query, ordenaveis, ordem);
       const sql = `${base}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${ordenacao}`;
-      res.json(db.prepare(sql).all(...params));
+      res.json(db.prepare(sql).all(...params).map(limpar));
     })
   );
 
@@ -58,7 +67,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
     asyncHandler((req, res) => {
       const row = getDb().prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(req.params.id);
       if (!row) throw notFound();
-      res.json(row);
+      res.json(limpar(row));
     })
   );
 
@@ -74,7 +83,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
           `INSERT INTO ${tabela} (${cols.join(', ')}) VALUES (${cols.map((c) => `@${c}`).join(', ')})`
         )
         .run(somenteColunas(dados, cols));
-      res.status(201).json(getDb().prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(info.lastInsertRowid));
+      res.status(201).json(limpar(getDb().prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(info.lastInsertRowid)));
     })
   );
 
@@ -90,7 +99,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
       if (cols.length === 0) throw badRequest('Nenhum campo para atualizar');
       db.prepare(`UPDATE ${tabela} SET ${cols.map((c) => `${c} = @${c}`).join(', ')} WHERE id = @id`)
         .run({ ...somenteColunas(dados, cols), id: Number(req.params.id) });
-      res.json(db.prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(req.params.id));
+      res.json(limpar(db.prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(req.params.id)));
     })
   );
 

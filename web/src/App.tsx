@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { sessao, type Usuario } from './lib/api';
 import Login from './pages/Login';
+import PrimeiroAcesso from './pages/PrimeiroAcesso';
 import Dashboard from './pages/Dashboard';
 import Carteira from './pages/Carteira';
 import Pedidos from './pages/Pedidos';
@@ -21,6 +22,7 @@ import Importacao from './pages/Importacao';
 import Qualidade from './pages/Qualidade';
 import Financeiro from './pages/Financeiro';
 import Permissoes from './pages/Permissoes';
+import LogAcessos from './pages/LogAcessos';
 import Crm from './pages/Crm';
 import Orcamentos from './pages/Orcamentos';
 import Engenharia from './pages/Engenharia';
@@ -88,6 +90,7 @@ const MENU = [
       { para: '/cadastros', rotulo: 'Tabelas auxiliares', icone: '≡', area: 'cadastros.ver' },
       { para: '/importacao', rotulo: 'Importar planilha', icone: '⇪', area: 'importacao' },
       { para: '/qualidade', rotulo: 'Qualidade do cadastro', icone: '⚕', area: 'cadastros.ver' },
+      { para: '/acessos', rotulo: 'Acessos e senhas', icone: '⚿', area: 'pessoas.permissoes' },
     ],
   },
   {
@@ -169,6 +172,7 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/importacao" element={<Importacao />} />
           <Route path="/qualidade" element={<Qualidade />} />
+          <Route path="/acessos" element={<LogAcessos />} />
           <Route path="/engenharia" element={<Engenharia />} />
           <Route path="/colaboradores" element={<Colaboradores />} />
           <Route path="/apontamento" element={<Apontamento />} />
@@ -195,7 +199,18 @@ export default function App() {
 
   return (
     <HashRouter>
-      {usuario ? (
+      {usuario && usuario.senha_provisoria ? (
+        // Senha provisória não abre o sistema: define a sua e entra de novo.
+        <Routes>
+          <Route path="*" element={
+            <PrimeiroAcesso
+              usuario={usuario}
+              aoConcluir={() => setUsuario({ ...usuario, senha_provisoria: 0 })}
+              aoSair={sair}
+            />
+          } />
+        </Routes>
+      ) : usuario ? (
         <Area usuario={usuario} aoSair={sair} />
       ) : (
         <Routes>

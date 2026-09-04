@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, sessao } from '../lib/api';
+import { api, ApiError, query, sessao } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { data } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Modal, Etiqueta, Indicador } from '../components/ui';
 import type { CatalogoPermissoes, UsuarioSistema, PermissoesUsuario, Colaborador } from '../tipos';
 
 const PERFIS = ['ADMIN', 'GESTOR', 'PCP', 'ALMOXARIFE', 'VENDEDOR', 'OPERADOR'];
+/** Mesmo piso do servidor para a senha que o administrador entrega. */
+const MINIMO_PROVISORIA = 3;
 
 export default function Permissoes() {
   const { dados: catalogo } = useApi<CatalogoPermissoes>('/auth/areas');
@@ -251,8 +253,14 @@ function EditorPermissoes({ usuario, catalogo, aoFechar, aoSalvar }: {
   );
 }
 
-function NovoUsuario({ aberto, catalogo, aoFechar, aoSalvar }: {
-  aberto: boolean; catalogo: CatalogoPermissoes | null; aoFechar: () => void; aoSalvar: () => void;
+/**
+ * Criação de acesso. A tela de colaboradores usa este mesmo formulário, já com
+ * a pessoa escolhida — cadastrar alguém e dar acesso são o mesmo gesto.
+ */
+export function NovoUsuario({ aberto, catalogo, inicial = null, aoFechar, aoSalvar }: {
+  aberto: boolean; catalogo: CatalogoPermissoes | null;
+  inicial?: { nome: string; colaborador_id: number } | null;
+  aoFechar: () => void; aoSalvar: () => void;
 }) {
   const { dados: colaboradores } = useApi<Colaborador[]>(aberto ? '/colaboradores?ativo=true' : null);
   const [nome, setNome] = useState('');
@@ -264,9 +272,34 @@ function NovoUsuario({ aberto, catalogo, aoFechar, aoSalvar }: {
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  /** Vindo do colaborador, o nome e o e-mail já chegam prontos. */
+  useEffect(() => {
+    if (!aberto) return;
+    setNome(inicial?.nome ?? '');
+    setEmail('');
+    setSenha('');
+    setPerfil('OPERADOR');
+    setNivel('consulta');
+    setColaboradorId(inicial?.colaborador_id ?? '');
+    setErro('');
+  }, [aberto, inicial]);
+
+  // O e-mail de acesso sai do nome enquanto ninguém digitou um.
+  useEffect(() => {
+    if (!aberto || !nome.trim() || email) return;
+    let cancelado = false;
+    api.get<{ email: string | null }>(`/usuarios/sugerir-email${query({ nome })}`)
+      .then((r) => { if (!cancelado && r.email) setEmail(r.email); })
+      .catch(() => { /* sugestão é conveniência: falhar aqui não atrapalha */ });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, nome]);
+
   async function salvar() {
     if (!nome.trim() || !email.trim()) return setErro('Informe nome e e-mail.');
-    if (senha.length < 6) return setErro('A senha precisa de ao menos 6 caracteres.');
+    if (senha.length < MINIMO_PROVISORIA) {
+      return setErro(`A senha provisória precisa de ao menos ${MINIMO_PROVISORIA} caracteres.`);
+    }
     setSalvando(true);
     setErro('');
     try {
@@ -274,6 +307,7 @@ function NovoUsuario({ aberto, catalogo, aoFechar, aoSalvar }: {
         nome: nome.trim(), email: email.trim(), senha,
         perfil, nivel_acesso: nivel,
         colaborador_id: colaboradorId ? Number(colaboradorId) : null,
+        provisoria: true,
       });
       setNome(''); setEmail(''); setSenha('');
       aoSalvar();
@@ -304,8 +338,9 @@ function NovoUsuario({ aberto, catalogo, aoFechar, aoSalvar }: {
         <Campo rotulo="E-mail"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Campo>
       </div>
       <div className="linha-campos">
-        <Campo rotulo="Senha inicial">
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} />
+        <Campo rotulo="Senha provisória">
+          <input value={senha} onChange={(e) => setSenha(e.target.value)}
+            placeholder="entregue à pessoa" />
         </Campo>
         <Campo rotulo="Perfil">
           <select value={perfil} onChange={(e) => setPerfil(e.target.value)}>
@@ -324,6 +359,10 @@ function NovoUsuario({ aberto, catalogo, aoFechar, aoSalvar }: {
           {colaboradores?.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
       </Campo>
+      <Aviso tipo="info">
+        A senha provisória vale uma entrada: o sistema pede a troca antes de abrir qualquer tela,
+        e a senha escolhida não fica visível para ninguém — nem aqui.
+      </Aviso>
     </Modal>
   );
 }
@@ -335,10 +374,12 @@ function TrocarSenha({ usuario, aoFechar }: { usuario: UsuarioSistema | null; ao
 
   async function salvar() {
     if (!usuario) return;
-    if (senha.length < 6) return setErro('A senha precisa de ao menos 6 caracteres.');
+    if (senha.length < MINIMO_PROVISORIA) {
+      return setErro(`A senha precisa de ao menos ${MINIMO_PROVISORIA} caracteres.`);
+    }
     setErro('');
     try {
-      await api.put(`/usuarios/${usuario.id}/senha`, { senha });
+      await api.put(`/usuarios/${usuario.id}/senha`, { senha, provisoria: true });
       setOk('Senha redefinida.');
       setSenha('');
     } catch (e) {
@@ -360,9 +401,14 @@ function TrocarSenha({ usuario, aoFechar }: { usuario: UsuarioSistema | null; ao
     >
       <Aviso tipo="erro">{erro}</Aviso>
       <Aviso tipo="ok">{ok}</Aviso>
-      <Campo rotulo="Nova senha">
-        <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoFocus />
+      <Campo rotulo="Senha provisória">
+        <input value={senha} onChange={(e) => setSenha(e.target.value)} autoFocus
+          placeholder="entregue à pessoa" />
       </Campo>
+      <Aviso tipo="info">
+        Entra como provisória: a pessoa é obrigada a definir a sua na próxima entrada, e você
+        não fica sabendo qual ficou.
+      </Aviso>
     </Modal>
   );
 }

@@ -125,6 +125,26 @@ encontrou e deixa a decisão com quem conhece o negócio — nada é corrigido s
 
 Registro com produção apontada nunca é cancelado: o trabalho aconteceu e o histórico fica.
 
+### Acesso, senha e trilha
+- **Primeiro acesso**: o administrador cria o usuário com uma **senha provisória**, que vale uma
+  entrada só. Enquanto a pessoa não escolher a sua, nenhuma tela abre — nem o painel. A senha
+  provisória pode ser curta (é ditada por telefone e morre na entrada); a que a pessoa escolhe
+  segue o mínimo de 6 caracteres.
+- **Criar acesso pelo colaborador**: na tela de Colaboradores, quem ainda não entra no sistema
+  tem o botão *Criar acesso*, já com o nome preenchido e o e-mail sugerido a partir dele
+  (`Renato Monteiro` → `renato.monteiro@conserv.com.br`). Quem já tem aparece marcado.
+- **Log de senhas e acessos**: registra acesso criado, senha provisória entregue, primeiro
+  acesso, troca, redefinição pelo administrador, entrada aceita, tentativa recusada e acesso
+  inativo — com quem fez, quando e de qual endereço. **A senha nunca é registrada**, nem em texto
+  nem cifrada: um log que guardasse a senha seria uma segunda cópia do cofre, e o motivo de
+  existir é poder auditar sem expor. O nome fica congelado em cada linha, então a trilha
+  sobrevive à exclusão do cadastro.
+- Redefinir a senha de alguém entra como provisória por padrão: quem administra não fica sabendo
+  a senha de ninguém.
+- Login com e-mail inexistente e login com senha errada devolvem **a mesma resposta** — dizer que
+  o e-mail existe entrega meio caminho a quem está tentando adivinhar. O log sabe a diferença.
+- O hash da senha não sai do servidor em rota alguma.
+
 ### Acesso e permissões
 - **31 áreas** em oito grupos, de "ver estoque" a "alterar jornada e encargos".
 - **Oito níveis prontos** — total, gerencial, PCP, comercial, almoxarifado, financeiro,
@@ -293,6 +313,7 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | CRM | `GET /api/crm/resumo`, `/funil`, `GET|POST|PUT|DELETE /api/crm/oportunidades`, `PUT /api/crm/oportunidades/:id/etapa`, `POST /api/crm/interacoes` |
 | Orçamentos | `GET|POST|PUT|DELETE /api/orcamentos`, `GET /api/orcamentos/precificar/:produtoId`, `POST /api/orcamentos/:id/converter`, `GET /api/orcamentos/desempenho` |
 | Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
+| Acesso e senha | `PUT /api/auth/senha` (a própria pessoa), `PUT /api/usuarios/:id/senha` (provisória, pelo admin), `GET /api/usuarios/situacao`, `GET /api/usuarios/log-senhas`, `/log-senhas/resumo`, `GET /api/usuarios/sugerir-email?nome=` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |
 | Qualidade | `GET /api/qualidade/resumo`, `/duplicatas`, `/pedidos-repetidos`, `/nomes`, `/parados`, `/datas`; `POST /api/qualidade/duplicatas/mesclar`, `/pedidos-repetidos/cancelar`, `/parados/encerrar`; `PUT /api/qualidade/nomes/:id`, `/datas/:itemId` |

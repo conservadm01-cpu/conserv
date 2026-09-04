@@ -6,6 +6,8 @@ export type Perfil = 'ADMIN' | 'GESTOR' | 'PCP' | 'ALMOXARIFE' | 'VENDEDOR' | 'O
 export type Usuario = {
   sub?: number; id?: number; nome: string; email: string;
   perfil: Perfil; nivel_acesso?: string;
+  /** Senha entregue pelo administrador: a tela exige a troca antes de abrir. */
+  senha_provisoria?: number;
 };
 export type Permissoes = Record<string, boolean>;
 

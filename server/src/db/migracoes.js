@@ -39,6 +39,10 @@ export function aplicarMigracoes(db) {
   alterar('usuarios', 'colaborador_id', 'INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL');
   alterar('usuarios', 'permissoes', 'TEXT');
   alterar('usuarios', 'nivel_acesso', "TEXT NOT NULL DEFAULT 'consulta'");
+  // Primeiro acesso: senha entregue pelo administrador tem de ser trocada na entrada.
+  alterar('usuarios', 'senha_provisoria', 'INTEGER NOT NULL DEFAULT 0');
+  alterar('usuarios', 'senha_alterada_em', 'TEXT');
+  alterar('usuarios', 'ultimo_acesso', 'TEXT');
 
   // Cadastros completos: endereço, dados fiscais e condição de pagamento.
   for (const [coluna, tipo] of [

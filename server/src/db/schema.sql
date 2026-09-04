@@ -13,8 +13,41 @@ CREATE TABLE IF NOT EXISTS usuarios (
   perfil      TEXT    NOT NULL DEFAULT 'OPERADOR'
               CHECK (perfil IN ('ADMIN','GESTOR','PCP','ALMOXARIFE','VENDEDOR','OPERADOR')),
   ativo       INTEGER NOT NULL DEFAULT 1,
+  -- Senha entregue pelo administrador: vale uma vez e obriga a troca na entrada.
+  senha_provisoria  INTEGER NOT NULL DEFAULT 0,
+  senha_alterada_em TEXT,
+  ultimo_acesso     TEXT,
   criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+/*
+ * Histórico de acesso e de senha.
+ *
+ * Guarda o que aconteceu — criação, troca, redefinição, entrada e tentativa
+ * recusada — e nunca a senha, nem em texto nem cifrada. Um log que guardasse a
+ * senha seria uma segunda cópia do cofre, e o motivo de existir é justamente
+ * poder auditar sem expor.
+ *
+ * O nome do autor fica congelado na linha: se o administrador for removido
+ * depois, a trilha continua dizendo quem redefiniu a senha de quem.
+ */
+CREATE TABLE IF NOT EXISTS log_senhas (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  usuario_nome TEXT    NOT NULL,
+  evento      TEXT    NOT NULL
+              CHECK (evento IN ('CRIACAO','PROVISORIA','PRIMEIRO_ACESSO','TROCA',
+                                'RESET','LOGIN','FALHA','BLOQUEIO')),
+  autor_id    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  autor_nome  TEXT,
+  origem      TEXT,
+  agente      TEXT,
+  detalhe     TEXT,
+  criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_log_senhas_usuario ON log_senhas(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_log_senhas_data ON log_senhas(criado_em);
+CREATE INDEX IF NOT EXISTS idx_log_senhas_evento ON log_senhas(evento);
 
 CREATE TABLE IF NOT EXISTS vendedores (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,

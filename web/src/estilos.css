@@ -257,3 +257,6 @@ button.pequeno { padding: 5px 9px; font-size: 12.5px; }
 /* Linha secundária dentro da célula (código do material, número do documento) */
 .sub { color: var(--texto-suave); font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+
+/* Linha de cadastro inativo: presente na lista, mas discreta */
+tr.apagada td { opacity: .55; }

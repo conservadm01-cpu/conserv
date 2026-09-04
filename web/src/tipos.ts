@@ -544,3 +544,27 @@ export type GrupoPedidoRepetido = {
   motivo: string; chave: string; cliente: string; data_pedido: string;
   valor: number; manter: number; membros: PedidoRepetido[];
 };
+
+/* -------------------------------------------------------- acesso e senhas */
+
+export type EventoSenha =
+  | 'CRIACAO' | 'PROVISORIA' | 'PRIMEIRO_ACESSO' | 'TROCA' | 'RESET'
+  | 'LOGIN' | 'FALHA' | 'BLOQUEIO';
+
+export type LinhaLogSenha = {
+  id: number; usuario_id: number | null; usuario_nome: string; usuario_email: string | null;
+  usuario_ativo: number | null; evento: EventoSenha;
+  autor_id: number | null; autor_nome: string | null;
+  origem: string | null; agente: string | null; detalhe: string | null; criado_em: string;
+};
+
+export type SituacaoAcesso = {
+  id: number; nome: string; email: string; perfil: string; nivel_acesso: string; ativo: number;
+  senha_provisoria: number; senha_alterada_em: string | null; ultimo_acesso: string | null;
+  criado_em: string; colaborador: string | null; cargo: string | null; falhas_7d: number;
+};
+
+export type ResumoAcessos = {
+  por_evento: Array<{ evento: EventoSenha; total: number; ultimo: string }>;
+  falhas_24h: number; provisorias: number; sem_troca: number; nunca_entraram: number;
+};

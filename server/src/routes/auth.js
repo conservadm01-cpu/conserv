@@ -6,6 +6,10 @@ import { asyncHandler, unauthorized, notFound, badRequest } from '../lib/errors.
 import { assinarToken, autenticar, exigir } from '../middleware/auth.js';
 import { crudRouter } from '../lib/crud.js';
 import { AREAS, NIVEIS, TODAS, permissoesDe, nivelPorId } from '../lib/permissoes.js';
+import {
+  registrar, registrarEntrada, criarAcesso, redefinirSenha, trocarSenha,
+  logDeSenhas, resumoAcessos, situacaoAcessos, sugerirEmail, MINIMO_SENHA,
+} from '../services/acessos.js';
 
 export const router = Router();
 
@@ -16,31 +20,47 @@ router.post(
       .object({ email: z.string().trim().min(1), senha: z.string().min(1) })
       .parse(req.body);
 
-    const usuario = getDb()
-      .prepare(`SELECT * FROM usuarios WHERE email = ? AND ativo = 1`)
-      .get(email.toLowerCase());
-    if (!usuario || !(await bcrypt.compare(senha, usuario.senha_hash))) {
+    const db = getDb();
+    const usuario = db.prepare(`SELECT * FROM usuarios WHERE email = ?`).get(email.toLowerCase());
+
+    if (!usuario || !usuario.ativo || !(await bcrypt.compare(senha, usuario.senha_hash))) {
+      // O log distingue os motivos; a resposta, não — dizer "esse e-mail existe"
+      // entrega meio caminho para quem está tentando adivinhar.
+      registrar({
+        usuario: usuario ?? { nome: email.toLowerCase() },
+        evento: usuario && !usuario.ativo ? 'BLOQUEIO' : 'FALHA',
+        req,
+        detalhe: !usuario ? 'e-mail não cadastrado'
+               : !usuario.ativo ? 'acesso inativo'
+               : 'senha incorreta',
+      }, db);
       throw unauthorized('E-mail ou senha inválidos');
     }
+
+    registrarEntrada(usuario, req, db);
 
     res.json({
       token: assinarToken(usuario),
       usuario: {
         id: usuario.id, nome: usuario.nome, email: usuario.email,
         perfil: usuario.perfil, nivel_acesso: usuario.nivel_acesso,
+        // A tela usa isto para exigir a troca antes de abrir qualquer coisa.
+        senha_provisoria: usuario.senha_provisoria,
       },
       permissoes: permissoesDe(usuario),
     });
   })
 );
 
-router.get('/eu', autenticar, (req, res) =>
+router.get('/eu', autenticar, (req, res) => {
+  const eu = getDb().prepare(`SELECT senha_provisoria FROM usuarios WHERE id = ?`).get(req.usuario.sub);
   res.json({
     id: req.usuario.sub, nome: req.usuario.nome, email: req.usuario.email,
     perfil: req.usuario.perfil, nivel_acesso: req.usuario.nivel_acesso,
+    senha_provisoria: eu?.senha_provisoria ?? 0,
     permissoes: req.permissoes,
-  })
-);
+  });
+});
 
 /** O catálogo de áreas e níveis — a tela de permissões se monta a partir daqui. */
 router.get('/areas', autenticar, (_req, res) =>
@@ -51,15 +71,14 @@ router.put(
   '/senha',
   autenticar,
   asyncHandler(async (req, res) => {
-    const { senha_atual, senha_nova } = z
-      .object({ senha_atual: z.string().min(1), senha_nova: z.string().min(6, 'Mínimo de 6 caracteres') })
+    const dados = z
+      .object({
+        senha_atual: z.string().min(1),
+        senha_nova: z.string().min(MINIMO_SENHA, `Mínimo de ${MINIMO_SENHA} caracteres`),
+      })
       .parse(req.body);
-    const db = getDb();
-    const usuario = db.prepare(`SELECT * FROM usuarios WHERE id = ?`).get(req.usuario.sub);
-    if (!usuario) throw notFound('Usuário não encontrado');
-    if (!(await bcrypt.compare(senha_atual, usuario.senha_hash))) throw unauthorized('Senha atual incorreta');
-    db.prepare(`UPDATE usuarios SET senha_hash = ? WHERE id = ?`)
-      .run(await bcrypt.hash(senha_nova, 10), usuario.id);
+    const r = await trocarSenha(req.usuario.sub, dados, { req });
+    if (!r.ok) throw unauthorized('Senha atual incorreta');
     res.json({ ok: true });
   })
 );
@@ -83,6 +102,7 @@ const usuariosRouter = crudRouter({
              FROM usuarios u LEFT JOIN colaboradores c ON c.id = u.colaborador_id`,
   ordem: 'u.nome',
   busca: ['u.nome', 'u.email'],
+  ocultar: ['senha_hash'],
 });
 
 /** Permissões efetivas de um usuário, com os ajustes já aplicados sobre o nível. */
@@ -136,16 +156,79 @@ usuariosRouter.put(
   })
 );
 
-/** Redefinição de senha pelo administrador. */
+/**
+ * Redefinição pelo administrador. Por padrão entra como provisória: quem
+ * redefine não deveria ficar sabendo a senha definitiva de ninguém.
+ */
 usuariosRouter.put(
   '/:id/senha',
   asyncHandler(async (req, res) => {
-    const { senha } = z.object({ senha: z.string().min(6, 'Mínimo de 6 caracteres') }).parse(req.body);
-    const info = getDb()
-      .prepare(`UPDATE usuarios SET senha_hash = ? WHERE id = ?`)
-      .run(await bcrypt.hash(senha, 10), req.params.id);
-    if (info.changes === 0) throw notFound('Usuário não encontrado');
-    res.json({ ok: true });
+    const { senha, provisoria } = z
+      .object({ senha: z.string().min(1), provisoria: z.boolean().optional() })
+      .parse(req.body);
+    res.json(
+      await redefinirSenha(Number(req.params.id), senha, {
+        autor: { id: req.usuario.sub, nome: req.usuario.nome },
+        req,
+        provisoria: provisoria !== false,
+      })
+    );
+  })
+);
+
+/**
+ * Rotas próprias de usuários.
+ *
+ * Ficam num router à parte, montado antes do CRUD: o genérico tem um "/:id" que
+ * casaria com "/situacao" e "/log-senhas" e devolveria "usuário não encontrado".
+ */
+const extras = Router();
+
+/** Situação do acesso de cada pessoa: quem nunca entrou, quem está com provisória. */
+extras.get('/situacao', asyncHandler((_req, res) => res.json(situacaoAcessos())));
+
+/** Histórico de senha e acesso. Nunca traz senha — só o evento. */
+extras.get(
+  '/log-senhas',
+  asyncHandler((req, res) =>
+    res.json(logDeSenhas({
+      usuario_id: req.query.usuario_id ?? null,
+      evento: req.query.evento ?? null,
+      de: req.query.de ?? null,
+      ate: req.query.ate ?? null,
+      limite: req.query.limite,
+    })))
+);
+
+extras.get('/log-senhas/resumo', asyncHandler((_req, res) => res.json(resumoAcessos())));
+
+/** E-mail sugerido a partir do nome, para a tela já vir preenchida. */
+extras.get(
+  '/sugerir-email',
+  asyncHandler((req, res) => res.json({ email: sugerirEmail(String(req.query.nome ?? '')) }))
+);
+
+/**
+ * Um usuário pelo id, sem o hash da senha.
+ *
+ * Vem antes do CRUD de propósito: o genérico faz "SELECT *", que traria
+ * senha_hash junto. O hash não tem o que fazer fora do servidor, nem para o
+ * administrador.
+ */
+extras.get(
+  '/:id',
+  asyncHandler((req, res) => {
+    const u = getDb()
+      .prepare(
+        `SELECT u.id, u.nome, u.email, u.perfil, u.nivel_acesso, u.ativo, u.criado_em,
+                u.colaborador_id, u.permissoes, u.senha_provisoria, u.senha_alterada_em,
+                u.ultimo_acesso, c.nome AS colaborador
+         FROM usuarios u LEFT JOIN colaboradores c ON c.id = u.colaborador_id
+         WHERE u.id = ?`
+      )
+      .get(req.params.id);
+    if (!u) throw notFound('Usuário não encontrado');
+    res.json(u);
   })
 );
 
@@ -156,24 +239,21 @@ usuariosRouter.post(
       .object({
         nome: z.string().trim().min(1),
         email: z.string().trim().min(1),
-        senha: z.string().min(6, 'Mínimo de 6 caracteres'),
+        senha: z.string().min(1),
         perfil: z.enum(PERFIS).default('OPERADOR'),
         nivel_acesso: z.string().trim().default('consulta'),
         colaborador_id: z.number().int().nullish(),
+        // Senha entregue pelo administrador; a pessoa troca ao entrar.
+        provisoria: z.boolean().optional(),
       })
       .parse(req.body);
     if (!nivelPorId(dados.nivel_acesso)) throw badRequest(`Nível de acesso desconhecido: ${dados.nivel_acesso}`);
 
-    const info = getDb()
-      .prepare(
-        `INSERT INTO usuarios (nome, email, senha_hash, perfil, nivel_acesso, colaborador_id)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(dados.nome, dados.email.toLowerCase(), await bcrypt.hash(dados.senha, 10),
-           dados.perfil, dados.nivel_acesso, dados.colaborador_id ?? null);
-    res.status(201).json({ id: info.lastInsertRowid });
+    res.status(201).json(
+      await criarAcesso(dados, { autor: { id: req.usuario.sub, nome: req.usuario.nome }, req })
+    );
   })
 );
 
 export const usuarios = Router();
-usuarios.use(autenticar, exigir('admin', 'pessoas.permissoes'), usuariosRouter);
+usuarios.use(autenticar, exigir('admin', 'pessoas.permissoes'), extras, usuariosRouter);
