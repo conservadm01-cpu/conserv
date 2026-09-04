@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
+import { montarFiltros, limitar } from '../lib/filtros.js';
 
 export const router = Router();
 
@@ -48,18 +49,23 @@ publico.post(
 router.get(
   '/manifestacoes',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    if (req.query.status) { where.push('status = ?'); params.push(req.query.status); }
-    if (req.query.tipo) { where.push('tipo = ?'); params.push(req.query.tipo); }
+    const f = montarFiltros(req.query, {
+      busca: { tipo: 'busca', colunas: ['assunto', 'mensagem', 'setor', 'tratativa'] },
+      status: { tipo: 'igual', coluna: 'status' },
+      tipo: { tipo: 'igual', coluna: 'tipo' },
+      setor: { tipo: 'igual', coluna: 'setor' },
+      de: { tipo: 'de', coluna: 'criado_em' },
+      ate: { tipo: 'ate', coluna: 'criado_em' },
+      anonimas: { tipo: 'booleano', quandoVerdadeiro: 'anonima = 1' },
+    });
     res.json(
       getDb()
         .prepare(
-          `SELECT * FROM manifestacoes ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+          `SELECT * FROM manifestacoes${f.sql}
            ORDER BY CASE status WHEN 'ABERTA' THEN 0 WHEN 'EM_ANALISE' THEN 1 ELSE 2 END,
-                    criado_em DESC LIMIT 500`
+                    criado_em DESC LIMIT ?`
         )
-        .all(...params)
+        .all(...f.params, limitar(req.query, 500))
     );
   })
 );

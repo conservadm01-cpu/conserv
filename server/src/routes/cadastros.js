@@ -67,7 +67,9 @@ router.use(
       ativo: z.number().int().optional(),
     }),
     ordem: 'nome',
-    busca: ['nome', 'cnpj'],
+    busca: ['nome', 'cnpj', 'contato', 'cidade'],
+    ordenaveis: ['nome', 'cidade', 'prazo_entrega_dias'],
+    filtros: { uf: { tipo: 'igual', coluna: 'uf' } },
   })
 );
 
@@ -93,7 +95,13 @@ router.use(
     listaSql: `SELECT c.*, cc.nome AS categoria FROM clientes c
                LEFT JOIN categorias_cliente cc ON cc.id = c.categoria_id`,
     ordem: 'c.nome',
-    busca: ['c.nome', 'c.cnpj'],
+    busca: ['c.nome', 'c.cnpj', 'c.contato', 'c.email', 'c.cidade'],
+    ordenaveis: ['c.nome', 'c.cidade', 'c.prazo_pagamento_dias', 'c.criado_em'],
+    filtros: {
+      categoria_id: { tipo: 'igual', coluna: 'c.categoria_id', numero: true },
+      uf: { tipo: 'igual', coluna: 'c.uf' },
+      cidade: { tipo: 'igual', coluna: 'c.cidade' },
+    },
   })
 );
 

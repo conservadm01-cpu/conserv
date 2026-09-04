@@ -12,6 +12,7 @@
     "db:seed-fabrica": "npm run -w server db:seed-fabrica",
     "db:seed-financeiro": "npm run -w server db:seed-financeiro",
     "db:seed-comercial": "npm run -w server db:seed-comercial",
+    "db:seed-compras": "npm run -w server db:seed-compras",
     "import": "npm run -w server import --",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run -w server dev",

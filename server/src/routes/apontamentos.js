@@ -8,6 +8,7 @@ import {
 } from '../services/apontamento.js';
 
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 
 export const router = Router();
 const podeApontar = exigir('producao.apontar');
@@ -36,17 +37,19 @@ router.post(
 router.get(
   '/',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    for (const [campo, coluna] of [['ordem_id', 'a.ordem_id'], ['colaborador_id', 'a.colaborador_id'], ['etapa_id', 'a.etapa_id']]) {
-      if (req.query[campo]) {
-        where.push(`${coluna} = ?`);
-        params.push(Number(req.query[campo]));
-      }
-    }
-    if (req.query.de) { where.push('a.data >= ?'); params.push(req.query.de); }
-    if (req.query.ate) { where.push('a.data <= ?'); params.push(req.query.ate); }
-    const limite = Math.min(Number(req.query.limite) || 300, 3000);
+    const f = montarFiltros(req.query, {
+      busca: { tipo: 'busca', colunas: ['o.numero', 'v.cliente', 'v.produto', 'c.nome'] },
+      ordem_id: { tipo: 'igual', coluna: 'a.ordem_id', numero: true },
+      colaborador_id: { tipo: 'igual', coluna: 'a.colaborador_id', numero: true },
+      etapa_id: { tipo: 'igual', coluna: 'a.etapa_id', numero: true },
+      equipamento_id: { tipo: 'igual', coluna: 'a.equipamento_id', numero: true },
+      de: { tipo: 'de', coluna: 'a.data' },
+      ate: { tipo: 'ate', coluna: 'a.data' },
+      com_refugo: { tipo: 'booleano', quandoVerdadeiro: 'a.refugo > 0' },
+    });
+    const where = f.where;
+    const params = f.params;
+    const limite = limitar(req.query);
 
     res.json(
       getDb()
@@ -102,5 +105,14 @@ export const ocorrencias = crudRouter({
              LEFT JOIN ordens_producao o ON o.id = oc.ordem_id
              LEFT JOIN equipamentos e ON e.id = oc.equipamento_id`,
   ordem: 'oc.data DESC, oc.id DESC',
-  busca: ['oc.descricao'],
+  busca: ['oc.descricao', 'oc.acao'],
+  ordenaveis: ['oc.data', 'oc.minutos_parado'],
+  filtros: {
+    motivo: { tipo: 'igual', coluna: 'oc.motivo' },
+    departamento_id: { tipo: 'igual', coluna: 'oc.departamento_id', numero: true },
+    equipamento_id: { tipo: 'igual', coluna: 'oc.equipamento_id', numero: true },
+    resolvida: { tipo: 'igual', coluna: 'oc.resolvida', numero: true },
+    de: { tipo: 'de', coluna: 'oc.data' },
+    ate: { tipo: 'ate', coluna: 'oc.data' },
+  },
 });

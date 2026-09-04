@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler } from '../lib/errors.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 import { registrarMovimento, necessidadeMateriais } from '../services/estoque.js';
 
 export const router = crudRouter({
@@ -25,33 +26,44 @@ export const router = crudRouter({
     ativo: z.number().int().optional(),
   }),
   ordem: 'descricao',
-  busca: ['descricao', 'codigo'],
+  busca: ['descricao', 'codigo', 'localizacao'],
+  ordenaveis: ['descricao', 'custo_unitario', 'estoque_min', 'tipo'],
+  filtros: {
+    tipo: { tipo: 'igual', coluna: 'tipo' },
+    unidade: { tipo: 'igual', coluna: 'unidade' },
+    grupo_id: { tipo: 'igual', coluna: 'grupo_id', numero: true },
+    fornecedor_id: { tipo: 'igual', coluna: 'fornecedor_id', numero: true },
+  },
 });
 
 /** Estoque consolidado (saldo, valor, alerta de mínimo). */
 router.get(
   '/estoque/posicao',
   asyncHandler((req, res) => {
-    const where = ['ve.ativo = 1'];
-    const params = [];
-    if (req.query.busca) {
-      where.push('(ve.descricao LIKE ? OR ve.codigo LIKE ?)');
-      params.push(`%${req.query.busca}%`, `%${req.query.busca}%`);
-    }
-    if (req.query.tipo) {
-      where.push('ve.tipo = ?');
-      params.push(req.query.tipo);
-    }
-    if (req.query.abaixo_minimo === 'true') where.push('ve.abaixo_minimo = 1');
-
+    const f = montarFiltros(req.query, {
+      busca: { tipo: 'busca', colunas: ['ve.descricao', 've.codigo', 've.localizacao'] },
+      tipo: { tipo: 'igual', coluna: 've.tipo' },
+      unidade: { tipo: 'igual', coluna: 've.unidade' },
+      fornecedor_id: { tipo: 'igual', coluna: 've.fornecedor_id', numero: true },
+      saldo_min: { tipo: 'min', coluna: 've.saldo' },
+      saldo_max: { tipo: 'max', coluna: 've.saldo' },
+      abaixo_minimo: { tipo: 'booleano', quandoVerdadeiro: 've.abaixo_minimo = 1' },
+      zerados: { tipo: 'booleano', quandoVerdadeiro: 've.saldo <= 0' },
+    });
+    const ordem = montarOrdem(
+      req.query,
+      ['ve.descricao', 've.saldo', 've.valor_estoque', 've.custo_unitario', 've.tipo'],
+      've.descricao'
+    );
     res.json(
       getDb()
         .prepare(
-          `SELECT ve.*, f.nome AS fornecedor FROM vw_estoque ve
-           LEFT JOIN fornecedores f ON f.id = ve.fornecedor_id
-           WHERE ${where.join(' AND ')} ORDER BY ve.descricao`
+          `SELECT ve.*, fo.nome AS fornecedor FROM vw_estoque ve
+           LEFT JOIN fornecedores fo ON fo.id = ve.fornecedor_id
+           WHERE ve.ativo = 1${f.where.length ? ` AND ${f.where.join(' AND ')}` : ''}
+           ORDER BY ${ordem} LIMIT ?`
         )
-        .all(...params)
+        .all(...f.params, limitar(req.query, 500, 5000))
     );
   })
 );
@@ -89,25 +101,19 @@ router.post(
 router.get(
   '/estoque/movimentos',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    if (req.query.material_id) {
-      where.push('mv.material_id = ?');
-      params.push(Number(req.query.material_id));
-    }
-    if (req.query.tipo) {
-      where.push('mv.tipo = ?');
-      params.push(req.query.tipo);
-    }
-    if (req.query.de) {
-      where.push('mv.data >= ?');
-      params.push(req.query.de);
-    }
-    if (req.query.ate) {
-      where.push('mv.data <= ?');
-      params.push(req.query.ate);
-    }
-    const limite = Math.min(Number(req.query.limite) || 200, 1000);
+    const f = montarFiltros(req.query, {
+      busca: { tipo: 'busca', colunas: ['m.descricao', 'mv.documento', 'mv.observacao'] },
+      material_id: { tipo: 'igual', coluna: 'mv.material_id', numero: true },
+      tipo: { tipo: 'igual', coluna: 'mv.tipo' },
+      local_id: { tipo: 'igual', coluna: 'mv.local_id', numero: true },
+      fornecedor_id: { tipo: 'igual', coluna: 'mv.fornecedor_id', numero: true },
+      ordem_id: { tipo: 'igual', coluna: 'mv.ordem_id', numero: true },
+      de: { tipo: 'de', coluna: 'mv.data' },
+      ate: { tipo: 'ate', coluna: 'mv.data' },
+    });
+    const where = f.where;
+    const params = f.params;
+    const limite = limitar(req.query, 200, 1000);
     res.json(
       getDb()
         .prepare(

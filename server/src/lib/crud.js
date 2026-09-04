@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb } from '../db/index.js';
 import { asyncHandler, notFound, badRequest } from './errors.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem } from './filtros.js';
 
 /**
  * Monta um CRUD REST padrão sobre uma tabela.
@@ -15,8 +16,11 @@ import { exigir } from '../middleware/auth.js';
  * @param {string[]} [opts.busca]   colunas usadas pelo parâmetro ?busca=
  * @param {string} [opts.alias]    apelido da tabela dentro de listaSql (para o filtro ?ativo=)
  * @param {string} [opts.escrita]  área exigida para criar, editar e remover
+ * @param {object} [opts.filtros]  filtros extras aceitos na listagem (ver lib/filtros.js)
+ * @param {string[]} [opts.ordenaveis] colunas que o parâmetro ?ordenar_por= aceita
  */
-export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [], alias, escrita }) {
+export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [],
+                             alias, escrita, filtros = {}, ordenaveis = [] }) {
   const router = Router();
   // Ler é uma permissão; alterar é outra. O guarda de escrita fica só nos verbos
   // que gravam, para que quem só consulta não seja barrado na listagem.
@@ -39,7 +43,12 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
         where.push(`${prefixo}.ativo = ?`);
         params.push(req.query.ativo === 'false' || req.query.ativo === '0' ? 0 : 1);
       }
-      const sql = `${base}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${ordem}`;
+      const extras = montarFiltros(req.query, filtros);
+      where.push(...extras.where);
+      params.push(...extras.params);
+
+      const ordenacao = montarOrdem(req.query, ordenaveis, ordem);
+      const sql = `${base}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${ordenacao}`;
       res.json(db.prepare(sql).all(...params));
     })
   );

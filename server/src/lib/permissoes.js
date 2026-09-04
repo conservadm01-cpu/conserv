@@ -32,7 +32,10 @@ export const AREAS = [
     itens: [
       { id: 'materiais.ver', nome: 'Ver materiais e estoque' },
       { id: 'materiais.editar', nome: 'Cadastrar e editar materiais' },
-      { id: 'materiais.mover', nome: 'Lançar movimentações de estoque' },
+      { id: 'materiais.mover', nome: 'Lançar movimentações de estoque e inventário' },
+      { id: 'compras.ver', nome: 'Ver requisições e pedidos de compra' },
+      { id: 'compras.editar', nome: 'Requisitar e emitir pedidos de compra' },
+      { id: 'compras.receber', nome: 'Receber material e gerar a conta a pagar' },
     ],
   },
   {
@@ -111,6 +114,7 @@ export const NIVEIS = [
       'pessoas.ver', 'materiais.ver', 'materiais.mover',
       'producao.ver', 'producao.apontar', 'producao.ordens',
       'pedidos.ver', 'pedidos.editar', 'engenharia.ver', 'crm.ver', 'orcamentos.ver',
+      'compras.ver', 'compras.editar',
     ],
   },
   {
@@ -127,13 +131,14 @@ export const NIVEIS = [
     id: 'almoxarifado',
     nome: 'Almoxarifado',
     descricao: 'Cuida do estoque e da entrada de material.',
-    areas: ['cadastros.ver', 'materiais.ver', 'materiais.editar', 'materiais.mover', 'producao.ver', 'pedidos.ver'],
+    areas: ['cadastros.ver', 'materiais.ver', 'materiais.editar', 'materiais.mover',
+            'compras.ver', 'compras.editar', 'compras.receber', 'producao.ver', 'pedidos.ver'],
   },
   {
     id: 'financeiro',
     nome: 'Financeiro',
     descricao: 'Lança e baixa títulos; vê os cadastros, não a produção.',
-    areas: ['cadastros.ver', 'cadastros.editar', 'pedidos.ver', 'orcamentos.ver',
+    areas: ['cadastros.ver', 'cadastros.editar', 'pedidos.ver', 'orcamentos.ver', 'compras.ver',
             'financeiro.ver', 'financeiro.lancar', 'financeiro.baixar'],
   },
   {

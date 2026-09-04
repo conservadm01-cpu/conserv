@@ -6,6 +6,7 @@ import { round2 } from '../lib/numbers.js';
 import { semanaISO } from '../lib/dates.js';
 import { abrirOrdem } from '../services/producao.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 
 export const router = Router();
 const podeEditar = exigir('pedidos.editar');
@@ -32,43 +33,36 @@ const pedidoSchema = z.object({
   itens: z.array(itemSchema).min(1, 'Informe ao menos um item'),
 });
 
+/** Filtros aceitos pela listagem de pedidos. */
+const FILTROS_PEDIDO = {
+  busca: { tipo: 'busca', colunas: ['p.numero', 'c.nome', 'p.observacao', 'p.nota_fiscal'] },
+  situacao: { tipo: 'igual', coluna: 'p.situacao' },
+  cliente_id: { tipo: 'igual', coluna: 'p.cliente_id', numero: true },
+  vendedor_id: { tipo: 'igual', coluna: 'p.vendedor_id', numero: true },
+  categoria: { tipo: 'igual', coluna: 'cc.nome' },
+  de: { tipo: 'de', coluna: 'p.data_pedido' },
+  ate: { tipo: 'ate', coluna: 'p.data_pedido' },
+  entrega_de: { tipo: 'de', coluna: 'p.data_entrega' },
+  entrega_ate: { tipo: 'ate', coluna: 'p.data_entrega' },
+  atrasados: {
+    tipo: 'booleano',
+    quandoVerdadeiro: `p.data_entrega < date('now') AND p.situacao IN ('ABERTO','FATURADO')`,
+  },
+};
+
 /** Lista de pedidos com totais agregados dos itens. */
 router.get(
   '/',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    const { busca, situacao, cliente_id, vendedor_id, de, ate, atrasados } = req.query;
-
-    if (busca) {
-      where.push('(p.numero LIKE ? OR c.nome LIKE ?)');
-      params.push(`%${busca}%`, `%${busca}%`);
-    }
-    if (situacao) {
-      where.push('p.situacao = ?');
-      params.push(situacao);
-    }
-    if (cliente_id) {
-      where.push('p.cliente_id = ?');
-      params.push(Number(cliente_id));
-    }
-    if (vendedor_id) {
-      where.push('p.vendedor_id = ?');
-      params.push(Number(vendedor_id));
-    }
-    if (de) {
-      where.push('p.data_pedido >= ?');
-      params.push(de);
-    }
-    if (ate) {
-      where.push('p.data_pedido <= ?');
-      params.push(ate);
-    }
-    if (atrasados === 'true') {
-      where.push(`p.data_entrega < date('now') AND p.situacao IN ('ABERTO','FATURADO')`);
-    }
-
-    const limite = Math.min(Number(req.query.limite) || 200, 2000);
+    const f = montarFiltros(req.query, FILTROS_PEDIDO);
+    const where = f.where;
+    const params = f.params;
+    const limite = limitar(req.query, 200, 2000);
+    const ordem = montarOrdem(
+      req.query,
+      ['p.numero', 'p.data_pedido', 'p.data_entrega', 'c.nome', 'total', 'pecas'],
+      'p.data_pedido DESC, p.id DESC'
+    );
     res.json(
       getDb()
         .prepare(
@@ -86,7 +80,7 @@ router.get(
            LEFT JOIN pedido_itens i ON i.pedido_id = p.id
            ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
            GROUP BY p.id
-           ORDER BY p.data_pedido DESC, p.id DESC
+           ORDER BY ${ordem}
            LIMIT ?`
         )
         .all(...params, limite)
@@ -94,36 +88,44 @@ router.get(
   })
 );
 
+const FILTROS_CARTEIRA = {
+  busca: { tipo: 'busca', colunas: ['v.cliente', 'v.produto', 'v.pedido_numero'] },
+  grupo: { tipo: 'igual', coluna: 'v.grupo' },
+  linha: { tipo: 'igual', coluna: 'v.linha' },
+  categoria: { tipo: 'igual', coluna: 'v.categoria' },
+  cliente_id: { tipo: 'igual', coluna: 'v.cliente_id', numero: true },
+  vendedor: { tipo: 'igual', coluna: 'v.vendedor' },
+  situacao: { tipo: 'igual', coluna: 'v.situacao' },
+  ordem_status: { tipo: 'igual', coluna: 'v.ordem_status' },
+  de: { tipo: 'de', coluna: 'v.data_pedido' },
+  ate: { tipo: 'ate', coluna: 'v.data_pedido' },
+  entrega_de: { tipo: 'de', coluna: 'v.data_entrega' },
+  entrega_ate: { tipo: 'ate', coluna: 'v.data_entrega' },
+  atrasados: { tipo: 'booleano', quandoVerdadeiro: `v.data_entrega < date('now')` },
+};
+
 /** Carteira em nível de item — a visão equivalente à planilha "PCP + MO". */
 router.get(
   '/itens/carteira',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
+    const f = montarFiltros(req.query, FILTROS_CARTEIRA);
+    const where = [...f.where];
     if (req.query.somente_abertos !== 'false') {
       where.push(`v.situacao IN ('ABERTO','FATURADO')`);
       where.push(`(v.ordem_status IS NULL OR v.ordem_status NOT IN ('ENTREGUE','CANCELADA'))`);
     }
-    if (req.query.grupo) {
-      where.push('v.grupo = ?');
-      params.push(req.query.grupo);
-    }
-    if (req.query.cliente_id) {
-      where.push('v.cliente_id = ?');
-      params.push(Number(req.query.cliente_id));
-    }
-    if (req.query.busca) {
-      where.push('(v.cliente LIKE ? OR v.produto LIKE ? OR v.pedido_numero LIKE ?)');
-      params.push(`%${req.query.busca}%`, `%${req.query.busca}%`, `%${req.query.busca}%`);
-    }
-    const limite = Math.min(Number(req.query.limite) || 500, 5000);
+    const ordem = montarOrdem(
+      req.query,
+      ['v.data_entrega', 'v.data_pedido', 'v.cliente', 'v.produto', 'v.total', 'v.quantidade'],
+      'v.data_entrega IS NULL, v.data_entrega ASC'
+    );
     const linhas = getDb()
       .prepare(
         `SELECT v.*, CAST(julianday('now') - julianday(v.data_entrega) AS INTEGER) AS dias_atraso
          FROM vw_itens v ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-         ORDER BY v.data_entrega IS NULL, v.data_entrega ASC LIMIT ?`
+         ORDER BY ${ordem} LIMIT ?`
       )
-      .all(...params, limite);
+      .all(...f.params, limitar(req.query, 500, 5000));
     res.json(linhas.map((l) => ({ ...l, semana_entrega: semanaISO(l.data_entrega) })));
   })
 );

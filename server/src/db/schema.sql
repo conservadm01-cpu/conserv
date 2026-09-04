@@ -715,3 +715,125 @@ LEFT JOIN (
          SUM(quantidade * custo_unitario) AS custo
   FROM orcamento_itens GROUP BY orcamento_id
 ) i ON i.orcamento_id = o.id;
+
+-- ============================================================
+-- COMPRAS — requisição, pedido, recebimento e inventário
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS requisicoes_compra (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  material_id    INTEGER NOT NULL REFERENCES materiais(id) ON DELETE CASCADE,
+  quantidade     REAL    NOT NULL CHECK (quantidade > 0),
+  atendida       REAL    NOT NULL DEFAULT 0,
+  urgencia       TEXT    NOT NULL DEFAULT 'NORMAL' CHECK (urgencia IN ('BAIXA','NORMAL','ALTA','URGENTE')),
+  necessidade_em TEXT,
+  origem         TEXT    NOT NULL DEFAULT 'MANUAL' CHECK (origem IN ('MANUAL','MRP','ESTOQUE_MINIMO')),
+  ordem_id       INTEGER REFERENCES ordens_producao(id) ON DELETE SET NULL,
+  justificativa  TEXT,
+  status         TEXT    NOT NULL DEFAULT 'ABERTA'
+                 CHECK (status IN ('ABERTA','PARCIAL','ATENDIDA','CANCELADA')),
+  usuario_id     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_req_status ON requisicoes_compra(status);
+CREATE INDEX IF NOT EXISTS idx_req_material ON requisicoes_compra(material_id);
+
+CREATE TABLE IF NOT EXISTS pedidos_compra (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero             TEXT    NOT NULL UNIQUE,
+  fornecedor_id      INTEGER NOT NULL REFERENCES fornecedores(id) ON DELETE RESTRICT,
+  data               TEXT    NOT NULL DEFAULT (date('now')),
+  previsao_entrega   TEXT,
+  condicao_pagamento TEXT,
+  prazo_pagamento_dias INTEGER NOT NULL DEFAULT 0,
+  frete              REAL    NOT NULL DEFAULT 0,
+  desconto           REAL    NOT NULL DEFAULT 0,
+  status             TEXT    NOT NULL DEFAULT 'RASCUNHO'
+                     CHECK (status IN ('RASCUNHO','ENVIADO','CONFIRMADO','PARCIAL','RECEBIDO','CANCELADO')),
+  observacao         TEXT,
+  usuario_id         INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em          TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pc_status ON pedidos_compra(status);
+CREATE INDEX IF NOT EXISTS idx_pc_fornecedor ON pedidos_compra(fornecedor_id);
+
+CREATE TABLE IF NOT EXISTS pedido_compra_itens (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_compra_id  INTEGER NOT NULL REFERENCES pedidos_compra(id) ON DELETE CASCADE,
+  material_id       INTEGER NOT NULL REFERENCES materiais(id) ON DELETE RESTRICT,
+  requisicao_id     INTEGER REFERENCES requisicoes_compra(id) ON DELETE SET NULL,
+  quantidade        REAL    NOT NULL CHECK (quantidade > 0),
+  recebido          REAL    NOT NULL DEFAULT 0,
+  preco_unitario    REAL    NOT NULL DEFAULT 0,
+  observacao        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pci_pedido ON pedido_compra_itens(pedido_compra_id);
+
+CREATE TABLE IF NOT EXISTS recebimentos (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_compra_id  INTEGER NOT NULL REFERENCES pedidos_compra(id) ON DELETE CASCADE,
+  data              TEXT    NOT NULL DEFAULT (date('now')),
+  nota_fiscal       TEXT,
+  local_id          INTEGER REFERENCES locais_estoque(id) ON DELETE SET NULL,
+  titulo_id         INTEGER REFERENCES titulos(id) ON DELETE SET NULL,
+  observacao        TEXT,
+  usuario_id        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_receb_pedido ON recebimentos(pedido_compra_id);
+
+CREATE TABLE IF NOT EXISTS recebimento_itens (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  recebimento_id  INTEGER NOT NULL REFERENCES recebimentos(id) ON DELETE CASCADE,
+  item_id         INTEGER NOT NULL REFERENCES pedido_compra_itens(id) ON DELETE CASCADE,
+  material_id     INTEGER NOT NULL REFERENCES materiais(id) ON DELETE RESTRICT,
+  quantidade      REAL    NOT NULL CHECK (quantidade > 0),
+  preco_unitario  REAL    NOT NULL DEFAULT 0,
+  movimento_id    INTEGER REFERENCES movimentos_estoque(id) ON DELETE SET NULL
+);
+
+-- Contagem física: o que o sistema diz contra o que existe na prateleira.
+CREATE TABLE IF NOT EXISTS inventarios (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  descricao   TEXT    NOT NULL,
+  data        TEXT    NOT NULL DEFAULT (date('now')),
+  local_id    INTEGER REFERENCES locais_estoque(id) ON DELETE SET NULL,
+  status      TEXT    NOT NULL DEFAULT 'ABERTO' CHECK (status IN ('ABERTO','FECHADO','CANCELADO')),
+  observacao  TEXT,
+  usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  fechado_em  TEXT,
+  criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS inventario_itens (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  inventario_id INTEGER NOT NULL REFERENCES inventarios(id) ON DELETE CASCADE,
+  material_id   INTEGER NOT NULL REFERENCES materiais(id) ON DELETE RESTRICT,
+  saldo_sistema REAL    NOT NULL DEFAULT 0,
+  contado       REAL,
+  movimento_id  INTEGER REFERENCES movimentos_estoque(id) ON DELETE SET NULL,
+  observacao    TEXT,
+  UNIQUE (inventario_id, material_id)
+);
+
+DROP VIEW IF EXISTS vw_pedidos_compra;
+CREATE VIEW vw_pedidos_compra AS
+SELECT
+  pc.*,
+  f.nome                                             AS fornecedor,
+  COALESCE(i.itens, 0)                               AS itens,
+  ROUND(COALESCE(i.bruto, 0) - pc.desconto + pc.frete, 2) AS valor_total,
+  ROUND(COALESCE(i.bruto, 0), 2)                     AS valor_bruto,
+  ROUND(COALESCE(i.pendente, 0), 3)                  AS quantidade_pendente,
+  CASE WHEN pc.previsao_entrega IS NOT NULL AND pc.previsao_entrega < date('now')
+            AND pc.status IN ('ENVIADO','CONFIRMADO','PARCIAL')
+       THEN CAST(julianday('now') - julianday(pc.previsao_entrega) AS INTEGER) ELSE 0 END AS dias_atraso
+FROM pedidos_compra pc
+JOIN fornecedores f ON f.id = pc.fornecedor_id
+LEFT JOIN (
+  SELECT pedido_compra_id,
+         COUNT(*) AS itens,
+         SUM(quantidade * preco_unitario) AS bruto,
+         SUM(quantidade - recebido) AS pendente
+  FROM pedido_compra_itens GROUP BY pedido_compra_id
+) i ON i.pedido_compra_id = pc.id;

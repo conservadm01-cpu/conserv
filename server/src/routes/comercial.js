@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 import {
   buscarOportunidade, moverEtapa, registrarInteracao, funil, resumoComercial,
   criarOrcamento, atualizarOrcamento, buscarOrcamento, converterEmPedido,
@@ -56,19 +57,34 @@ const oportunidadeSchema = z.object({
   observacao: opcional,
 });
 
+const FILTROS_OPORTUNIDADE = {
+  busca: { tipo: 'busca', colunas: ['o.titulo', 'o.prospect', 'c.nome', 'o.observacao'] },
+  vendedor_id: { tipo: 'igual', coluna: 'o.vendedor_id', numero: true },
+  etapa_id: { tipo: 'igual', coluna: 'o.etapa_id', numero: true },
+  cliente_id: { tipo: 'igual', coluna: 'o.cliente_id', numero: true },
+  origem: { tipo: 'igual', coluna: 'o.origem' },
+  tipo_etapa: { tipo: 'igual', coluna: 'e.tipo' },
+  de: { tipo: 'de', coluna: 'o.criado_em' },
+  ate: { tipo: 'ate', coluna: 'o.criado_em' },
+  previsao_de: { tipo: 'de', coluna: 'o.previsao_fechamento' },
+  previsao_ate: { tipo: 'ate', coluna: 'o.previsao_fechamento' },
+  valor_min: { tipo: 'min', coluna: 'o.valor_estimado' },
+  valor_max: { tipo: 'max', coluna: 'o.valor_estimado' },
+  abertas: { tipo: 'booleano', quandoVerdadeiro: `e.tipo = 'ABERTA'` },
+  paradas: { tipo: 'booleano', quandoVerdadeiro: `julianday('now') - julianday(o.atualizado_em) >= 14` },
+};
+
 crm.get(
   '/oportunidades',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    if (req.query.vendedor_id) { where.push('o.vendedor_id = ?'); params.push(Number(req.query.vendedor_id)); }
-    if (req.query.etapa_id) { where.push('o.etapa_id = ?'); params.push(Number(req.query.etapa_id)); }
-    if (req.query.abertas === 'true') where.push(`e.tipo = 'ABERTA'`);
-    if (req.query.busca) {
-      where.push('(o.titulo LIKE ? OR o.prospect LIKE ? OR c.nome LIKE ?)');
-      const t = `%${req.query.busca}%`;
-      params.push(t, t, t);
-    }
+    const f = montarFiltros(req.query, FILTROS_OPORTUNIDADE);
+    const where = f.where;
+    const params = f.params;
+    const ordem = montarOrdem(
+      req.query,
+      ['o.atualizado_em', 'o.valor_estimado', 'o.previsao_fechamento', 'o.titulo'],
+      'o.atualizado_em DESC'
+    );
     res.json(
       getDb()
         .prepare(
@@ -79,9 +95,9 @@ crm.get(
            LEFT JOIN vendedores v ON v.id = o.vendedor_id
            JOIN etapas_funil e ON e.id = o.etapa_id
            ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           ORDER BY o.atualizado_em DESC LIMIT 400`
+           ORDER BY ${ordem} LIMIT ?`
         )
-        .all(...params)
+        .all(...params, limitar(req.query, 400))
     );
   })
 );
@@ -236,27 +252,37 @@ const orcamentoSchema = z.object({
   itens: z.array(itemSchema).min(1),
 });
 
+const FILTROS_ORCAMENTO = {
+  busca: { tipo: 'busca', colunas: ['numero', 'parte', 'observacao'] },
+  status: { tipo: 'igual', coluna: 'status' },
+  cliente_id: { tipo: 'igual', coluna: 'cliente_id', numero: true },
+  vendedor_id: { tipo: 'igual', coluna: 'vendedor_id', numero: true },
+  oportunidade_id: { tipo: 'igual', coluna: 'oportunidade_id', numero: true },
+  de: { tipo: 'de', coluna: 'data' },
+  ate: { tipo: 'ate', coluna: 'data' },
+  valor_min: { tipo: 'min', coluna: 'valor_total' },
+  valor_max: { tipo: 'max', coluna: 'valor_total' },
+  vencidos: { tipo: 'booleano', quandoVerdadeiro: 'vencido = 1' },
+};
+
 orcamentos.get(
   '/',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    if (req.query.status) { where.push('status = ?'); params.push(req.query.status); }
-    else if (req.query.abertos === 'true') where.push(`status IN ('RASCUNHO','ENVIADO','EM_NEGOCIACAO')`);
-    if (req.query.cliente_id) { where.push('cliente_id = ?'); params.push(Number(req.query.cliente_id)); }
-    if (req.query.vendedor_id) { where.push('vendedor_id = ?'); params.push(Number(req.query.vendedor_id)); }
-    if (req.query.busca) {
-      where.push('(numero LIKE ? OR parte LIKE ?)');
-      const t = `%${req.query.busca}%`;
-      params.push(t, t);
+    const f = montarFiltros(req.query, FILTROS_ORCAMENTO);
+    const where = [...f.where];
+    if (!req.query.status && req.query.abertos === 'true') {
+      where.push(`status IN ('RASCUNHO','ENVIADO','EM_NEGOCIACAO')`);
     }
+    const ordem = montarOrdem(
+      req.query, ['data', 'validade', 'valor_total', 'numero', 'parte'], 'data DESC, id DESC'
+    );
     res.json(
       getDb()
         .prepare(
           `SELECT * FROM vw_orcamentos ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           ORDER BY data DESC, id DESC LIMIT 300`
+           ORDER BY ${ordem} LIMIT ?`
         )
-        .all(...params)
+        .all(...f.params, limitar(req.query))
     );
   })
 );

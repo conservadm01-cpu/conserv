@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 import {
   criarTitulo, buscarTitulo, registrarBaixa, estornarBaixa, faturarPedido,
   posicao, aging, fluxoPrevisto, realizadoPorMes, ranking, resumo,
@@ -66,37 +67,42 @@ const tituloSchema = z.object({
   observacao: opcional,
 });
 
+const FILTROS_TITULO = {
+  busca: { tipo: 'busca', colunas: ['descricao', 'documento', 'parte'] },
+  tipo: { tipo: 'igual', coluna: 'tipo' },
+  status: { tipo: 'igual', coluna: 'status' },
+  categoria: { tipo: 'igual', coluna: 'categoria' },
+  cliente_id: { tipo: 'igual', coluna: 'cliente_id', numero: true },
+  fornecedor_id: { tipo: 'igual', coluna: 'fornecedor_id', numero: true },
+  pedido_id: { tipo: 'igual', coluna: 'pedido_id', numero: true },
+  de: { tipo: 'de', coluna: 'vencimento' },
+  ate: { tipo: 'ate', coluna: 'vencimento' },
+  emissao_de: { tipo: 'de', coluna: 'emissao' },
+  emissao_ate: { tipo: 'ate', coluna: 'emissao' },
+  valor_min: { tipo: 'min', coluna: 'valor' },
+  valor_max: { tipo: 'max', coluna: 'valor' },
+  vencidos: { tipo: 'booleano', quandoVerdadeiro: 'dias_atraso > 0' },
+};
+
 router.get(
   '/titulos',
   exigir('financeiro.ver'),
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    const q = req.query;
-
-    if (q.tipo) { where.push('tipo = ?'); params.push(q.tipo); }
-    if (q.status) { where.push('status = ?'); params.push(q.status); }
-    else if (q.abertos !== 'false') where.push(`status IN ('ABERTO','PARCIAL')`);
-    if (q.vencidos === 'true') where.push('dias_atraso > 0');
-    if (q.cliente_id) { where.push('cliente_id = ?'); params.push(Number(q.cliente_id)); }
-    if (q.fornecedor_id) { where.push('fornecedor_id = ?'); params.push(Number(q.fornecedor_id)); }
-    if (q.pedido_id) { where.push('pedido_id = ?'); params.push(Number(q.pedido_id)); }
-    if (q.de) { where.push('vencimento >= ?'); params.push(q.de); }
-    if (q.ate) { where.push('vencimento <= ?'); params.push(q.ate); }
-    if (q.busca) {
-      where.push('(descricao LIKE ? OR documento LIKE ? OR parte LIKE ?)');
-      const t = `%${q.busca}%`;
-      params.push(t, t, t);
-    }
-
-    const limite = Math.min(Number(q.limite) || 300, 3000);
+    const f = montarFiltros(req.query, FILTROS_TITULO);
+    const where = [...f.where];
+    if (!req.query.status && req.query.abertos !== 'false') where.push(`status IN ('ABERTO','PARCIAL')`);
+    const ordem = montarOrdem(
+      req.query,
+      ['vencimento', 'emissao', 'valor', 'saldo', 'parte', 'dias_atraso'],
+      'vencimento ASC, id ASC'
+    );
     res.json(
       getDb()
         .prepare(
           `SELECT * FROM vw_titulos ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           ORDER BY vencimento ASC, id ASC LIMIT ?`
+           ORDER BY ${ordem} LIMIT ?`
         )
-        .all(...params, limite)
+        .all(...f.params, limitar(req.query))
     );
   })
 );

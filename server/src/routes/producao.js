@@ -12,20 +12,31 @@ import {
 } from '../services/producao.js';
 import { baixarMateriaisDaOrdem } from '../services/estoque.js';
 import { exigir } from '../middleware/auth.js';
+import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 
 export const router = Router();
 const podeOrdens = exigir('producao.ordens');
+
+const FILTROS_ORDEM = {
+  busca: { tipo: 'busca', colunas: ['o.numero', 'v.cliente', 'v.produto', 'v.pedido_numero'] },
+  status: { tipo: 'igual', coluna: 'o.status' },
+  grupo: { tipo: 'igual', coluna: 'v.grupo' },
+  linha: { tipo: 'igual', coluna: 'v.linha' },
+  cliente_id: { tipo: 'igual', coluna: 'v.cliente_id', numero: true },
+  categoria: { tipo: 'igual', coluna: 'v.categoria' },
+  de: { tipo: 'de', coluna: 'o.data_prevista' },
+  ate: { tipo: 'ate', coluna: 'o.data_prevista' },
+  atrasadas: { tipo: 'booleano', quandoVerdadeiro: `o.data_prevista < date('now')` },
+};
 
 /** Lista de ordens de produção com o andamento do roteiro. */
 router.get(
   '/',
   asyncHandler((req, res) => {
-    const where = [];
-    const params = [];
-    if (req.query.status) {
-      where.push('o.status = ?');
-      params.push(req.query.status);
-    } else if (req.query.abertas !== 'false') {
+    const f = montarFiltros(req.query, FILTROS_ORDEM);
+    const where = [...f.where];
+    const params = [...f.params];
+    if (!req.query.status && req.query.abertas !== 'false') {
       where.push(`o.status IN ('ABERTA','EM_PRODUCAO')`);
     }
     if (req.query.etapa) {
@@ -35,12 +46,11 @@ router.get(
       );
       params.push(req.query.etapa);
     }
-    if (req.query.busca) {
-      where.push('(o.numero LIKE ? OR v.cliente LIKE ? OR v.produto LIKE ? OR v.pedido_numero LIKE ?)');
-      const t = `%${req.query.busca}%`;
-      params.push(t, t, t, t);
-    }
-    const limite = Math.min(Number(req.query.limite) || 300, 3000);
+    const ordem = montarOrdem(
+      req.query,
+      ['o.numero', 'o.data_prevista', 'o.quantidade', 'v.cliente', 'v.produto'],
+      'o.data_prevista IS NULL, o.data_prevista ASC, o.id DESC'
+    );
 
     res.json(
       getDb()
@@ -56,10 +66,10 @@ router.get(
            FROM ordens_producao o
            JOIN vw_itens v ON v.item_id = o.pedido_item_id
            ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           ORDER BY o.data_prevista IS NULL, o.data_prevista ASC, o.id DESC
+           ORDER BY ${ordem}
            LIMIT ?`
         )
-        .all(...params, limite)
+        .all(...params, limitar(req.query))
     );
   })
 );

@@ -33,5 +33,13 @@ export const router = crudRouter({
   listaSql: `SELECT c.*, d.nome AS departamento FROM colaboradores c
              LEFT JOIN departamentos d ON d.id = c.departamento_id`,
   ordem: 'c.nome',
-  busca: ['c.nome', 'c.cargo', 'c.cpf'],
+  busca: ['c.nome', 'c.cargo', 'c.cpf', 'c.email'],
+  ordenaveis: ['c.nome', 'c.cargo', 'c.salario', 'c.data_admissao'],
+  filtros: {
+    departamento_id: { tipo: 'igual', coluna: 'c.departamento_id', numero: true },
+    status: { tipo: 'igual', coluna: 'c.status' },
+    produtivo: { tipo: 'igual', coluna: 'c.produtivo', numero: true },
+    admissao_de: { tipo: 'de', coluna: 'c.data_admissao' },
+    admissao_ate: { tipo: 'ate', coluna: 'c.data_admissao' },
+  },
 });

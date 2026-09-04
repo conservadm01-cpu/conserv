@@ -56,7 +56,13 @@ router.use(
     listaSql: `SELECT e.*, d.nome AS departamento FROM equipamentos e
                LEFT JOIN departamentos d ON d.id = e.departamento_id`,
     ordem: 'e.nome',
-    busca: ['e.nome', 'e.patrimonio'],
+    busca: ['e.nome', 'e.patrimonio', 'e.tipo'],
+    ordenaveis: ['e.nome', 'e.tipo', 'e.quantidade'],
+    filtros: {
+      departamento_id: { tipo: 'igual', coluna: 'e.departamento_id', numero: true },
+      status: { tipo: 'igual', coluna: 'e.status' },
+      tipo: { tipo: 'igual', coluna: 'e.tipo' },
+    },
   })
 );
 
@@ -75,7 +81,9 @@ router.use(
       ativo: z.number().int().optional(),
     }),
     ordem: 'valor_mensal DESC',
-    busca: ['descricao'],
+    busca: ['descricao', 'observacao'],
+    ordenaveis: ['descricao', 'valor_mensal', 'tipo'],
+    filtros: { tipo: { tipo: 'igual', coluna: 'tipo' } },
   })
 );
 
