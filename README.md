@@ -28,6 +28,8 @@ e margem.
 
 ### Engenharia e formação de custo
 - **Setores, equipamentos e jornada de trabalho** — cada etapa do roteiro pertence a um setor.
+- **Aferição de tempo**: cronometre a operação e compare a média medida com o tempo
+  padrão do processo, para definir o roteiro com número medido e não com estimativa.
 - **Colaboradores** com salário, encargos e vale-transporte: daí sai o **custo do minuto** de
   cada setor (folha da equipe ÷ minutos que o setor produz no mês).
 - **Custos fixos** (aluguel, energia, manutenção) rateados pela capacidade produtiva real —
@@ -46,6 +48,31 @@ e margem.
 - **Produtividade por pessoa** (peças/hora), **eficiência por setor** e registro de
   **ocorrências** — o que parou a linha, por quanto tempo e como foi resolvido.
 - **Custo real da ordem** = material baixado + MO apontada + indireto pelos minutos gastos.
+
+### Financeiro
+- **Contas a pagar e a receber** com parcelamento, vencimento e vínculo a cliente,
+  fornecedor ou pedido.
+- **Baixas parciais** com juros e desconto, e estorno que devolve o título ao estado
+  anterior. O status nunca é digitado: é sempre derivado das baixas.
+- **Faturar um pedido** gera as contas a receber pelo prazo cadastrado no cliente.
+- **Fluxo de caixa previsto** por semana — o que já venceu pesa na semana corrente,
+  porque é caixa que deveria ter acontecido e continua faltando.
+- **Aging** por faixa de atraso, realizado mês a mês e ranking de quem mais deve
+  e a quem mais se deve.
+- Plano de contas e contas bancárias.
+
+### Acesso e permissões
+- **26 áreas** em sete grupos, de "ver estoque" a "alterar jornada e encargos".
+- **Sete níveis prontos** — total, gerencial, PCP, almoxarifado, financeiro, chão de
+  fábrica e consulta — ajustáveis área a área para cada usuário. Só as diferenças em
+  relação ao nível são gravadas, então trocar de nível depois traz o conjunto novo
+  por inteiro.
+- **Ler e alterar são permissões distintas**: quem lança movimentação de estoque não
+  precisa poder cadastrar material, e quem aponta produção não vê salário.
+- As permissões são lidas do banco a cada requisição, então revogar acesso vale na
+  hora, sem esperar o token do usuário expirar.
+- O menu esconde o que a pessoa não alcança — a API barra de qualquer forma, mas
+  oferecer o que não se pode abrir é ruído.
 
 ### Conversa aberta
 Canal de sugestões, problemas, riscos e relatos, com envio **sem login** para quem quiser
@@ -84,7 +111,7 @@ veja `.env.example`).
 
 ```bash
 npm run dev          # API em :3333 e interface em :5173 com recarga automática
-npm test             # 33 testes de PCP, estoque, MRP, custeio, apontamento e importação
+npm test             # 52 testes de PCP, estoque, MRP, custeio, financeiro e permissões
 ```
 
 ---
@@ -119,8 +146,9 @@ O “A liquidar” calculado bate exatamente com o da planilha (R$ 246.959,50).
 ### Dados de exemplo
 
 ```bash
-npm run db:seed          # materiais, estoque inicial e ficha técnica
-npm run db:seed-fabrica  # equipe, máquinas, custos fixos e tempo das operações
+npm run db:seed            # materiais, estoque inicial e ficha técnica
+npm run db:seed-fabrica    # equipe, máquinas, custos fixos e tempo das operações
+npm run db:seed-financeiro # contas a receber dos pedidos e a pagar dos custos fixos
 ```
 
 O primeiro cria 15 materiais com estoque e ficha técnica para os grupos mais comuns. O segundo
@@ -144,10 +172,15 @@ de cada produto.
 4. **Produtos → ficha técnica e processo.** A ficha diz o que a peça consome; o processo diz
    quanto tempo cada operação leva. Comece pelos produtos que mais aparecem na carteira.
 5. **Estoque**: lance o saldo real de cada material com um movimento de entrada.
-6. **Clientes duplicados**: a planilha traz o mesmo cliente escrito de formas diferentes
+6. **Usuários e permissões.** Crie um usuário por pessoa que usa o sistema e escolha
+   o nível de acesso. Quem só aponta produção fica em *Chão de fábrica*; quem cuida
+   do caixa, em *Financeiro*. Ajuste área a área o que fugir do padrão.
+7. **Financeiro**: confira o plano de contas, cadastre as contas bancárias e lance os
+   títulos em aberto que já existem hoje.
+8. **Clientes duplicados**: a planilha traz o mesmo cliente escrito de formas diferentes
    (“M.D BOSO (PROHALL)” e “MD BOZO PROHALL”). O importador não tem como saber que são o mesmo —
    ajuste em *Clientes*.
-7. **Atrasos históricos**: pedidos de 2024 que nunca foram marcados como entregues na planilha
+9. **Atrasos históricos**: pedidos de 2024 que nunca foram marcados como entregues na planilha
    aparecem como atrasados. Marque a etapa *Entrega* como concluída para encerrá-los, ou filtre
    a carteira por período.
 
@@ -188,5 +221,7 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | Custo do produto | `GET|PUT /api/produtos/:id/processo`, `GET /api/produtos/:id/custo` |
 | Apontamento | `GET|POST /api/apontamentos`, `/produtividade`, `/eficiencia`, CRUD em `/api/ocorrencias` |
 | Conversa aberta | `POST /api/canal/manifestacoes` (sem login), `GET|PUT /api/canal/manifestacoes` |
+| Financeiro | `GET|POST|PUT|DELETE /api/financeiro/titulos`, `POST /api/financeiro/baixas`, `POST /api/financeiro/pedidos/:id/faturar`, `GET /api/financeiro/resumo`, `/fluxo`, `/aging/:tipo`, `/ranking/:tipo` |
+| Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |

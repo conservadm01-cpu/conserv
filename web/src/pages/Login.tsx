@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { api, sessao, ApiError, type Usuario } from '../lib/api';
+import { api, sessao, ApiError, type Usuario, type Permissoes } from '../lib/api';
 import { Aviso, Campo } from '../components/ui';
 
 export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) {
@@ -13,8 +13,10 @@ export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) 
     setEnviando(true);
     setErro('');
     try {
-      const r = await api.post<{ token: string; usuario: Usuario }>('/auth/login', { email, senha });
-      sessao.entrar(r.token, r.usuario);
+      const r = await api.post<{ token: string; usuario: Usuario; permissoes: Permissoes }>(
+        '/auth/login', { email, senha }
+      );
+      sessao.entrar(r.token, r.usuario, r.permissoes);
       aoEntrar(r.usuario);
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Não foi possível entrar');

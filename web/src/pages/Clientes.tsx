@@ -10,6 +10,7 @@ const COLUNAS: Coluna<Cliente>[] = [
   { chave: 'telefone', rotulo: 'Telefone' },
   { chave: 'email', rotulo: 'E-mail' },
   { chave: 'cidade', rotulo: 'Cidade' },
+  { chave: 'prazo_pagamento_dias', rotulo: 'Prazo', num: true, render: (c) => `${c.prazo_pagamento_dias ?? 0} d` },
 ];
 
 export default function Clientes() {
@@ -25,8 +26,18 @@ export default function Clientes() {
     { nome: 'contato', rotulo: 'Contato' },
     { nome: 'telefone', rotulo: 'Telefone' },
     { nome: 'email', rotulo: 'E-mail' },
+    { nome: 'inscricao_estadual', rotulo: 'Inscrição estadual' },
+    { nome: 'cep', rotulo: 'CEP' },
+    { nome: 'endereco', rotulo: 'Endereço' },
+    { nome: 'numero', rotulo: 'Número' },
+    { nome: 'complemento', rotulo: 'Complemento' },
+    { nome: 'bairro', rotulo: 'Bairro' },
     { nome: 'cidade', rotulo: 'Cidade' },
     { nome: 'uf', rotulo: 'UF' },
+    { nome: 'prazo_pagamento_dias', rotulo: 'Prazo de pagamento (dias)', tipo: 'numero', padrao: 0,
+      ajuda: 'Vira o vencimento padrão ao faturar um pedido deste cliente' },
+    { nome: 'condicao_pagamento', rotulo: 'Condição de pagamento', ajuda: 'Ex.: 28/56 dias' },
+    { nome: 'limite_credito', rotulo: 'Limite de crédito', tipo: 'numero', padrao: 0 },
     { nome: 'observacao', rotulo: 'Observação' },
   ];
 

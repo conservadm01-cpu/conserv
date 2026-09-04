@@ -48,8 +48,20 @@ export default function Colaboradores() {
       ],
     },
     { nome: 'cpf', rotulo: 'CPF' },
+    { nome: 'rg', rotulo: 'RG' },
+    { nome: 'data_nascimento', rotulo: 'Nascimento', tipo: 'data' },
     { nome: 'telefone', rotulo: 'Telefone' },
     { nome: 'email', rotulo: 'E-mail' },
+    { nome: 'cep', rotulo: 'CEP' },
+    { nome: 'endereco', rotulo: 'Endereço' },
+    { nome: 'numero', rotulo: 'Número' },
+    { nome: 'bairro', rotulo: 'Bairro' },
+    { nome: 'cidade', rotulo: 'Cidade' },
+    { nome: 'uf', rotulo: 'UF' },
+    { nome: 'pix', rotulo: 'Chave PIX' },
+    { nome: 'contato_emergencia', rotulo: 'Contato de emergência' },
+    { nome: 'data_demissao', rotulo: 'Desligamento', tipo: 'data' },
+    { nome: 'observacao', rotulo: 'Observação' },
   ];
 
   return (

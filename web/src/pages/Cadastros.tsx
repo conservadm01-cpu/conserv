@@ -2,7 +2,8 @@ import { useState } from 'react';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
 import type { Simples, Fornecedor, Etapa } from '../tipos';
 
-const ABAS = ['Vendedores', 'Categorias de cliente', 'Grupos de produto', 'Fornecedores', 'Etapas do processo'] as const;
+const ABAS = ['Vendedores', 'Categorias de cliente', 'Grupos de produto', 'Fornecedores',
+              'Etapas do processo', 'Categorias financeiras', 'Contas bancárias'] as const;
 
 const NOME_SIMPLES: Coluna<Simples>[] = [{ chave: 'nome', rotulo: 'Nome' }];
 const CAMPO_NOME: CampoForm[] = [{ nome: 'nome', rotulo: 'Nome', obrigatorio: true }];
@@ -71,15 +72,68 @@ export default function Cadastros() {
             { chave: 'cnpj', rotulo: 'CNPJ' },
             { chave: 'contato', rotulo: 'Contato' },
             { chave: 'telefone', rotulo: 'Telefone' },
+            { chave: 'cidade', rotulo: 'Cidade' },
             { chave: 'prazo_entrega_dias', rotulo: 'Prazo (dias)', num: true },
+            { chave: 'condicao_pagamento', rotulo: 'Pagamento' },
           ]}
           campos={[
             { nome: 'nome', rotulo: 'Nome', obrigatorio: true },
             { nome: 'cnpj', rotulo: 'CNPJ' },
+            { nome: 'inscricao_estadual', rotulo: 'Inscrição estadual' },
             { nome: 'contato', rotulo: 'Contato' },
             { nome: 'telefone', rotulo: 'Telefone' },
             { nome: 'email', rotulo: 'E-mail' },
+            { nome: 'cep', rotulo: 'CEP' },
+            { nome: 'endereco', rotulo: 'Endereço' },
+            { nome: 'numero', rotulo: 'Número' },
+            { nome: 'bairro', rotulo: 'Bairro' },
+            { nome: 'cidade', rotulo: 'Cidade' },
+            { nome: 'uf', rotulo: 'UF' },
             { nome: 'prazo_entrega_dias', rotulo: 'Prazo de entrega (dias)', tipo: 'numero', padrao: 0 },
+            { nome: 'condicao_pagamento', rotulo: 'Condição de pagamento', ajuda: 'Ex.: 30/60 dias' },
+            { nome: 'observacao', rotulo: 'Observação' },
+          ]}
+        />
+      )}
+
+      {aba === 'Categorias financeiras' && (
+        <TabelaCrud<Simples & { tipo: string; grupo: string | null }>
+          titulo="Categorias financeiras"
+          descricao="O plano de contas: onde cada receita e cada despesa é classificada"
+          recurso="/financeiro/categorias"
+          colunas={[
+            { chave: 'nome', rotulo: 'Categoria' },
+            { chave: 'tipo', rotulo: 'Natureza', render: (c) => (c.tipo === 'RECEBER' ? 'Receita' : 'Despesa') },
+            { chave: 'grupo', rotulo: 'Grupo' },
+          ]}
+          campos={[
+            { nome: 'nome', rotulo: 'Nome', obrigatorio: true },
+            { nome: 'tipo', rotulo: 'Natureza', tipo: 'select', padrao: 'PAGAR',
+              opcoes: [{ valor: 'RECEBER', rotulo: 'Receita' }, { valor: 'PAGAR', rotulo: 'Despesa' }] },
+            { nome: 'grupo', rotulo: 'Grupo', ajuda: 'Ex.: Matéria-prima, Estrutura, Pessoal' },
+          ]}
+        />
+      )}
+
+      {aba === 'Contas bancárias' && (
+        <TabelaCrud<Simples & { tipo: string; banco: string | null; saldo_inicial: number }>
+          titulo="Contas e caixa"
+          descricao="Onde o dinheiro entra e de onde sai"
+          recurso="/financeiro/contas-bancarias"
+          colunas={[
+            { chave: 'nome', rotulo: 'Conta' },
+            { chave: 'tipo', rotulo: 'Tipo' },
+            { chave: 'banco', rotulo: 'Banco' },
+            { chave: 'saldo_inicial', rotulo: 'Saldo inicial', num: true },
+          ]}
+          campos={[
+            { nome: 'nome', rotulo: 'Nome', obrigatorio: true },
+            { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', padrao: 'BANCO',
+              opcoes: ['CAIXA', 'BANCO', 'APLICACAO'].map((t) => ({ valor: t, rotulo: t })) },
+            { nome: 'banco', rotulo: 'Banco' },
+            { nome: 'agencia', rotulo: 'Agência' },
+            { nome: 'conta', rotulo: 'Conta' },
+            { nome: 'saldo_inicial', rotulo: 'Saldo inicial', tipo: 'numero', padrao: 0 },
           ]}
         />
       )}

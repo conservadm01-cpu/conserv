@@ -1,24 +1,42 @@
 const CHAVE_TOKEN = 'conserv.token';
 const CHAVE_USUARIO = 'conserv.usuario';
+const CHAVE_PERMISSOES = 'conserv.permissoes';
 
 export type Perfil = 'ADMIN' | 'GESTOR' | 'PCP' | 'ALMOXARIFE' | 'VENDEDOR' | 'OPERADOR';
-export type Usuario = { sub?: number; id?: number; nome: string; email: string; perfil: Perfil };
+export type Usuario = {
+  sub?: number; id?: number; nome: string; email: string;
+  perfil: Perfil; nivel_acesso?: string;
+};
+export type Permissoes = Record<string, boolean>;
+
+const ler = <T,>(chave: string): T | null => {
+  try {
+    const bruto = localStorage.getItem(chave);
+    return bruto ? (JSON.parse(bruto) as T) : null;
+  } catch {
+    return null;
+  }
+};
 
 export const sessao = {
   token: () => localStorage.getItem(CHAVE_TOKEN),
-  usuario: (): Usuario | null => {
-    const bruto = localStorage.getItem(CHAVE_USUARIO);
-    return bruto ? (JSON.parse(bruto) as Usuario) : null;
-  },
-  entrar(token: string, usuario: Usuario) {
+  usuario: () => ler<Usuario>(CHAVE_USUARIO),
+  permissoes: () => ler<Permissoes>(CHAVE_PERMISSOES) ?? {},
+  entrar(token: string, usuario: Usuario, permissoes: Permissoes) {
     localStorage.setItem(CHAVE_TOKEN, token);
     localStorage.setItem(CHAVE_USUARIO, JSON.stringify(usuario));
+    localStorage.setItem(CHAVE_PERMISSOES, JSON.stringify(permissoes));
+  },
+  atualizarPermissoes(permissoes: Permissoes) {
+    localStorage.setItem(CHAVE_PERMISSOES, JSON.stringify(permissoes));
   },
   sair() {
-    localStorage.removeItem(CHAVE_TOKEN);
-    localStorage.removeItem(CHAVE_USUARIO);
+    for (const c of [CHAVE_TOKEN, CHAVE_USUARIO, CHAVE_PERMISSOES]) localStorage.removeItem(c);
   },
 };
+
+/** Atalho de leitura das permissões da sessão, usado para esconder o que não se pode fazer. */
+export const pode = (area: string) => Boolean(sessao.permissoes()[area]);
 
 export class ApiError extends Error {
   status: number;

@@ -17,63 +17,84 @@ import Clientes from './pages/Clientes';
 import Cadastros from './pages/Cadastros';
 import Relatorios from './pages/Relatorios';
 import Importacao from './pages/Importacao';
+import Financeiro from './pages/Financeiro';
+import Permissoes from './pages/Permissoes';
 import Engenharia from './pages/Engenharia';
 import Colaboradores from './pages/Colaboradores';
 import Apontamento from './pages/Apontamento';
 import Custos from './pages/Custos';
 import Canal from './pages/Canal';
 
+/**
+ * O menu declara a permissão de cada tela. Quem não tem a área nem vê a entrada —
+ * a API barra de qualquer jeito, mas oferecer o que não se pode abrir é ruído.
+ */
 const MENU = [
   {
     grupo: 'Visão geral',
     itens: [
       { para: '/', rotulo: 'Painel', icone: '▤', fim: true },
-      { para: '/carteira', rotulo: 'Carteira', icone: '☰' },
-      { para: '/relatorios', rotulo: 'Relatórios', icone: '◔' },
-      { para: '/custos', rotulo: 'Formação de custo', icone: '⛁' },
+      { para: '/carteira', rotulo: 'Carteira', icone: '☰', area: 'pedidos.ver' },
+      { para: '/relatorios', rotulo: 'Relatórios', icone: '◔', area: 'pedidos.ver' },
+      { para: '/custos', rotulo: 'Formação de custo', icone: '⛁', area: 'produtos.custo' },
     ],
   },
   {
     grupo: 'Processos',
     itens: [
-      { para: '/producao', rotulo: 'Produção (PCP)', icone: '⚙' },
-      { para: '/pedidos', rotulo: 'Pedidos', icone: '✎' },
-      { para: '/apontamento', rotulo: 'Apontamento', icone: '⏱' },
+      { para: '/producao', rotulo: 'Produção (PCP)', icone: '⚙', area: 'producao.ver' },
+      { para: '/pedidos', rotulo: 'Pedidos', icone: '✎', area: 'pedidos.ver' },
+      { para: '/apontamento', rotulo: 'Apontamento', icone: '⏱', area: 'producao.ver' },
     ],
   },
   {
     grupo: 'Materiais',
     itens: [
-      { para: '/estoque', rotulo: 'Estoque', icone: '▦' },
-      { para: '/compras', rotulo: 'Necessidade de compra', icone: '↯' },
-      { para: '/materiais', rotulo: 'Cadastro de materiais', icone: '◧' },
+      { para: '/estoque', rotulo: 'Estoque', icone: '▦', area: 'materiais.ver' },
+      { para: '/compras', rotulo: 'Necessidade de compra', icone: '↯', area: 'materiais.ver' },
+      { para: '/materiais', rotulo: 'Cadastro de materiais', icone: '◧', area: 'materiais.ver' },
+    ],
+  },
+  {
+    grupo: 'Financeiro',
+    itens: [
+      { para: '/financeiro', rotulo: 'Contas a pagar e receber', icone: '₪', area: 'financeiro.ver' },
     ],
   },
   {
     grupo: 'Engenharia',
     itens: [
-      { para: '/engenharia', rotulo: 'Fábrica e custos', icone: '⚒' },
-      { para: '/colaboradores', rotulo: 'Colaboradores', icone: '☺' },
+      { para: '/engenharia', rotulo: 'Fábrica e custos', icone: '⚒', area: 'engenharia.ver' },
+      { para: '/colaboradores', rotulo: 'Colaboradores', icone: '☺', area: 'pessoas.ver' },
     ],
   },
   {
     grupo: 'Cadastros',
     itens: [
-      { para: '/produtos', rotulo: 'Produtos e ficha técnica', icone: '◫' },
-      { para: '/clientes', rotulo: 'Clientes', icone: '⌂' },
-      { para: '/cadastros', rotulo: 'Tabelas auxiliares', icone: '≡' },
-      { para: '/importacao', rotulo: 'Importar planilha', icone: '⇪' },
+      { para: '/produtos', rotulo: 'Produtos e ficha técnica', icone: '◫', area: 'cadastros.ver' },
+      { para: '/clientes', rotulo: 'Clientes', icone: '⌂', area: 'cadastros.ver' },
+      { para: '/cadastros', rotulo: 'Tabelas auxiliares', icone: '≡', area: 'cadastros.ver' },
+      { para: '/importacao', rotulo: 'Importar planilha', icone: '⇪', area: 'importacao' },
     ],
   },
   {
-    grupo: 'Pessoas',
+    grupo: 'Sistema',
     itens: [
-      { para: '/canal', rotulo: 'Conversa aberta', icone: '✉' },
+      { para: '/canal', rotulo: 'Conversa aberta', icone: '✉', area: 'canal.tratar' },
+      { para: '/permissoes', rotulo: 'Usuários e permissões', icone: '⚿', area: 'admin' },
     ],
   },
 ];
 
 function Layout({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
+  const permissoes = sessao.permissoes();
+  const visiveis = MENU
+    .map((secao) => ({
+      ...secao,
+      itens: secao.itens.filter((i) => !('area' in i) || permissoes[i.area as string]),
+    }))
+    .filter((secao) => secao.itens.length > 0);
+
   return (
     <nav className="menu">
       <div className="menu-marca">
@@ -81,7 +102,7 @@ function Layout({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
         <span>Materiais e processos</span>
       </div>
       <div className="menu-lista">
-        {MENU.map((secao) => (
+        {visiveis.map((secao) => (
           <div key={secao.grupo}>
             <div className="menu-grupo">{secao.grupo}</div>
             {secao.itens.map((item) => (
@@ -100,7 +121,7 @@ function Layout({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
       </div>
       <div className="menu-rodape">
         <b>{usuario.nome}</b>
-        <span>{usuario.perfil}</span>
+        <span>{usuario.perfil}{usuario.nivel_acesso ? ` · ${usuario.nivel_acesso}` : ''}</span>
         <button onClick={aoSair}>Sair</button>
       </div>
     </nav>
@@ -138,6 +159,8 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/apontamento" element={<Apontamento />} />
           <Route path="/custos" element={<Custos />} />
           <Route path="/canal" element={<Canal />} />
+          <Route path="/financeiro" element={<Financeiro />} />
+          <Route path="/permissoes" element={<Permissoes />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

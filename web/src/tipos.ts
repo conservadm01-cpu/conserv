@@ -112,12 +112,23 @@ export type CustoProcesso = {
 
 export type Cliente = {
   id: number; nome: string; categoria_id: number | null; categoria: string | null;
-  cnpj: string | null; contato: string | null; email: string | null; telefone: string | null;
-  cidade: string | null; uf: string | null; ativo: number;
+  cnpj: string | null; inscricao_estadual: string | null;
+  contato: string | null; email: string | null; telefone: string | null;
+  cep: string | null; endereco: string | null; numero: string | null;
+  complemento: string | null; bairro: string | null; cidade: string | null; uf: string | null;
+  prazo_pagamento_dias: number; condicao_pagamento: string | null; limite_credito: number;
+  observacao: string | null; ativo: number;
 };
 
 export type Simples = { id: number; nome: string };
-export type Fornecedor = Simples & { cnpj: string | null; contato: string | null; telefone: string | null; prazo_entrega_dias: number; ativo: number };
+export type Fornecedor = Simples & {
+  cnpj: string | null; inscricao_estadual: string | null;
+  contato: string | null; email: string | null; telefone: string | null;
+  cep: string | null; endereco: string | null; numero: string | null; bairro: string | null;
+  cidade: string | null; uf: string | null;
+  prazo_entrega_dias: number; condicao_pagamento: string | null;
+  observacao: string | null; ativo: number;
+};
 
 export type Dashboard = {
   referencia: string; ano: number;
@@ -246,4 +257,93 @@ export type Manifestacao = {
   id: number; tipo: string; assunto: string | null; mensagem: string; autor: string | null;
   anonima: number; setor: string | null; status: string; tratativa: string | null;
   respondido_em: string | null; criado_em: string;
+};
+
+/* ---------- Financeiro ---------- */
+
+export type Titulo = {
+  id: number; tipo: 'RECEBER' | 'PAGAR'; descricao: string;
+  categoria_id: number | null; categoria: string | null;
+  cliente_id: number | null; cliente: string | null;
+  fornecedor_id: number | null; fornecedor: string | null;
+  parte: string | null;
+  pedido_id: number | null; pedido_numero: string | null;
+  documento: string | null; parcela: number; parcelas: number;
+  valor: number; pago: number; saldo: number;
+  emissao: string; vencimento: string; ultima_baixa: string | null;
+  status: 'ABERTO' | 'PARCIAL' | 'QUITADO' | 'CANCELADO';
+  dias_atraso: number; observacao: string | null;
+  baixas?: Baixa[];
+};
+
+export type Baixa = {
+  id: number; titulo_id: number; data: string; valor: number;
+  juros: number; desconto: number; forma: string;
+  conta_id: number | null; conta: string | null;
+  observacao: string | null; usuario: string | null;
+};
+
+export type PosicaoFinanceira = {
+  tipo: string; titulos: number; aberto: number; vencido: number;
+  proximos_7: number; proximos_30: number; titulos_vencidos: number;
+};
+
+export type FaixaAging = { faixa: string; titulos: number; valor: number };
+
+export type SemanaFluxo = {
+  semana: number; inicio: string; fim: string;
+  entradas: number; saidas: number; saldo: number; acumulado: number;
+};
+
+export type MesRealizado = { mes: string; recebido: number; pago: number; resultado: number };
+
+export type LinhaRanking = {
+  parte: string; titulos: number; aberto: number; vencido: number; maior_atraso: number;
+};
+
+export type ResumoFinanceiro = {
+  referencia: string;
+  receber: PosicaoFinanceira; pagar: PosicaoFinanceira;
+  aging_receber: FaixaAging[]; aging_pagar: FaixaAging[];
+  fluxo: SemanaFluxo[]; realizado: MesRealizado[];
+  maiores_devedores: LinhaRanking[]; maiores_credores: LinhaRanking[];
+};
+
+export type CategoriaFinanceira = { id: number; nome: string; tipo: string; grupo: string | null; ativo: number };
+export type ContaBancaria = {
+  id: number; nome: string; tipo: string; banco: string | null;
+  agencia: string | null; conta: string | null; saldo_inicial: number; ativo: number;
+};
+
+/* ---------- Permissões ---------- */
+
+export type AreaPermissao = { id: string; nome: string };
+export type GrupoPermissao = { grupo: string; itens: AreaPermissao[] };
+export type NivelAcesso = { id: string; nome: string; descricao: string; areas: string[] };
+
+export type CatalogoPermissoes = {
+  areas: GrupoPermissao[]; niveis: NivelAcesso[]; todas: string[];
+};
+
+export type UsuarioSistema = {
+  id: number; nome: string; email: string; perfil: string;
+  nivel_acesso: string; colaborador_id: number | null; colaborador: string | null;
+  permissoes: string | null; ativo: number; criado_em: string;
+};
+
+export type PermissoesUsuario = {
+  nivel_acesso: string; nivel: NivelAcesso | null;
+  ajustes: Record<string, boolean>; efetivas: Record<string, boolean>;
+};
+
+export type Afericao = {
+  id: number; produto_id: number; produto: string; etapa_id: number; etapa: string;
+  colaborador: string | null; equipamento: string | null; data: string;
+  pecas: number; minutos: number; tempo_por_peca: number; pecas_hora: number;
+  observacao: string | null;
+};
+
+export type MediaAfericao = {
+  etapa_id: number; etapa: string; ordem: number; medicoes: number;
+  tempo_por_peca: number; melhor: number; pior: number; tempo_padrao: number | null;
 };
