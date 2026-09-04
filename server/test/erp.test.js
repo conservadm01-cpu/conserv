@@ -211,4 +211,37 @@ test('resumo da carteira soma apenas o que ainda não foi entregue', () => {
   assert.equal(depois.faturar, Math.round((antes.faturar + 200) * 100) / 100);
 });
 
+test('o filtro ?ativo= funciona nas listagens que apelidam a tabela', async () => {
+  // O CRUD monta "WHERE <tabela>.ativo = ?"; com join a tabela vira "p", "e", "c"…
+  // e a consulta quebrava. Aqui percorremos as listagens que usam apelido.
+  const { criarApp } = await import('../src/index.js');
+  const bcrypt = (await import('bcryptjs')).default;
+  const app = criarApp();
+
+  db.prepare(`INSERT INTO usuarios (nome, email, senha_hash, perfil) VALUES ('T','t@t','x','ADMIN')
+              ON CONFLICT(email) DO NOTHING`).run();
+  db.prepare(`UPDATE usuarios SET senha_hash = ? WHERE email = 't@t'`).run(bcrypt.hashSync('teste123', 4));
+
+  const servidor = app.listen(0);
+  const porta = servidor.address().port;
+  const base = `http://127.0.0.1:${porta}/api`;
+  try {
+    const login = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 't@t', senha: 'teste123' }),
+    }).then((r) => r.json());
+    const headers = { Authorization: `Bearer ${login.token}` };
+
+    for (const rota of ['/produtos', '/clientes', '/materiais', '/colaboradores',
+                        '/engenharia/equipamentos', '/engenharia/departamentos']) {
+      const r = await fetch(`${base}${rota}?ativo=true`, { headers });
+      assert.equal(r.status, 200, `${rota} devolveu ${r.status}`);
+      assert.ok(Array.isArray(await r.json()), `${rota} não devolveu lista`);
+    }
+  } finally {
+    servidor.close();
+  }
+});
+
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

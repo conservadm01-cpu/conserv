@@ -17,6 +17,11 @@ import Clientes from './pages/Clientes';
 import Cadastros from './pages/Cadastros';
 import Relatorios from './pages/Relatorios';
 import Importacao from './pages/Importacao';
+import Engenharia from './pages/Engenharia';
+import Colaboradores from './pages/Colaboradores';
+import Apontamento from './pages/Apontamento';
+import Custos from './pages/Custos';
+import Canal from './pages/Canal';
 
 const MENU = [
   {
@@ -25,6 +30,7 @@ const MENU = [
       { para: '/', rotulo: 'Painel', icone: '▤', fim: true },
       { para: '/carteira', rotulo: 'Carteira', icone: '☰' },
       { para: '/relatorios', rotulo: 'Relatórios', icone: '◔' },
+      { para: '/custos', rotulo: 'Formação de custo', icone: '⛁' },
     ],
   },
   {
@@ -32,6 +38,7 @@ const MENU = [
     itens: [
       { para: '/producao', rotulo: 'Produção (PCP)', icone: '⚙' },
       { para: '/pedidos', rotulo: 'Pedidos', icone: '✎' },
+      { para: '/apontamento', rotulo: 'Apontamento', icone: '⏱' },
     ],
   },
   {
@@ -43,12 +50,25 @@ const MENU = [
     ],
   },
   {
+    grupo: 'Engenharia',
+    itens: [
+      { para: '/engenharia', rotulo: 'Fábrica e custos', icone: '⚒' },
+      { para: '/colaboradores', rotulo: 'Colaboradores', icone: '☺' },
+    ],
+  },
+  {
     grupo: 'Cadastros',
     itens: [
       { para: '/produtos', rotulo: 'Produtos e ficha técnica', icone: '◫' },
-      { para: '/clientes', rotulo: 'Clientes', icone: '☺' },
+      { para: '/clientes', rotulo: 'Clientes', icone: '⌂' },
       { para: '/cadastros', rotulo: 'Tabelas auxiliares', icone: '≡' },
       { para: '/importacao', rotulo: 'Importar planilha', icone: '⇪' },
+    ],
+  },
+  {
+    grupo: 'Pessoas',
+    itens: [
+      { para: '/canal', rotulo: 'Conversa aberta', icone: '✉' },
     ],
   },
 ];
@@ -113,6 +133,11 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/importacao" element={<Importacao />} />
+          <Route path="/engenharia" element={<Engenharia />} />
+          <Route path="/colaboradores" element={<Colaboradores />} />
+          <Route path="/apontamento" element={<Apontamento />} />
+          <Route path="/custos" element={<Custos />} />
+          <Route path="/canal" element={<Canal />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

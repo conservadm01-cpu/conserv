@@ -12,10 +12,13 @@ import { asyncHandler, notFound, badRequest } from './errors.js';
  * @param {string} [opts.listaSql]  SELECT alternativo para a listagem (com joins)
  * @param {string} [opts.ordem]     ORDER BY padrão
  * @param {string[]} [opts.busca]   colunas usadas pelo parâmetro ?busca=
+ * @param {string} [opts.alias]    apelido da tabela dentro de listaSql (para o filtro ?ativo=)
  */
-export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [] }) {
+export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [], alias }) {
   const router = Router();
   const base = listaSql || `SELECT * FROM ${tabela}`;
+  // Consultas com join apelidam a tabela; o filtro precisa usar o mesmo apelido.
+  const prefixo = alias || apelidoDe(listaSql, tabela) || tabela;
 
   router.get(
     '/',
@@ -28,7 +31,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
         busca.forEach(() => params.push(`%${req.query.busca}%`));
       }
       if (req.query.ativo !== undefined && campos.includes('ativo')) {
-        where.push(`${tabela}.ativo = ?`);
+        where.push(`${prefixo}.ativo = ?`);
         params.push(req.query.ativo === 'false' || req.query.ativo === '0' ? 0 : 1);
       }
       const sql = `${base}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${ordem}`;
@@ -92,6 +95,13 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
   );
 
   return router;
+}
+
+/** Lê o apelido dado à tabela no FROM do SELECT customizado ("FROM produtos p" → "p"). */
+function apelidoDe(listaSql, tabela) {
+  if (!listaSql) return null;
+  const m = new RegExp(`FROM\\s+${tabela}\\s+(?:AS\\s+)?([a-z_][a-z0-9_]*)`, 'i').exec(listaSql);
+  return m && m[1].toLowerCase() !== 'where' ? m[1] : null;
 }
 
 /** better-sqlite3 recusa parâmetros nomeados que a query não usa — filtramos antes de vincular. */

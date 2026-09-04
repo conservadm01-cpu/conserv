@@ -3,8 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { decimal, moeda } from '../lib/formato';
-import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador } from '../components/ui';
-import type { ItemFicha, CustoProcesso, Produto, PosicaoEstoque } from '../tipos';
+import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta } from '../components/ui';
+import type { ItemFicha, Produto, PosicaoEstoque, CustoProduto, Etapa, Equipamento } from '../tipos';
 
 export default function ProdutoDetalhe() {
   const { id } = useParams();
@@ -12,24 +12,32 @@ export default function ProdutoDetalhe() {
   const [falha, setFalha] = useState('');
 
   const { dados: produto } = useApi<Produto>(`/produtos/${id}`);
-  const { dados: ficha, carregando, recarregar } = useApi<ItemFicha[]>(`/produtos/${id}/ficha-tecnica`);
-  const { dados: custos, recarregar: recarregarCustos } = useApi<CustoProcesso[]>(`/produtos/${id}/custos-processo`);
+  const { dados: ficha, carregando, recarregar: recarregarFicha } = useApi<ItemFicha[]>(`/produtos/${id}/ficha-tecnica`);
+  const { dados: custo, recarregar: recarregarCusto } = useApi<CustoProduto>(`/produtos/${id}/custo`);
   const { dados: materiais } = useApi<PosicaoEstoque[]>('/materiais/estoque/posicao');
+  const { dados: etapas } = useApi<Etapa[]>('/etapas');
+  const { dados: maquinas } = useApi<Equipamento[]>('/engenharia/equipamentos?ativo=true');
 
   const [materialId, setMaterialId] = useState<number | ''>('');
   const [consumo, setConsumo] = useState('');
   const [perda, setPerda] = useState('0');
-  const [valoresMO, setValoresMO] = useState<Record<number, string>>({});
-  const [salvandoMO, setSalvandoMO] = useState(false);
+  const [tempos, setTempos] = useState<Record<number, string>>({});
+  const [equipamentos, setEquipamentos] = useState<Record<number, string>>({});
+  const [salvandoProcesso, setSalvandoProcesso] = useState(false);
 
   useEffect(() => {
-    if (custos) setValoresMO(Object.fromEntries(custos.map((c) => [c.etapa_id, String(c.custo_por_peca)])));
-  }, [custos]);
+    if (!custo || !etapas) return;
+    const porEtapa = new Map(custo.detalhe_processo.map((p) => [p.etapa_id, p]));
+    setTempos(Object.fromEntries(etapas.map((e) => [e.id, String(porEtapa.get(e.id)?.tempo_por_peca_min ?? 0)])));
+    setEquipamentos(
+      Object.fromEntries(etapas.map((e) => [e.id, String(porEtapa.get(e.id)?.equipamento_id ?? '')]))
+    );
+  }, [custo, etapas]);
 
-  const custoMaterial = (ficha ?? []).reduce((s, f) => s + f.custo_por_peca, 0);
-  const custoMO = Object.values(valoresMO).reduce((s, v) => s + (Number(v) || 0), 0);
-  const custoTotal = custoMaterial + custoMO;
-  const preco = produto?.preco_padrao ?? 0;
+  const atualizar = () => {
+    recarregarFicha();
+    recarregarCusto();
+  };
 
   async function adicionarMaterial() {
     if (!materialId || !(Number(consumo) > 0)) return setFalha('Escolha o material e informe o consumo por peça.');
@@ -42,7 +50,7 @@ export default function ProdutoDetalhe() {
       });
       setMaterialId(''); setConsumo(''); setPerda('0');
       setMensagem('Material adicionado à ficha técnica.');
-      recarregar();
+      atualizar();
     } catch (e) {
       setFalha(e instanceof ApiError ? e.message : 'Não foi possível adicionar');
     }
@@ -51,55 +59,61 @@ export default function ProdutoDetalhe() {
   async function removerMaterial(material: ItemFicha) {
     if (!confirm(`Remover "${material.material}" da ficha técnica?`)) return;
     await api.delete(`/produtos/${id}/ficha-tecnica/${material.material_id}`);
-    recarregar();
+    atualizar();
   }
 
-  async function salvarCustosMO() {
-    setSalvandoMO(true);
+  async function salvarProcesso() {
+    setSalvandoProcesso(true);
     setFalha('');
     try {
       await api.put(
-        `/produtos/${id}/custos-processo`,
-        Object.entries(valoresMO).map(([etapaId, valor]) => ({
-          etapa_id: Number(etapaId),
-          custo_por_peca: Number(valor) || 0,
+        `/produtos/${id}/processo`,
+        (etapas ?? []).map((e, i) => ({
+          etapa_id: e.id,
+          sequencia: e.ordem || i + 1,
+          tempo_por_peca_min: Number(tempos[e.id]) || 0,
+          equipamento_id: equipamentos[e.id] ? Number(equipamentos[e.id]) : null,
         }))
       );
-      setMensagem('Custos de mão de obra salvos. Use “Recalcular” nas ordens abertas para aplicá-los.');
-      recarregarCustos();
+      setMensagem('Processo salvo. Use “Recalcular” nas ordens abertas para aplicar o novo tempo.');
+      recarregarCusto();
     } catch (e) {
-      setFalha(e instanceof ApiError ? e.message : 'Não foi possível salvar os custos');
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível salvar o processo');
     } finally {
-      setSalvandoMO(false);
+      setSalvandoProcesso(false);
     }
   }
 
   if (carregando) return <Carregando />;
+
+  const preco = produto?.preco_padrao ?? 0;
+  const minutos = Object.values(tempos).reduce((s, v) => s + (Number(v) || 0), 0);
 
   return (
     <>
       <header className="cabecalho">
         <div>
           <h1>{produto?.descricao ?? 'Produto'}</h1>
-          <p>
-            {produto?.grupo ?? 'sem grupo'} · linha {produto?.linha} · preço padrão {moeda(preco)}
-          </p>
+          <p>{produto?.grupo ?? 'sem grupo'} · linha {produto?.linha} · preço padrão {moeda(preco)}</p>
         </div>
         <div className="acoes"><Link className="botao" to="/produtos">Voltar</Link></div>
       </header>
 
       <Aviso tipo="erro">{falha}</Aviso>
       <Aviso tipo="ok">{mensagem}</Aviso>
+      {custo?.avisos.map((a, i) => <Aviso key={i} tipo="info">{a}</Aviso>)}
 
       <div className="grade c4">
-        <Indicador rotulo="Custo de material / peça" valor={moeda(custoMaterial)} nota={`${ficha?.length ?? 0} materiais`} />
-        <Indicador rotulo="Custo de MO / peça" valor={moeda(custoMO)} />
-        <Indicador rotulo="Custo total / peça" valor={moeda(custoTotal)} />
+        <Indicador rotulo="Material / peça" valor={moeda(custo?.material ?? 0)} nota={`${ficha?.length ?? 0} materiais`} />
+        <Indicador rotulo="Mão de obra / peça" valor={moeda(custo?.mao_de_obra ?? 0)}
+          nota={`${decimal(custo?.minutos_por_peca ?? 0)} min de fábrica`} />
+        <Indicador rotulo="Custo indireto / peça" valor={moeda(custo?.indireto ?? 0)}
+          nota={`${moeda(custo?.detalhe_indireto.por_hora ?? 0)}/h de fábrica`} />
         <Indicador
-          rotulo="Margem por peça"
-          valor={moeda(preco - custoTotal)}
-          tom={preco - custoTotal >= 0 ? 'sucesso' : 'perigo'}
-          nota={preco > 0 ? `${(((preco - custoTotal) / preco) * 100).toFixed(1)}% do preço` : 'sem preço padrão'}
+          rotulo="Custo total / peça"
+          valor={moeda(custo?.total ?? 0)}
+          nota={`margem ${moeda(custo?.margem ?? 0)} (${decimal(custo?.margem_percentual ?? 0)}%)`}
+          tom={(custo?.margem ?? 0) >= 0 ? 'sucesso' : 'perigo'}
         />
       </div>
 
@@ -150,38 +164,64 @@ export default function ProdutoDetalhe() {
         </Cartao>
 
         <Cartao
-          titulo="Custo de mão de obra por etapa"
+          titulo="Processo produtivo"
           acao={
-            <button className="primario pequeno" onClick={salvarCustosMO} disabled={salvandoMO}>
-              {salvandoMO ? 'Salvando…' : 'Salvar custos'}
+            <button className="primario pequeno" onClick={salvarProcesso} disabled={salvandoProcesso}>
+              {salvandoProcesso ? 'Salvando…' : 'Salvar processo'}
             </button>
           }
         >
-          <table>
-            <thead>
-              <tr><th>Etapa</th><th style={{ width: 150 }}>Custo por peça (R$)</th></tr>
-            </thead>
-            <tbody>
-              {custos?.map((c) => (
-                <tr key={c.etapa_id}>
-                  <td>{c.nome}</td>
-                  <td>
-                    <input
-                      type="number" min="0" step="any"
-                      value={valoresMO[c.etapa_id] ?? ''}
-                      onChange={(e) => setValoresMO((v) => ({ ...v, [c.etapa_id]: e.target.value }))}
-                    />
-                  </td>
+          <p style={{ marginTop: 0, color: 'var(--texto-fraco)', fontSize: 12.5 }}>
+            O tempo de cada operação, em minutos por peça. O custo vem do setor dono da etapa —
+            deixe zero para tirar a operação do roteiro.
+          </p>
+          <div className="tabela-rolagem">
+            <table>
+              <thead>
+                <tr>
+                  <th>Etapa</th><th>Setor</th>
+                  <th style={{ width: 92 }}>Min/pç</th>
+                  <th style={{ minWidth: 130 }}>Equipamento</th>
+                  <th className="num">Custo/pç</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td><strong>Total por peça</strong></td>
-                <td className="num"><strong>{moeda(custoMO)}</strong></td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                {etapas?.map((e) => {
+                  const linha = custo?.detalhe_processo.find((p) => p.etapa_id === e.id);
+                  const tempo = Number(tempos[e.id]) || 0;
+                  const custoMinuto = linha?.custo_minuto ?? 0;
+                  return (
+                    <tr key={e.id}>
+                      <td>{e.nome}</td>
+                      <td>{linha?.departamento ?? '—'}</td>
+                      <td>
+                        <input type="number" min="0" step="any" value={tempos[e.id] ?? ''}
+                          onChange={(ev) => setTempos((t) => ({ ...t, [e.id]: ev.target.value }))} />
+                      </td>
+                      <td>
+                        <select value={equipamentos[e.id] ?? ''}
+                          onChange={(ev) => setEquipamentos((q) => ({ ...q, [e.id]: ev.target.value }))}>
+                          <option value="">—</option>
+                          {maquinas?.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                        </select>
+                      </td>
+                      <td className="num">
+                        {custoMinuto > 0 ? moeda(tempo * custoMinuto) : <Etiqueta texto="setor sem folha" tom="amarela" />}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}><strong>Total por peça</strong></td>
+                  <td><strong>{decimal(minutos)}</strong></td>
+                  <td />
+                  <td className="num"><strong>{moeda(custo?.mao_de_obra ?? 0)}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </Cartao>
       </div>
     </>
