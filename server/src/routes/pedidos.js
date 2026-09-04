@@ -5,8 +5,10 @@ import { asyncHandler, notFound, badRequest } from '../lib/errors.js';
 import { round2 } from '../lib/numbers.js';
 import { semanaISO } from '../lib/dates.js';
 import { abrirOrdem } from '../services/producao.js';
+import { exigir } from '../middleware/auth.js';
 
 export const router = Router();
+const podeEditar = exigir('pedidos.editar');
 
 const itemSchema = z.object({
   id: z.number().int().optional(),
@@ -166,6 +168,7 @@ router.get(
 
 router.post(
   '/',
+  podeEditar,
   asyncHandler((req, res) => {
     const dados = pedidoSchema.parse(req.body);
     const db = getDb();
@@ -203,6 +206,7 @@ router.post(
 
 router.put(
   '/:id',
+  podeEditar,
   asyncHandler((req, res) => {
     const db = getDb();
     const pedido = db.prepare(`SELECT * FROM pedidos WHERE id = ?`).get(req.params.id);
@@ -251,6 +255,7 @@ router.put(
 
 router.delete(
   '/:id',
+  podeEditar,
   asyncHandler((req, res) => {
     const db = getDb();
     const emProducao = db

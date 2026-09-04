@@ -10,6 +10,7 @@ const opcional = z.string().trim().nullish();
  */
 export const router = crudRouter({
   tabela: 'colaboradores',
+  escrita: 'pessoas.editar',
   campos: [
     'nome', 'cpf', 'cargo', 'departamento_id', 'data_admissao', 'salario',
     'vale_transporte', 'produtivo', 'telefone', 'email', 'status', 'observacao', 'ativo',

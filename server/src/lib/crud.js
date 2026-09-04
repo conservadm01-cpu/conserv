@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/index.js';
 import { asyncHandler, notFound, badRequest } from './errors.js';
+import { exigir } from '../middleware/auth.js';
 
 /**
  * Monta um CRUD REST padrão sobre uma tabela.
@@ -13,9 +14,13 @@ import { asyncHandler, notFound, badRequest } from './errors.js';
  * @param {string} [opts.ordem]     ORDER BY padrão
  * @param {string[]} [opts.busca]   colunas usadas pelo parâmetro ?busca=
  * @param {string} [opts.alias]    apelido da tabela dentro de listaSql (para o filtro ?ativo=)
+ * @param {string} [opts.escrita]  área exigida para criar, editar e remover
  */
-export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [], alias }) {
+export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC', busca = [], alias, escrita }) {
   const router = Router();
+  // Ler é uma permissão; alterar é outra. O guarda de escrita fica só nos verbos
+  // que gravam, para que quem só consulta não seja barrado na listagem.
+  const guardaEscrita = escrita ? exigir(escrita) : (_req, _res, next) => next();
   const base = listaSql || `SELECT * FROM ${tabela}`;
   // Consultas com join apelidam a tabela; o filtro precisa usar o mesmo apelido.
   const prefixo = alias || apelidoDe(listaSql, tabela) || tabela;
@@ -50,6 +55,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
 
   router.post(
     '/',
+    guardaEscrita,
     asyncHandler((req, res) => {
       const dados = schema.parse(req.body);
       const cols = campos.filter((c) => dados[c] !== undefined);
@@ -65,6 +71,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
 
   router.put(
     '/:id',
+    guardaEscrita,
     asyncHandler((req, res) => {
       const db = getDb();
       const atual = db.prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(req.params.id);
@@ -80,6 +87,7 @@ export function crudRouter({ tabela, campos, schema, listaSql, ordem = 'id DESC'
 
   router.delete(
     '/:id',
+    guardaEscrita,
     asyncHandler((req, res) => {
       const db = getDb();
       const atual = db.prepare(`SELECT * FROM ${tabela} WHERE id = ?`).get(req.params.id);

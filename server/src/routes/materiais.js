@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler } from '../lib/errors.js';
+import { exigir } from '../middleware/auth.js';
 import { registrarMovimento, necessidadeMateriais } from '../services/estoque.js';
 
 export const router = crudRouter({
   tabela: 'materiais',
+  escrita: 'materiais.editar',
   campos: ['codigo', 'descricao', 'tipo', 'unidade', 'custo_unitario', 'estoque_min',
            'localizacao', 'fornecedor_id', 'grupo_id', 'local_padrao_id', 'ativo'],
   schema: z.object({
@@ -77,6 +79,7 @@ const movimentoSchema = z.object({
 
 router.post(
   '/estoque/movimentos',
+  exigir('materiais.mover'),
   asyncHandler((req, res) => {
     const dados = movimentoSchema.parse(req.body);
     res.status(201).json(registrarMovimento({ ...dados, usuario_id: req.usuario?.sub }));

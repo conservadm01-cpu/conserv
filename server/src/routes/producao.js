@@ -11,8 +11,10 @@ import {
   recalcularCustosMO,
 } from '../services/producao.js';
 import { baixarMateriaisDaOrdem } from '../services/estoque.js';
+import { exigir } from '../middleware/auth.js';
 
 export const router = Router();
+const podeOrdens = exigir('producao.ordens');
 
 /** Lista de ordens de produção com o andamento do roteiro. */
 router.get(
@@ -99,6 +101,7 @@ router.get(
 
 router.post(
   '/',
+  podeOrdens,
   asyncHandler((req, res) => {
     const dados = z
       .object({
@@ -118,6 +121,7 @@ router.post(
 
 router.put(
   '/:id/etapas/:etapaId',
+  exigir('producao.apontar', 'producao.ordens'),
   asyncHandler((req, res) => {
     const dados = z
       .object({
@@ -139,6 +143,7 @@ router.put(
  */
 router.post(
   '/:id/recalcular',
+  podeOrdens,
   asyncHandler((req, res) => {
     const id = Number(req.params.id);
     explodirFichaTecnica(id);
@@ -150,6 +155,7 @@ router.post(
 /** Baixa do estoque o material previsto (total ou parcial). */
 router.post(
   '/:id/baixar-materiais',
+  exigir('materiais.mover'),
   asyncHandler((req, res) => {
     const dados = z
       .object({
@@ -168,6 +174,7 @@ router.post(
 
 router.put(
   '/:id',
+  podeOrdens,
   asyncHandler((req, res) => {
     const dados = z
       .object({

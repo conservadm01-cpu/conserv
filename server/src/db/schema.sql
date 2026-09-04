@@ -473,3 +473,122 @@ CREATE TABLE IF NOT EXISTS logs (
   criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_logs_data ON logs(criado_em);
+
+-- ============================================================
+-- FINANCEIRO — contas a pagar e a receber
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS contas_bancarias (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome           TEXT    NOT NULL UNIQUE,
+  tipo           TEXT    NOT NULL DEFAULT 'BANCO' CHECK (tipo IN ('CAIXA','BANCO','APLICACAO')),
+  banco          TEXT,
+  agencia        TEXT,
+  conta          TEXT,
+  saldo_inicial  REAL    NOT NULL DEFAULT 0,
+  ativo          INTEGER NOT NULL DEFAULT 1
+);
+
+-- Plano de contas enxuto: uma categoria por natureza de receita ou despesa.
+CREATE TABLE IF NOT EXISTS categorias_financeiras (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome    TEXT    NOT NULL UNIQUE,
+  tipo    TEXT    NOT NULL CHECK (tipo IN ('RECEBER','PAGAR')),
+  grupo   TEXT,
+  ativo   INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS titulos (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo           TEXT    NOT NULL CHECK (tipo IN ('RECEBER','PAGAR')),
+  descricao      TEXT    NOT NULL,
+  categoria_id   INTEGER REFERENCES categorias_financeiras(id) ON DELETE SET NULL,
+  cliente_id     INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+  fornecedor_id  INTEGER REFERENCES fornecedores(id) ON DELETE SET NULL,
+  pedido_id      INTEGER REFERENCES pedidos(id) ON DELETE SET NULL,
+  documento      TEXT,
+  parcela        INTEGER NOT NULL DEFAULT 1,
+  parcelas       INTEGER NOT NULL DEFAULT 1,
+  valor          REAL    NOT NULL CHECK (valor > 0),
+  emissao        TEXT    NOT NULL DEFAULT (date('now')),
+  vencimento     TEXT    NOT NULL,
+  status         TEXT    NOT NULL DEFAULT 'ABERTO'
+                 CHECK (status IN ('ABERTO','PARCIAL','QUITADO','CANCELADO')),
+  observacao     TEXT,
+  usuario_id     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_titulos_tipo ON titulos(tipo, status);
+CREATE INDEX IF NOT EXISTS idx_titulos_venc ON titulos(vencimento);
+CREATE INDEX IF NOT EXISTS idx_titulos_cliente ON titulos(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_titulos_fornecedor ON titulos(fornecedor_id);
+
+-- Cada pagamento ou recebimento, inclusive parcial. O status do título é derivado daqui.
+CREATE TABLE IF NOT EXISTS baixas (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  titulo_id     INTEGER NOT NULL REFERENCES titulos(id) ON DELETE CASCADE,
+  data          TEXT    NOT NULL DEFAULT (date('now')),
+  valor         REAL    NOT NULL CHECK (valor > 0),
+  juros         REAL    NOT NULL DEFAULT 0,
+  desconto      REAL    NOT NULL DEFAULT 0,
+  forma         TEXT    NOT NULL DEFAULT 'PIX'
+                CHECK (forma IN ('DINHEIRO','PIX','BOLETO','TRANSFERENCIA','CARTAO','CHEQUE','OUTRO')),
+  conta_id      INTEGER REFERENCES contas_bancarias(id) ON DELETE SET NULL,
+  observacao    TEXT,
+  usuario_id    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_baixas_titulo ON baixas(titulo_id);
+CREATE INDEX IF NOT EXISTS idx_baixas_data ON baixas(data);
+
+-- ============================================================
+-- ENGENHARIA — aferição de tempo das operações
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS afericoes (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id     INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  etapa_id       INTEGER NOT NULL REFERENCES etapas(id) ON DELETE CASCADE,
+  colaborador_id INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+  equipamento_id INTEGER REFERENCES equipamentos(id) ON DELETE SET NULL,
+  data           TEXT    NOT NULL DEFAULT (date('now')),
+  pecas          REAL    NOT NULL CHECK (pecas > 0),
+  minutos        REAL    NOT NULL CHECK (minutos > 0),
+  observacao     TEXT,
+  usuario_id     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_afer_produto ON afericoes(produto_id, etapa_id);
+
+-- ============================================================
+-- VIEWS DO FINANCEIRO
+-- ============================================================
+
+DROP VIEW IF EXISTS vw_titulos;
+CREATE VIEW vw_titulos AS
+SELECT
+  t.*,
+  COALESCE(b.pago, 0)                                  AS pago,
+  ROUND(t.valor - COALESCE(b.pago, 0), 2)              AS saldo,
+  b.ultima_baixa,
+  COALESCE(c.nome, f.nome)                             AS parte,
+  c.nome                                               AS cliente,
+  f.nome                                               AS fornecedor,
+  cf.nome                                              AS categoria,
+  p.numero                                             AS pedido_numero,
+  CASE
+    WHEN t.status IN ('QUITADO','CANCELADO') THEN 0
+    WHEN t.vencimento < date('now') THEN CAST(julianday('now') - julianday(t.vencimento) AS INTEGER)
+    ELSE 0
+  END                                                  AS dias_atraso
+FROM titulos t
+LEFT JOIN (
+  SELECT titulo_id,
+         SUM(valor + juros - desconto) AS pago,
+         MAX(data) AS ultima_baixa
+  FROM baixas GROUP BY titulo_id
+) b ON b.titulo_id = t.id
+LEFT JOIN clientes c ON c.id = t.cliente_id
+LEFT JOIN fornecedores f ON f.id = t.fornecedor_id
+LEFT JOIN categorias_financeiras cf ON cf.id = t.categoria_id
+LEFT JOIN pedidos p ON p.id = t.pedido_id;

@@ -38,6 +38,28 @@ export function aplicarMigracoes(db) {
   // Usuário do sistema ligado à pessoa do RH, com permissões próprias.
   alterar('usuarios', 'colaborador_id', 'INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL');
   alterar('usuarios', 'permissoes', 'TEXT');
+  alterar('usuarios', 'nivel_acesso', "TEXT NOT NULL DEFAULT 'consulta'");
+
+  // Cadastros completos: endereço, dados fiscais e condição de pagamento.
+  for (const [coluna, tipo] of [
+    ['inscricao_estadual', 'TEXT'], ['cep', 'TEXT'], ['endereco', 'TEXT'], ['numero', 'TEXT'],
+    ['complemento', 'TEXT'], ['bairro', 'TEXT'],
+    ['prazo_pagamento_dias', 'INTEGER NOT NULL DEFAULT 0'],
+    ['limite_credito', 'REAL NOT NULL DEFAULT 0'],
+    ['condicao_pagamento', 'TEXT'],
+  ]) alterar('clientes', coluna, tipo);
+
+  for (const [coluna, tipo] of [
+    ['inscricao_estadual', 'TEXT'], ['cep', 'TEXT'], ['endereco', 'TEXT'], ['numero', 'TEXT'],
+    ['bairro', 'TEXT'], ['cidade', 'TEXT'], ['uf', 'TEXT'],
+    ['condicao_pagamento', 'TEXT'], ['observacao', 'TEXT'],
+  ]) alterar('fornecedores', coluna, tipo);
+
+  for (const [coluna, tipo] of [
+    ['rg', 'TEXT'], ['data_nascimento', 'TEXT'], ['cep', 'TEXT'], ['endereco', 'TEXT'],
+    ['numero', 'TEXT'], ['bairro', 'TEXT'], ['cidade', 'TEXT'], ['uf', 'TEXT'],
+    ['pix', 'TEXT'], ['contato_emergencia', 'TEXT'], ['data_demissao', 'TEXT'],
+  ]) alterar('colaboradores', coluna, tipo);
 
   return feitas;
 }

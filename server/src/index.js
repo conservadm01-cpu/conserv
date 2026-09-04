@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { migrate } from './db/index.js';
-import { autenticar } from './middleware/auth.js';
+import { autenticar, exigir } from './middleware/auth.js';
 import { naoEncontrado, tratarErros } from './middleware/erros.js';
 import { router as authRouter, usuarios as usuariosRouter } from './routes/auth.js';
 import { router as cadastrosRouter } from './routes/cadastros.js';
@@ -17,6 +17,7 @@ import { router as engenhariaRouter } from './routes/engenharia.js';
 import { router as pessoasRouter } from './routes/pessoas.js';
 import { router as apontamentosRouter, ocorrencias as ocorrenciasRouter } from './routes/apontamentos.js';
 import { router as canalRouter, publico as canalPublicoRouter } from './routes/canal.js';
+import { router as financeiroRouter } from './routes/financeiro.js';
 
 export function criarApp() {
   migrate();
@@ -31,19 +32,21 @@ export function criarApp() {
   // Conversa aberta: quem registra uma sugestão ou um risco não precisa ter login.
   app.use('/api/canal', canalPublicoRouter);
 
-  // Todo o resto exige sessão.
+  // Todo o resto exige sessão, e cada área exige a sua permissão.
   app.use('/api', autenticar);
+
+  app.use('/api/materiais', exigir('materiais.ver'), materiaisRouter);
+  app.use('/api/pedidos', exigir('pedidos.ver'), pedidosRouter);
+  app.use('/api/ordens', exigir('producao.ver'), producaoRouter);
+  app.use('/api/engenharia', exigir('engenharia.ver'), engenhariaRouter);
+  app.use('/api/colaboradores', exigir('pessoas.ver'), pessoasRouter);
+  app.use('/api/apontamentos', exigir('producao.ver'), apontamentosRouter);
+  app.use('/api/ocorrencias', exigir('producao.ver'), ocorrenciasRouter);
+  app.use('/api/canal', exigir('canal.tratar'), canalRouter);
+  app.use('/api/importacao', exigir('importacao'), importacaoRouter);
+  app.use('/api/financeiro', exigir('financeiro.ver'), financeiroRouter);
+  app.use('/api/indicadores', exigir('producao.ver', 'pedidos.ver', 'financeiro.ver'), indicadoresRouter);
   app.use('/api', cadastrosRouter);
-  app.use('/api/materiais', materiaisRouter);
-  app.use('/api/pedidos', pedidosRouter);
-  app.use('/api/ordens', producaoRouter);
-  app.use('/api/indicadores', indicadoresRouter);
-  app.use('/api/importacao', importacaoRouter);
-  app.use('/api/engenharia', engenhariaRouter);
-  app.use('/api/colaboradores', pessoasRouter);
-  app.use('/api/apontamentos', apontamentosRouter);
-  app.use('/api/ocorrencias', ocorrenciasRouter);
-  app.use('/api/canal', canalRouter);
 
   app.use('/api', naoEncontrado);
 

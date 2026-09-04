@@ -10,6 +10,7 @@
     "db:init": "npm run -w server db:init",
     "db:seed": "npm run -w server db:seed",
     "db:seed-fabrica": "npm run -w server db:seed-fabrica",
+    "db:seed-financeiro": "npm run -w server db:seed-financeiro",
     "import": "npm run -w server import --",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run -w server dev",

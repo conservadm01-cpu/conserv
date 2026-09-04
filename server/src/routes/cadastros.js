@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { crudRouter } from '../lib/crud.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
 import { processoDoProduto, custoCompletoProduto } from '../services/custeio.js';
+import { exigir } from '../middleware/auth.js';
 
 const texto = z.string().trim().min(1);
 const opcional = z.string().trim().nullish();
@@ -12,7 +13,9 @@ export const router = Router();
 
 router.use(
   '/vendedores',
+  exigir('cadastros.ver'),
   crudRouter({
+    escrita: 'cadastros.editar',
     tabela: 'vendedores',
     campos: ['nome', 'email', 'telefone', 'ativo'],
     schema: z.object({ nome: texto, email: opcional, telefone: opcional, ativo: z.number().int().optional() }),
@@ -23,7 +26,9 @@ router.use(
 
 router.use(
   '/categorias-cliente',
+  exigir('cadastros.ver'),
   crudRouter({
+    escrita: 'cadastros.editar',
     tabela: 'categorias_cliente',
     campos: ['nome'],
     schema: z.object({ nome: texto }),
@@ -34,7 +39,9 @@ router.use(
 
 router.use(
   '/grupos-produto',
+  exigir('cadastros.ver'),
   crudRouter({
+    escrita: 'produtos.editar',
     tabela: 'grupos_produto',
     campos: ['nome'],
     schema: z.object({ nome: texto }),
@@ -45,7 +52,9 @@ router.use(
 
 router.use(
   '/fornecedores',
+  exigir('cadastros.ver'),
   crudRouter({
+    escrita: 'cadastros.editar',
     tabela: 'fornecedores',
     campos: ['nome', 'cnpj', 'contato', 'email', 'telefone', 'prazo_entrega_dias', 'ativo'],
     schema: z.object({
@@ -64,7 +73,9 @@ router.use(
 
 router.use(
   '/clientes',
+  exigir('cadastros.ver'),
   crudRouter({
+    escrita: 'cadastros.editar',
     tabela: 'clientes',
     campos: ['nome', 'categoria_id', 'cnpj', 'contato', 'email', 'telefone', 'cidade', 'uf', 'observacao', 'ativo'],
     schema: z.object({
@@ -88,7 +99,9 @@ router.use(
 
 router.use(
   '/grupos-material',
+  exigir('materiais.ver'),
   crudRouter({
+    escrita: 'materiais.editar',
     tabela: 'grupos_material',
     campos: ['nome', 'pai_id'],
     schema: z.object({ nome: texto, pai_id: z.number().int().nullish() }),
@@ -101,7 +114,9 @@ router.use(
 
 router.use(
   '/locais-estoque',
+  exigir('materiais.ver'),
   crudRouter({
+    escrita: 'materiais.editar',
     tabela: 'locais_estoque',
     campos: ['nome', 'tipo', 'ativo'],
     schema: z.object({
@@ -116,7 +131,9 @@ router.use(
 
 router.use(
   '/etapas',
+  exigir('engenharia.ver'),
   crudRouter({
+    escrita: 'engenharia.editar',
     tabela: 'etapas',
     campos: ['codigo', 'nome', 'ordem', 'consome_material', 'departamento_id', 'equipamento_id', 'tempo_por_peca_min', 'ativo'],
     schema: z.object({
@@ -181,6 +198,7 @@ produtoRouter.get(
 
 produtoRouter.post(
   '/:id/ficha-tecnica',
+  exigir('produtos.processo'),
   asyncHandler((req, res) => {
     const dados = fichaSchema.parse(req.body);
     getDb()
@@ -199,6 +217,7 @@ produtoRouter.post(
 
 produtoRouter.delete(
   '/:id/ficha-tecnica/:materialId',
+  exigir('produtos.processo'),
   asyncHandler((req, res) => {
     const info = getDb()
       .prepare(`DELETE FROM ficha_tecnica WHERE produto_id = ? AND material_id = ?`)
@@ -227,6 +246,7 @@ produtoRouter.get(
 
 produtoRouter.put(
   '/:id/custos-processo',
+  exigir('produtos.processo'),
   asyncHandler((req, res) => {
     const dados = z
       .array(z.object({ etapa_id: z.number().int(), custo_por_peca: z.number().min(0) }))
@@ -252,6 +272,7 @@ produtoRouter.get(
 
 produtoRouter.put(
   '/:id/processo',
+  exigir('produtos.processo'),
   asyncHandler((req, res) => {
     const linhas = z
       .array(
@@ -304,7 +325,8 @@ produtoRouter.put(
 /** A conta fechada da peça: material + mão de obra + indireto. */
 produtoRouter.get(
   '/:id/custo',
+  exigir('produtos.custo'),
   asyncHandler((req, res) => res.json(custoCompletoProduto(Number(req.params.id))))
 );
 
-router.use('/produtos', produtoRouter);
+router.use('/produtos', exigir('cadastros.ver'), produtoRouter);

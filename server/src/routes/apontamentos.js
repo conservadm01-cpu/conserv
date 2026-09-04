@@ -7,7 +7,10 @@ import {
   registrarApontamento, excluirApontamento, produtividade, eficienciaPorSetor,
 } from '../services/apontamento.js';
 
+import { exigir } from '../middleware/auth.js';
+
 export const router = Router();
+const podeApontar = exigir('producao.apontar');
 
 const apontamentoSchema = z.object({
   ordem_id: z.number().int(),
@@ -23,6 +26,7 @@ const apontamentoSchema = z.object({
 
 router.post(
   '/',
+  podeApontar,
   asyncHandler((req, res) => {
     const dados = apontamentoSchema.parse(req.body);
     res.status(201).json(registrarApontamento({ ...dados, usuario_id: req.usuario?.sub }));
@@ -73,11 +77,12 @@ router.get(
   asyncHandler((req, res) => res.json(eficienciaPorSetor({ de: req.query.de, ate: req.query.ate })))
 );
 
-router.delete('/:id', asyncHandler((req, res) => res.json(excluirApontamento(Number(req.params.id)))));
+router.delete('/:id', podeApontar, asyncHandler((req, res) => res.json(excluirApontamento(Number(req.params.id)))));
 
 /** Ocorrências: o que parou a produção e como foi resolvido. */
 export const ocorrencias = crudRouter({
   tabela: 'ocorrencias',
+  escrita: 'producao.apontar',
   campos: ['data', 'departamento_id', 'ordem_id', 'equipamento_id', 'motivo', 'minutos_parado', 'descricao', 'acao', 'resolvida'],
   schema: z.object({
     data: z.string().trim().optional(),
