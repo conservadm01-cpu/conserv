@@ -69,7 +69,7 @@ router.use(
     ordem: 'nome',
     busca: ['nome', 'cnpj', 'contato', 'cidade'],
     ordenaveis: ['nome', 'cidade', 'prazo_entrega_dias'],
-    filtros: { uf: { tipo: 'igual', coluna: 'uf' } },
+    filtros: { uf: { tipo: 'igual', coluna: 'uf' }, cidade: { tipo: 'igual', coluna: 'cidade' } },
   })
 );
 
@@ -179,6 +179,14 @@ const produtoRouter = crudRouter({
              FROM produtos p LEFT JOIN grupos_produto g ON g.id = p.grupo_id`,
   ordem: 'p.descricao',
   busca: ['p.descricao', 'p.codigo'],
+  ordenaveis: ['p.descricao', 'p.preco_padrao', 'p.codigo'],
+  filtros: {
+    grupo_id: { tipo: 'igual', coluna: 'p.grupo_id', numero: true },
+    linha: { tipo: 'igual', coluna: 'p.linha' },
+    preco_min: { tipo: 'min', coluna: 'p.preco_padrao' },
+    preco_max: { tipo: 'max', coluna: 'p.preco_padrao' },
+    sem_ficha: { tipo: 'booleano', quandoVerdadeiro: '(SELECT COUNT(*) FROM ficha_tecnica f WHERE f.produto_id = p.id) = 0' },
+  },
 });
 
 const fichaSchema = z.object({

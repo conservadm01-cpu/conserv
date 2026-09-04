@@ -225,6 +225,13 @@ export function atualizarPedidoCompra(id, dados, db = getDb()) {
         .run({ ...Object.fromEntries(campos.map((c) => [c, dados[c] ?? null])), id });
     }
     if (dados.itens) gravarItensCompra(id, dados.itens, db);
+
+    // Com entrega lançada, o status vem do que entrou — editar o cabeçalho não
+    // pode devolver o pedido a "Enviado". Cancelar continua sendo decisão de quem edita.
+    const recebeu = db
+      .prepare(`SELECT COALESCE(SUM(recebido), 0) AS r FROM pedido_compra_itens WHERE pedido_compra_id = ?`)
+      .get(id).r;
+    if (recebeu > 0 && dados.status !== 'CANCELADO') atualizarStatusCompra(id, db);
   })();
 
   return buscarPedidoCompra(id, db);

@@ -430,3 +430,65 @@ export type DesempenhoOrcamentos = {
   por_vendedor: Array<{ vendedor: string; orcamentos: number; aprovados: number; valor_aprovado: number; valor_total: number }>;
   taxa_indireta: number;
 };
+
+/* ------------------------------------------------------------------ compras */
+
+export type Requisicao = {
+  id: number; material_id: number; material: string; codigo: string | null; unidade: string;
+  custo_unitario: number; fornecedor: string | null; fornecedor_id: number | null;
+  quantidade: number; atendida: number; pendente: number; saldo: number; valor?: number;
+  urgencia: 'BAIXA' | 'NORMAL' | 'ALTA' | 'URGENTE';
+  origem: 'MANUAL' | 'MRP' | 'ESTOQUE_MINIMO';
+  status: 'ABERTA' | 'PARCIAL' | 'ATENDIDA' | 'CANCELADA';
+  necessidade_em: string | null; ordem_id: number | null; justificativa: string | null;
+  criado_em: string;
+};
+
+export type LinhaCompra = {
+  id: number; pedido_compra_id: number; material_id: number; material: string;
+  codigo: string | null; unidade: string; requisicao_id: number | null;
+  quantidade: number; recebido: number; pendente: number;
+  preco_unitario: number; total: number; saldo: number; observacao: string | null;
+};
+
+export type RecebimentoResumo = {
+  id: number; pedido_compra_id: number; data: string; nota_fiscal: string | null;
+  local: string | null; local_id: number | null; titulo_id: number | null;
+  usuario: string | null; observacao: string | null; itens: number; valor: number | null;
+};
+
+export type PedidoCompra = {
+  id: number; numero: string; fornecedor_id: number; fornecedor: string;
+  data: string; previsao_entrega: string | null; condicao_pagamento: string | null;
+  prazo_pagamento_dias: number; frete: number; desconto: number;
+  status: 'RASCUNHO' | 'ENVIADO' | 'CONFIRMADO' | 'PARCIAL' | 'RECEBIDO' | 'CANCELADO';
+  observacao: string | null; itens: number;
+  valor_bruto: number; valor_total: number; quantidade_pendente: number; dias_atraso: number;
+  linhas?: LinhaCompra[]; recebimentos?: RecebimentoResumo[];
+};
+
+export type ResumoCompras = {
+  requisicoes_abertas: number; valor_requisitado: number; requisicoes_urgentes: number;
+  pedidos_abertos: number; valor_em_pedido: number; pedidos_atrasados: number;
+  por_fornecedor: Array<{ fornecedor: string; pedidos: number; valor: number; atrasados: number }>;
+  entregas_previstas: PedidoCompra[];
+};
+
+export type LinhaInventario = {
+  id: number; inventario_id: number; material_id: number; material: string;
+  codigo: string | null; unidade: string; custo_unitario: number;
+  saldo_sistema: number; contado: number | null;
+  diferenca: number | null; valor_diferenca: number | null;
+  movimento_id: number | null; observacao: string | null;
+};
+
+export type Inventario = {
+  id: number; descricao: string; data: string; local_id: number | null; local: string | null;
+  status: 'ABERTO' | 'FECHADO' | 'CANCELADO'; observacao: string | null;
+  usuario: string | null; fechado_em: string | null;
+  materiais?: number; contados?: number; pendentes?: number;
+  divergencias?: number; valor_divergencia?: number;
+  linhas?: LinhaInventario[];
+};
+
+export type LocalEstoque = Simples & { tipo: string | null; observacao: string | null; ativo: number };

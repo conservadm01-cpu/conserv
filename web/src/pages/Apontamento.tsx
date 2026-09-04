@@ -5,12 +5,13 @@ import { useApi } from '../lib/hooks';
 import { data, decimal, moeda, numero, hoje } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Etiqueta } from '../components/ui';
 import TabelaCrud from '../components/TabelaCrud';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import type {
   Apontamento as TApontamento, Produtividade, Eficiencia, Ocorrencia,
   OrdemLista, Etapa, Colaborador, Equipamento, Departamento,
 } from '../tipos';
 
-const ABAS = ['Apontar', 'Produtividade', 'Eficiência por setor', 'Ocorrências'] as const;
+const ABAS = ['Apontar', 'Histórico', 'Produtividade', 'Eficiência por setor', 'Ocorrências'] as const;
 
 export default function Apontamento() {
   const [aba, setAba] = useState<(typeof ABAS)[number]>('Apontar');
@@ -24,7 +25,7 @@ export default function Apontamento() {
           <h1>Apontamento de produção</h1>
           <p>O que cada pessoa produziu, em quanto tempo e o que parou a fábrica</p>
         </div>
-        {aba !== 'Apontar' && (
+        {aba !== 'Apontar' && aba !== 'Histórico' && (
           <div className="acoes">
             <div><label>De</label><input type="date" value={de} onChange={(e) => setDe(e.target.value)} /></div>
             <div><label>Até</label><input type="date" value={ate} onChange={(e) => setAte(e.target.value)} max={hoje()} /></div>
@@ -39,6 +40,7 @@ export default function Apontamento() {
       </div>
 
       {aba === 'Apontar' && <Apontar />}
+      {aba === 'Histórico' && <Historico />}
       {aba === 'Produtividade' && <TabelaProdutividade de={de} ate={ate} />}
       {aba === 'Eficiência por setor' && <TabelaEficiencia de={de} ate={ate} />}
       {aba === 'Ocorrências' && <Ocorrencias />}
@@ -199,6 +201,91 @@ function Apontar() {
         )}
       </Cartao>
     </div>
+  );
+}
+
+/** Todo o histórico apontado, com os filtros que o chão de fábrica costuma pedir. */
+function Historico() {
+  const [falha, setFalha] = useState('');
+  const { dados: ordens } = useApi<OrdemLista[]>('/ordens?limite=300');
+  const { dados: etapas } = useApi<Etapa[]>('/etapas');
+  const { dados: pessoas } = useApi<Colaborador[]>('/colaboradores?ativo=true');
+  const { dados: maquinas } = useApi<Equipamento[]>('/engenharia/equipamentos?ativo=true');
+
+  const filtros = useFiltros('/apontamentos', { limite: '400' });
+  const { dados, carregando, erro, recarregar } = useApi<TApontamento[]>(filtros.caminho, [filtros.caminho]);
+
+  const lista = dados ?? [];
+  const pecas = lista.reduce((s, a) => s + a.quantidade, 0);
+  const minutos = lista.reduce((s, a) => s + a.minutos, 0);
+  const custo = lista.reduce((s, a) => s + a.custo_mo, 0);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'OP, cliente, produto ou pessoa', tipo: 'busca' },
+    { chave: 'ordem_id', rotulo: 'Ordem', tipo: 'select',
+      opcoes: (ordens ?? []).map((o) => ({ valor: o.id, rotulo: `${o.numero} · ${o.produto.slice(0, 22)}` })) },
+    { chave: 'etapa_id', rotulo: 'Etapa', tipo: 'select',
+      opcoes: (etapas ?? []).map((e) => ({ valor: e.id, rotulo: e.nome })) },
+    { chave: 'colaborador_id', rotulo: 'Quem produziu', tipo: 'select',
+      opcoes: (pessoas ?? []).map((p) => ({ valor: p.id, rotulo: p.nome })) },
+    { chave: 'equipamento_id', rotulo: 'Equipamento', tipo: 'select',
+      opcoes: (maquinas ?? []).map((m) => ({ valor: m.id, rotulo: m.nome })) },
+    { chave: 'de', rotulo: 'De', tipo: 'data' },
+    { chave: 'ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'com_refugo', rotulo: 'só com refugo', tipo: 'marcar' },
+  ];
+
+  async function excluir(id: number) {
+    if (!confirm('Excluir este apontamento? A etapa volta ao estado anterior.')) return;
+    setFalha('');
+    try {
+      await api.delete(`/apontamentos/${id}`);
+      recarregar();
+    } catch (e) {
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível excluir');
+    }
+  }
+
+  return (
+    <Cartao titulo="Histórico de apontamentos"
+      acao={<small>{decimal(pecas)} peças · {decimal(minutos)} min · {moeda(custo)} de mão de obra</small>}>
+      <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+        aoLimpar={filtros.limpar} ativos={filtros.ativos} />
+
+      {carregando && <Carregando />}
+      <Aviso tipo="erro">{falha || erro}</Aviso>
+      {!carregando && lista.length === 0 && <Vazio texto="Nenhum apontamento com estes filtros." />}
+      {lista.length > 0 && (
+        <div className="tabela-rolagem" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th><th>OP</th><th>Etapa</th><th>Quem</th><th>Equipamento</th>
+                <th className="num">Peças</th><th className="num">Refugo</th>
+                <th className="num">Min</th><th className="num">Mão de obra</th><th />
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((a) => (
+                <tr key={a.id}>
+                  <td>{data(a.data)}</td>
+                  <td><Link to={`/producao/${a.ordem_id}`}>{a.ordem}</Link></td>
+                  <td>{a.etapa}</td>
+                  <td>{a.colaborador ?? '—'}</td>
+                  <td>{a.equipamento ?? '—'}</td>
+                  <td className="num">{decimal(a.quantidade)}</td>
+                  <td className="num">{a.refugo > 0 ? <Etiqueta texto={decimal(a.refugo)} tom="vermelha" /> : '—'}</td>
+                  <td className="num">{decimal(a.minutos)}</td>
+                  <td className="num">{moeda(a.custo_mo)}</td>
+                  <td><button className="pequeno perigo" onClick={() => excluir(a.id)}>×</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="rodape-lista"><span>{lista.length} apontamento(s)</span></div>
+    </Cartao>
   );
 }
 

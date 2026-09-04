@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useApi, useDebounce } from '../lib/hooks';
-import { query } from '../lib/api';
+import { api, ApiError, pode } from '../lib/api';
+import { useApi } from '../lib/hooks';
 import { data, numero, moeda } from '../lib/formato';
-import { Cartao, Carregando, Aviso, Vazio, Etiqueta, Barra, Campo } from '../components/ui';
-import type { ColunaQuadro, OrdemLista, Etapa } from '../tipos';
+import { Cartao, Carregando, Aviso, Vazio, Etiqueta, Barra } from '../components/ui';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
+import type { ColunaQuadro, OrdemLista, Etapa, Simples, Cliente } from '../tipos';
 
 export default function Producao() {
   const [visao, setVisao] = useState<'quadro' | 'lista'>('quadro');
@@ -72,43 +73,53 @@ function Quadro() {
 }
 
 function Lista() {
-  const [busca, setBusca] = useState('');
-  const [status, setStatus] = useState('');
-  const [etapa, setEtapa] = useState('');
-  const buscaLenta = useDebounce(busca);
-
+  const [falha, setFalha] = useState('');
   const { dados: etapas } = useApi<Etapa[]>('/etapas');
-  const caminho = `/ordens${query({ busca: buscaLenta, status, etapa, abertas: status ? 'false' : 'true', limite: 400 })}`;
-  const { dados, carregando, erro } = useApi<OrdemLista[]>(caminho, [caminho]);
+  const { dados: grupos } = useApi<Simples[]>('/grupos-produto');
+  const { dados: clientes } = useApi<Cliente[]>('/clientes?ativo=true');
+
+  const filtros = useFiltros('/ordens', { limite: '400' });
+  const { dados, carregando, erro, recarregar } = useApi<OrdemLista[]>(filtros.caminho, [filtros.caminho]);
+
+  async function cancelar(o: OrdemLista) {
+    if (!confirm(`Cancelar a ordem ${o.numero}? Se nada foi apontado nela, a OP é removida.`)) return;
+    setFalha('');
+    try {
+      await api.delete(`/ordens/${o.id}`);
+      recarregar();
+    } catch (e) {
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível cancelar');
+    }
+  }
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'OP, cliente, produto ou pedido', tipo: 'busca' },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select',
+      opcoes: [
+        { valor: 'ABERTA', rotulo: 'Aberta' }, { valor: 'EM_PRODUCAO', rotulo: 'Em produção' },
+        { valor: 'CONCLUIDA', rotulo: 'Concluída' }, { valor: 'ENTREGUE', rotulo: 'Entregue' },
+        { valor: 'CANCELADA', rotulo: 'Cancelada' },
+      ] },
+    { chave: 'etapa', rotulo: 'Parada na etapa', tipo: 'select',
+      opcoes: (etapas ?? []).map((e) => ({ valor: e.codigo, rotulo: e.nome })) },
+    { chave: 'grupo', rotulo: 'Grupo', tipo: 'select',
+      opcoes: (grupos ?? []).map((g) => ({ valor: g.nome, rotulo: g.nome })) },
+    { chave: 'cliente_id', rotulo: 'Cliente', tipo: 'select',
+      opcoes: (clientes ?? []).map((c) => ({ valor: c.id, rotulo: c.nome })) },
+    { chave: 'de', rotulo: 'Entrega de', tipo: 'data' },
+    { chave: 'ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'atrasadas', rotulo: 'só atrasadas', tipo: 'marcar' },
+  ];
 
   return (
     <Cartao
       titulo={<h3>Ordens de produção {dados ? <small style={{ fontWeight: 400 }}>· {dados.length}</small> : null}</h3>}
     >
-      <div className="filtros" style={{ marginBottom: 14 }}>
-        <Campo rotulo="Buscar">
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="OP, cliente, produto ou pedido" />
-        </Campo>
-        <Campo rotulo="Situação">
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Em aberto</option>
-            <option value="ABERTA">Aberta</option>
-            <option value="EM_PRODUCAO">Em produção</option>
-            <option value="CONCLUIDA">Concluída</option>
-            <option value="ENTREGUE">Entregue</option>
-            <option value="CANCELADA">Cancelada</option>
-          </select>
-        </Campo>
-        <Campo rotulo="Parada na etapa">
-          <select value={etapa} onChange={(e) => setEtapa(e.target.value)}>
-            <option value="">Todas</option>
-            {etapas?.map((e) => <option key={e.id} value={e.codigo}>{e.nome}</option>)}
-          </select>
-        </Campo>
-      </div>
+      <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+        aoLimpar={filtros.limpar} ativos={filtros.ativos} />
 
       {carregando && <Carregando />}
-      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+      <Aviso tipo="erro">{falha || erro}</Aviso>
       {dados && dados.length === 0 && <Vazio texto="Nenhuma ordem encontrada com estes filtros." />}
       {dados && dados.length > 0 && (
         <div className="tabela-rolagem">
@@ -118,7 +129,7 @@ function Lista() {
                 <th>OP</th><th>Pedido</th><th>Cliente</th><th>Produto</th>
                 <th className="num">Qtd</th><th className="num">Valor</th>
                 <th>Etapa atual</th><th style={{ width: 110 }}>Progresso</th>
-                <th>Entrega</th><th>Situação</th>
+                <th>Entrega</th><th>Situação</th><th />
               </tr>
             </thead>
             <tbody>
@@ -137,6 +148,12 @@ function Lista() {
                     {(o.dias_atraso ?? 0) > 0 && <div><span className="etiqueta vermelha">{o.dias_atraso}d</span></div>}
                   </td>
                   <td><Etiqueta status={o.status} /></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <Link className="botao pequeno" to={`/producao/${o.id}`}>Abrir</Link>{' '}
+                    {pode('producao.ordens') && o.status !== 'CANCELADA' && o.status !== 'ENTREGUE' && (
+                      <button className="pequeno perigo" onClick={() => cancelar(o)}>Cancelar</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

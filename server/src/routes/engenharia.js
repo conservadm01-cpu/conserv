@@ -33,7 +33,9 @@ router.use(
                  (SELECT COUNT(*) FROM equipamentos e WHERE e.departamento_id = d.id AND e.ativo = 1) AS equipamentos
                FROM departamentos d`,
     ordem: 'd.nome',
-    busca: ['d.nome'],
+    busca: ['d.nome', 'd.responsavel'],
+    ordenaveis: ['d.nome'],
+    filtros: { produtivo: { tipo: 'igual', coluna: 'd.produtivo', numero: true } },
   })
 );
 

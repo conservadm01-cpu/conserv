@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, query, pode } from '../lib/api';
-import { useApi, useDebounce } from '../lib/hooks';
+import { useApi } from '../lib/hooks';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import { moeda, moedaCurta, numero, data, decimal, hoje } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta, Modal } from '../components/ui';
 import type {
@@ -18,18 +19,46 @@ const ROTULO_STATUS: Record<string, string> = {
 };
 
 export default function Orcamentos() {
-  const [busca, setBusca] = useState('');
-  const [status, setStatus] = useState('');
   const [aberto, setAberto] = useState<number | null>(null);
   const [novo, setNovo] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
   const [recarga, setRecarga] = useState(0);
-  const buscaLenta = useDebounce(busca);
+  const [falha, setFalha] = useState('');
 
-  const caminho = `/orcamentos${query({ busca: buscaLenta, status, abertos: status ? '' : 'true', })}`;
-  const { dados, carregando, erro } = useApi<Orcamento[]>(caminho, [caminho, recarga]);
+  const { dados: vendedores } = useApi<Simples[]>('/vendedores?ativo=true');
+  const filtros = useFiltros('/orcamentos', { abertos: 'true' });
+  const { dados, carregando, erro } = useApi<Orcamento[]>(filtros.caminho, [filtros.caminho, recarga]);
   const { dados: desempenho } = useApi<DesempenhoOrcamentos>('/orcamentos/desempenho', [recarga]);
 
   const atualizar = () => setRecarga((n) => n + 1);
+  const escreve = pode('orcamentos.editar');
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Número, cliente ou observação', tipo: 'busca' },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select',
+      opcoes: Object.entries(ROTULO_STATUS).map(([v, r]) => ({ valor: v, rotulo: r })) },
+    { chave: 'vendedor_id', rotulo: 'Vendedor', tipo: 'select',
+      opcoes: (vendedores ?? []).map((v) => ({ valor: v.id, rotulo: v.nome })) },
+    { chave: 'de', rotulo: 'Emissão de', tipo: 'data' },
+    { chave: 'ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'valor_min', rotulo: 'Valor mínimo', tipo: 'numero' },
+    { chave: 'abertos', rotulo: 'só em aberto', tipo: 'marcar' },
+    { chave: 'vencidos', rotulo: 'só vencidos', tipo: 'marcar' },
+  ];
+
+  async function excluir(o: Orcamento) {
+    const aviso = o.pedido_id
+      ? `O orçamento ${o.numero} virou o pedido ${o.pedido_numero}. Cancelar a proposta?`
+      : `Excluir o orçamento ${o.numero}?`;
+    if (!confirm(aviso)) return;
+    setFalha('');
+    try {
+      await api.delete(`/orcamentos/${o.id}`);
+      atualizar();
+    } catch (e) {
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível remover');
+    }
+  }
 
   return (
     <>
@@ -59,20 +88,11 @@ export default function Orcamentos() {
       )}
 
       <Cartao titulo="Propostas">
-        <div className="filtros" style={{ marginBottom: 14 }}>
-          <Campo rotulo="Buscar">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Número ou cliente" />
-          </Campo>
-          <Campo rotulo="Situação">
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Em aberto</option>
-              {Object.entries(ROTULO_STATUS).map(([v, r]) => <option key={v} value={v}>{r}</option>)}
-            </select>
-          </Campo>
-        </div>
+        <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar} ativos={filtros.ativos} />
 
         {carregando && <Carregando />}
-        {erro && <Aviso tipo="erro">{erro}</Aviso>}
+        <Aviso tipo="erro">{falha || erro}</Aviso>
         {dados && dados.length === 0 && <Vazio texto="Nenhum orçamento com estes filtros." />}
         {dados && dados.length > 0 && (
           <div className="tabela-rolagem" style={{ maxHeight: '58vh', overflowY: 'auto' }}>
@@ -108,7 +128,15 @@ export default function Orcamentos() {
                         <div><Link to={`/pedidos/${o.pedido_id}`} style={{ fontSize: 12 }}>pedido {o.pedido_numero}</Link></div>
                       )}
                     </td>
-                    <td><button className="pequeno" onClick={() => setAberto(o.id)}>Abrir</button></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="pequeno" onClick={() => setAberto(o.id)}>Abrir</button>{' '}
+                      {escreve && !o.pedido_id && o.status !== 'APROVADO' && (
+                        <>
+                          <button className="pequeno" onClick={() => setEditando(o.id)}>Editar</button>{' '}
+                          <button className="pequeno perigo" onClick={() => excluir(o)}>Excluir</button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -142,6 +170,9 @@ export default function Orcamentos() {
       <DetalheOrcamento id={aberto} aoFechar={() => setAberto(null)} aoMudar={atualizar} />
       <EditorOrcamento aberto={novo} aoFechar={() => setNovo(false)}
         aoSalvar={() => { setNovo(false); atualizar(); }} />
+      <EditorOrcamento aberto={editando !== null} orcamentoId={editando}
+        aoFechar={() => setEditando(null)}
+        aoSalvar={() => { setEditando(null); atualizar(); }} />
     </>
   );
 }
@@ -298,14 +329,19 @@ const LINHA_VAZIA: LinhaEditor = {
   produto_id: '', quantidade: '', preco_unitario: '', custo_unitario: 0, precificacao: null,
 };
 
-function EditorOrcamento({ aberto, aoFechar, aoSalvar }: {
-  aberto: boolean; aoFechar: () => void; aoSalvar: () => void;
+function EditorOrcamento({ aberto, orcamentoId = null, aoFechar, aoSalvar }: {
+  aberto: boolean; orcamentoId?: number | null; aoFechar: () => void; aoSalvar: () => void;
 }) {
   const { dados: clientes } = useApi<Cliente[]>(aberto ? '/clientes?ativo=true' : null);
   const { dados: produtos } = useApi<Produto[]>(aberto ? '/produtos?ativo=true' : null);
   const { dados: vendedores } = useApi<Simples[]>(aberto ? '/vendedores?ativo=true' : null);
   const { dados: oportunidades } = useApi<Oportunidade[]>(aberto ? '/crm/oportunidades?abertas=true' : null);
-  const { dados: proximo } = useApi<{ numero: string }>(aberto ? '/orcamentos/proximo-numero' : null);
+  const { dados: proximo } = useApi<{ numero: string }>(
+    aberto && !orcamentoId ? '/orcamentos/proximo-numero' : null
+  );
+  const { dados: atual } = useApi<Orcamento>(
+    aberto && orcamentoId ? `/orcamentos/${orcamentoId}` : null, [orcamentoId]
+  );
 
   const [clienteId, setClienteId] = useState<number | ''>('');
   const [prospect, setProspect] = useState('');
@@ -322,12 +358,34 @@ function EditorOrcamento({ aberto, aoFechar, aoSalvar }: {
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    if (!aberto) return;
+    if (!aberto || orcamentoId) return;
     setClienteId(''); setProspect(''); setVendedorId(''); setOportunidadeId('');
     setValidade(''); setCondicao(''); setDesconto('0'); setFrete('0');
     setLinhas([{ ...LINHA_VAZIA }]);
     setErro('');
-  }, [aberto]);
+  }, [aberto, orcamentoId]);
+
+  // Edição: recarrega a proposta gravada, com os itens e o custo já apurado.
+  useEffect(() => {
+    if (!atual) return;
+    setClienteId(atual.cliente_id ?? '');
+    setProspect(atual.prospect ?? '');
+    setVendedorId(atual.vendedor_id ?? '');
+    setOportunidadeId(atual.oportunidade_id ?? '');
+    setValidade(atual.validade ?? '');
+    setPrazo(String(atual.prazo_entrega_dias));
+    setCondicao(atual.condicao_pagamento ?? '');
+    setDesconto(String(atual.desconto_percentual));
+    setFrete(String(atual.frete));
+    setLinhas((atual.linhas ?? []).map((l) => ({
+      ...LINHA_VAZIA,
+      produto_id: l.produto_id,
+      quantidade: String(l.quantidade),
+      preco_unitario: String(l.preco_unitario),
+      custo_unitario: l.custo_unitario,
+    })));
+    setErro('');
+  }, [atual]);
 
   /** Ao escolher o produto, busca o custo formado e sugere o preço pela margem alvo. */
   async function escolherProduto(indice: number, produtoId: number) {
@@ -372,27 +430,30 @@ function EditorOrcamento({ aberto, aoFechar, aoSalvar }: {
 
     setSalvando(true);
     setErro('');
+    // Na edição a data de emissão e a situação da proposta são preservadas.
+    const corpo = {
+      cliente_id: clienteId ? Number(clienteId) : null,
+      prospect: prospect.trim() || null,
+      oportunidade_id: oportunidadeId ? Number(oportunidadeId) : null,
+      vendedor_id: vendedorId ? Number(vendedorId) : null,
+      data: atual?.data ?? hoje(),
+      validade: validade || null,
+      prazo_entrega_dias: Number(prazo) || 0,
+      condicao_pagamento: condicao.trim() || null,
+      desconto_percentual: Number(desconto) || 0,
+      frete: Number(frete) || 0,
+      status: atual?.status ?? 'RASCUNHO',
+      itens: validas.map((l, i) => ({
+        produto_id: Number(l.produto_id),
+        quantidade: Number(l.quantidade),
+        preco_unitario: Number(l.preco_unitario) || 0,
+        custo_unitario: l.custo_unitario || undefined,
+        sequencia: i + 1,
+      })),
+    };
     try {
-      await api.post('/orcamentos', {
-        cliente_id: clienteId ? Number(clienteId) : null,
-        prospect: prospect.trim() || null,
-        oportunidade_id: oportunidadeId ? Number(oportunidadeId) : null,
-        vendedor_id: vendedorId ? Number(vendedorId) : null,
-        data: hoje(),
-        validade: validade || null,
-        prazo_entrega_dias: Number(prazo) || 0,
-        condicao_pagamento: condicao.trim() || null,
-        desconto_percentual: Number(desconto) || 0,
-        frete: Number(frete) || 0,
-        status: 'RASCUNHO',
-        itens: validas.map((l, i) => ({
-          produto_id: Number(l.produto_id),
-          quantidade: Number(l.quantidade),
-          preco_unitario: Number(l.preco_unitario) || 0,
-          custo_unitario: l.custo_unitario || undefined,
-          sequencia: i + 1,
-        })),
-      });
+      if (orcamentoId) await api.put(`/orcamentos/${orcamentoId}`, corpo);
+      else await api.post('/orcamentos', corpo);
       aoSalvar();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : 'Não foi possível salvar');
@@ -403,7 +464,9 @@ function EditorOrcamento({ aberto, aoFechar, aoSalvar }: {
 
   return (
     <Modal
-      titulo={`Novo orçamento${proximo ? ` — ${proximo.numero}` : ''}`}
+      titulo={orcamentoId
+        ? `Editar orçamento${atual ? ` ${atual.numero}` : ''}`
+        : `Novo orçamento${proximo ? ` — ${proximo.numero}` : ''}`}
       aberto={aberto}
       aoFechar={aoFechar}
       largo

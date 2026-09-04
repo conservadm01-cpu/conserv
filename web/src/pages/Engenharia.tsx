@@ -4,6 +4,7 @@ import { useApi } from '../lib/hooks';
 import { moeda, decimal, numero } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Campo, Indicador, Vazio, Etiqueta } from '../components/ui';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
+import type { CampoFiltro } from '../components/Filtros';
 import type { Departamento, Equipamento, CustoFixo, Jornada, CustoSetor, TaxaIndireta } from '../tipos';
 
 const ABAS = ['Jornada e custos', 'Setores', 'Equipamentos', 'Custos fixos'] as const;
@@ -223,6 +224,12 @@ const Setores = () => (
         ajuda: '1 para setores que produzem; 0 para administrativo' },
       { nome: 'observacao', rotulo: 'Observação' },
     ]}
+    filtros={[
+      { chave: 'produtivo', rotulo: 'Natureza', tipo: 'select',
+        opcoes: [{ valor: '1', rotulo: 'Produtivo' }, { valor: '0', rotulo: 'Administrativo' }] },
+      { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+    ]}
+    filtrosIniciais={{ ativo: 'true' }}
   />
 );
 
@@ -238,6 +245,14 @@ function Equipamentos() {
     { nome: 'status', rotulo: 'Situação', tipo: 'select', padrao: 'ATIVO',
       opcoes: ['ATIVO', 'MANUTENCAO', 'PARADO', 'BAIXADO'].map((s) => ({ valor: s, rotulo: s })) },
   ];
+  const filtrosEquipamento: CampoFiltro[] = [
+    { chave: 'departamento_id', rotulo: 'Setor', tipo: 'select',
+      opcoes: (setores ?? []).map((d) => ({ valor: d.id, rotulo: d.nome })) },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select',
+      opcoes: ['ATIVO', 'MANUTENCAO', 'PARADO', 'BAIXADO'].map((x) => ({ valor: x, rotulo: x })) },
+    { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+  ];
+
   return (
     <TabelaCrud<Equipamento>
       titulo="Equipamentos"
@@ -250,6 +265,8 @@ function Equipamentos() {
         { chave: 'status', rotulo: 'Situação', render: (e) => <Etiqueta texto={e.status} tom={e.status === 'ATIVO' ? 'verde' : 'amarela'} /> },
       ]}
       campos={campos}
+      filtros={filtrosEquipamento}
+      filtrosIniciais={{ ativo: 'true' }}
     />
   );
 }
@@ -273,5 +290,12 @@ const CustosFixos = () => (
       { nome: 'valor_mensal', rotulo: 'Valor mensal', tipo: 'numero', padrao: 0 },
       { nome: 'observacao', rotulo: 'Observação' },
     ]}
+    filtros={[
+      { chave: 'tipo', rotulo: 'Tipo', tipo: 'select',
+        opcoes: ['ALUGUEL', 'ENERGIA', 'AGUA', 'MANUTENCAO', 'ADMINISTRATIVO', 'IMPOSTO',
+                 'SEGURO', 'DEPRECIACAO', 'SOFTWARE', 'OUTRO'].map((t) => ({ valor: t, rotulo: t })) },
+      { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+    ]}
+    filtrosIniciais={{ ativo: 'true' }}
   />
 );

@@ -3,9 +3,10 @@ import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { moeda, hoje } from '../lib/formato';
 import { Modal, Aviso, Campo } from './ui';
-import type { Cliente, Produto, Simples } from '../tipos';
+import type { Cliente, Produto, Simples, PedidoDetalhe } from '../tipos';
 
 type LinhaItem = {
+  id?: number;
   produto_id: number | '';
   quantidade: string;
   preco_unitario: string;
@@ -14,12 +15,20 @@ type LinhaItem = {
 
 const LINHA_VAZIA: LinhaItem = { produto_id: '', quantidade: '', preco_unitario: '', liquidacao: '' };
 
-export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
-  aberto: boolean; aoFechar: () => void; aoSalvar: () => void;
+/**
+ * Cria e edita pedido no mesmo formulário — a diferença é só o `pedidoId`.
+ * Itens que já existem levam o id junto, para o servidor atualizar em vez de
+ * apagar e recriar (o que derrubaria as ordens de produção abertas).
+ */
+export default function FormularioPedido({ aberto, pedidoId = null, aoFechar, aoSalvar }: {
+  aberto: boolean; pedidoId?: number | null; aoFechar: () => void; aoSalvar: () => void;
 }) {
   const { dados: clientes } = useApi<Cliente[]>(aberto ? '/clientes?ativo=true' : null);
   const { dados: produtos } = useApi<Produto[]>(aberto ? '/produtos?ativo=true' : null);
   const { dados: vendedores } = useApi<Simples[]>(aberto ? '/vendedores?ativo=true' : null);
+  const { dados: existente } = useApi<PedidoDetalhe>(
+    aberto && pedidoId ? `/pedidos/${pedidoId}` : null, [pedidoId]
+  );
 
   const [numero, setNumero] = useState('');
   const [clienteId, setClienteId] = useState<number | ''>('');
@@ -33,10 +42,29 @@ export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
 
   useEffect(() => {
     if (!aberto) return;
-    setNumero(''); setClienteId(''); setVendedorId('');
-    setDataPedido(hoje()); setDataEntrega(''); setObservacao('');
-    setItens([{ ...LINHA_VAZIA }]); setErro('');
-  }, [aberto]);
+    if (pedidoId && existente) {
+      setNumero(existente.numero);
+      setClienteId(existente.cliente_id);
+      setVendedorId(existente.vendedor_id ?? '');
+      setDataPedido(existente.data_pedido);
+      setDataEntrega(existente.data_entrega ?? '');
+      setObservacao(existente.observacao ?? '');
+      setItens(
+        existente.itens.map((i) => ({
+          id: i.id,
+          produto_id: i.produto_id,
+          quantidade: String(i.quantidade),
+          preco_unitario: String(i.preco_unitario),
+          liquidacao: String(i.liquidacao),
+        }))
+      );
+    } else if (!pedidoId) {
+      setNumero(''); setClienteId(''); setVendedorId('');
+      setDataPedido(hoje()); setDataEntrega(''); setObservacao('');
+      setItens([{ ...LINHA_VAZIA }]);
+    }
+    setErro('');
+  }, [aberto, pedidoId, existente]);
 
   const alterarItem = (i: number, campos: Partial<LinhaItem>) =>
     setItens((atual) => atual.map((linha, idx) => (idx === i ? { ...linha, ...campos } : linha)));
@@ -63,22 +91,25 @@ export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
     if (validos.length === 0) return setErro('Adicione ao menos um item com produto e quantidade.');
 
     setSalvando(true);
-    try {
-      await api.post('/pedidos', {
-        numero: numero.trim(),
-        cliente_id: Number(clienteId),
-        vendedor_id: vendedorId ? Number(vendedorId) : null,
-        data_pedido: dataPedido,
+    const corpo = {
+      numero: numero.trim(),
+      cliente_id: Number(clienteId),
+      vendedor_id: vendedorId ? Number(vendedorId) : null,
+      data_pedido: dataPedido,
+      data_entrega: dataEntrega || null,
+      observacao: observacao.trim() || null,
+      itens: validos.map((i) => ({
+        ...(i.id ? { id: i.id } : {}),
+        produto_id: Number(i.produto_id),
+        quantidade: Number(i.quantidade),
+        preco_unitario: Number(i.preco_unitario) || 0,
+        liquidacao: Number(i.liquidacao) || 0,
         data_entrega: dataEntrega || null,
-        observacao: observacao.trim() || null,
-        itens: validos.map((i) => ({
-          produto_id: Number(i.produto_id),
-          quantidade: Number(i.quantidade),
-          preco_unitario: Number(i.preco_unitario) || 0,
-          liquidacao: Number(i.liquidacao) || 0,
-          data_entrega: dataEntrega || null,
-        })),
-      });
+      })),
+    };
+    try {
+      if (pedidoId) await api.put(`/pedidos/${pedidoId}`, corpo);
+      else await api.post('/pedidos', corpo);
       aoSalvar();
     } catch (e) {
       setErro(e instanceof ApiError ? e.message : 'Não foi possível salvar o pedido');
@@ -89,7 +120,7 @@ export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
 
   return (
     <Modal
-      titulo="Novo pedido"
+      titulo={pedidoId ? `Editar pedido ${numero}` : 'Novo pedido'}
       aberto={aberto}
       aoFechar={aoFechar}
       largo
@@ -97,7 +128,7 @@ export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
         <>
           <button onClick={aoFechar}>Cancelar</button>
           <button className="primario" onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando…' : 'Salvar e abrir ordens'}
+            {salvando ? 'Salvando…' : pedidoId ? 'Salvar alterações' : 'Salvar e abrir ordens'}
           </button>
         </>
       }
@@ -105,7 +136,7 @@ export default function FormularioPedido({ aberto, aoFechar, aoSalvar }: {
       <Aviso tipo="erro">{erro}</Aviso>
       <div className="linha-campos">
         <Campo rotulo="Número do pedido">
-          <input value={numero} onChange={(e) => setNumero(e.target.value)} autoFocus />
+          <input value={numero} onChange={(e) => setNumero(e.target.value)} autoFocus={!pedidoId} />
         </Campo>
         <Campo rotulo="Cliente">
           <select value={clienteId} onChange={(e) => setClienteId(Number(e.target.value) || '')}>

@@ -244,4 +244,100 @@ test('o filtro ?ativo= funciona nas listagens que apelidam a tabela', async () =
   }
 });
 
+test('ordem sem apontamento é excluída; com histórico, apenas cancelada', async () => {
+  const { criarApp } = await import('../src/index.js');
+  const bcrypt = (await import('bcryptjs')).default;
+  const app = criarApp();
+
+  db.prepare(`INSERT INTO usuarios (nome, email, senha_hash, perfil) VALUES ('O','o@o','x','ADMIN')
+              ON CONFLICT(email) DO NOTHING`).run();
+  db.prepare(`UPDATE usuarios SET senha_hash = ? WHERE email = 'o@o'`).run(bcrypt.hashSync('teste123', 4));
+
+  const limpa = abrirOrdem(cenario().itemId);
+  const usada = abrirOrdem(cenario().itemId);
+  // A segunda ordem baixa material: passa a ter histórico e não pode sumir.
+  baixarMateriaisDaOrdem(usada.id);
+
+  const servidor = app.listen(0);
+  const base = `http://127.0.0.1:${servidor.address().port}/api`;
+  try {
+    const login = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'o@o', senha: 'teste123' }),
+    }).then((r) => r.json());
+    const headers = { Authorization: `Bearer ${login.token}` };
+
+    const semUso = await fetch(`${base}/ordens/${limpa.id}`, { method: 'DELETE', headers }).then((r) => r.json());
+    assert.equal(semUso.removida, true);
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ordens_producao WHERE id = ?`).get(limpa.id).n, 0);
+
+    const comUso = await fetch(`${base}/ordens/${usada.id}`, { method: 'DELETE', headers }).then((r) => r.json());
+    assert.equal(comUso.cancelada, true);
+    assert.equal(buscarOrdem(usada.id).status, 'CANCELADA');
+  } finally {
+    servidor.close();
+  }
+});
+
+/**
+ * Cada tela do sistema passou a filtrar pela própria lista de campos. Um filtro
+ * escrito com a coluna errada só aparece como erro 500 na hora do uso — este
+ * teste percorre todas as listagens com os filtros que as telas mandam.
+ */
+test('todas as listagens aceitam os filtros que a interface envia', async () => {
+  const { criarApp } = await import('../src/index.js');
+  const bcrypt = (await import('bcryptjs')).default;
+  const app = criarApp();
+
+  db.prepare(`INSERT INTO usuarios (nome, email, senha_hash, perfil) VALUES ('F','f@f','x','ADMIN')
+              ON CONFLICT(email) DO NOTHING`).run();
+  db.prepare(`UPDATE usuarios SET senha_hash = ? WHERE email = 'f@f'`).run(bcrypt.hashSync('teste123', 4));
+
+  const rotas = [
+    '/pedidos?busca=a&status=ABERTO&de=2020-01-01&ate=2030-01-01&valor_min=1&atrasados=true',
+    '/pedidos/itens/carteira?busca=a&situacao=EM_ABERTO&linha=LEVE&entrega_de=2020-01-01'
+      + '&entrega_ate=2030-01-01&atrasados=true&somente_abertos=true&limite=10',
+    '/ordens?busca=a&status=ABERTA&etapa=CORTE&atrasadas=true&limite=10',
+    '/materiais?busca=a&tipo=TECIDO&unidade=MT&ativo=true',
+    '/materiais/estoque/posicao?busca=a',
+    '/clientes?busca=a&uf=SP&ativo=true',
+    '/produtos?busca=a&linha=LEVE&preco_min=0&sem_ficha=true&ativo=true',
+    '/fornecedores?busca=a&uf=SP&ativo=true',
+    '/colaboradores?busca=a&status=ATIVO&produtivo=1&ativo=true',
+    '/engenharia/departamentos?busca=a&produtivo=1&ativo=true',
+    '/engenharia/equipamentos?busca=a&status=ATIVO&ativo=true',
+    '/engenharia/custos-fixos?busca=a&tipo=ALUGUEL&ativo=true',
+    '/apontamentos?busca=a&de=2020-01-01&ate=2030-01-01&com_refugo=true&limite=10',
+    '/financeiro/titulos?tipo=RECEBER&status=ABERTO&de=2020-01-01&ate=2030-01-01&vencidos=true',
+    '/financeiro/categorias?busca=a&tipo=PAGAR&ativo=true',
+    '/crm/oportunidades?busca=a&abertas=true&paradas=true&valor_min=0&limite=10',
+    '/orcamentos?busca=a&abertos=true&vencidos=true&valor_min=0',
+    '/compras/requisicoes?busca=a&status=ABERTA&urgencia=ALTA&origem=MRP&abertas=true',
+    '/compras/pedidos?busca=a&status=ENVIADO&abertos=true&atrasados=true&valor_min=0',
+    '/compras/inventarios?busca=a&status=ABERTO',
+    '/canal/manifestacoes?busca=a&status=ABERTA&tipo=RISCO&anonimas=true',
+  ];
+
+  const servidor = app.listen(0);
+  const base = `http://127.0.0.1:${servidor.address().port}/api`;
+  try {
+    const login = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'f@f', senha: 'teste123' }),
+    }).then((r) => r.json());
+    const headers = { Authorization: `Bearer ${login.token}` };
+
+    for (const rota of rotas) {
+      const r = await fetch(`${base}${rota}`, { headers });
+      const corpo = await r.text();
+      assert.equal(r.status, 200, `${rota} devolveu ${r.status}: ${corpo}`);
+      assert.ok(Array.isArray(JSON.parse(corpo)), `${rota} não devolveu lista`);
+    }
+  } finally {
+    servidor.close();
+  }
+});
+
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

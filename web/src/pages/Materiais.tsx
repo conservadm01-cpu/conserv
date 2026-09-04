@@ -1,6 +1,7 @@
 import { useApi } from '../lib/hooks';
 import { moeda, decimal } from '../lib/formato';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
+import type { CampoFiltro } from '../components/Filtros';
 import type { Material, Fornecedor } from '../tipos';
 
 const TIPOS = ['TECIDO', 'AVIAMENTO', 'EMBALAGEM', 'TINTA', 'ETIQUETA', 'SERVICO', 'OUTRO'];
@@ -33,6 +34,14 @@ export default function Materiais() {
     },
   ];
 
+  const filtros: CampoFiltro[] = [
+    { chave: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: TIPOS.map((t) => ({ valor: t, rotulo: t })) },
+    { chave: 'unidade', rotulo: 'Unidade', tipo: 'select', opcoes: UNIDADES.map((u) => ({ valor: u, rotulo: u })) },
+    { chave: 'fornecedor_id', rotulo: 'Fornecedor', tipo: 'select',
+      opcoes: (fornecedores ?? []).map((f) => ({ valor: f.id, rotulo: f.nome })) },
+    { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+  ];
+
   return (
     <>
       <header className="cabecalho">
@@ -47,6 +56,8 @@ export default function Materiais() {
         recurso="/materiais"
         colunas={COLUNAS}
         campos={campos}
+        filtros={filtros}
+        filtrosIniciais={{ ativo: 'true' }}
       />
     </>
   );

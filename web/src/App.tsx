@@ -11,6 +11,7 @@ import OrdemDetalhe from './pages/OrdemDetalhe';
 import Materiais from './pages/Materiais';
 import Estoque from './pages/Estoque';
 import Compras from './pages/Compras';
+import Inventario from './pages/Inventario';
 import Produtos from './pages/Produtos';
 import ProdutoDetalhe from './pages/ProdutoDetalhe';
 import Clientes from './pages/Clientes';
@@ -60,7 +61,8 @@ const MENU = [
     grupo: 'Materiais',
     itens: [
       { para: '/estoque', rotulo: 'Estoque', icone: '▦', area: 'materiais.ver' },
-      { para: '/compras', rotulo: 'Necessidade de compra', icone: '↯', area: 'materiais.ver' },
+      { para: '/compras', rotulo: 'Compras', icone: '↯', area: 'compras.ver' },
+      { para: '/inventario', rotulo: 'Inventário', icone: '⊞', area: 'materiais.ver' },
       { para: '/materiais', rotulo: 'Cadastro de materiais', icone: '◧', area: 'materiais.ver' },
     ],
   },
@@ -157,6 +159,7 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/pedidos/:id" element={<PedidoDetalhe />} />
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/compras" element={<Compras />} />
+          <Route path="/inventario" element={<Inventario />} />
           <Route path="/materiais" element={<Materiais />} />
           <Route path="/produtos" element={<Produtos />} />
           <Route path="/produtos/:id" element={<ProdutoDetalhe />} />

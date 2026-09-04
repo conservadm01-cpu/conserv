@@ -45,7 +45,9 @@ router.use(
       ativo: z.number().int().optional(),
     }),
     ordem: 'tipo, nome',
-    busca: ['nome'],
+    busca: ['nome', 'grupo'],
+    ordenaveis: ['nome', 'tipo', 'grupo'],
+    filtros: { tipo: { tipo: 'igual', coluna: 'tipo' }, grupo: { tipo: 'igual', coluna: 'grupo' } },
   })
 );
 

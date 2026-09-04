@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import { useApi } from '../lib/hooks';
 import { moeda, decimal, numero } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Indicador, Etiqueta } from '../components/ui';
+import { BarraFiltros, type CampoFiltro, type Valores } from '../components/Filtros';
 import type { TaxaIndireta } from '../tipos';
 
 type LinhaProduto = {
@@ -15,7 +16,8 @@ type LinhaProduto = {
 const CORES = ['#1f6feb', '#10874a', '#b26a00'];
 
 export default function Custos() {
-  const [soPrejuizo, setSoPrejuizo] = useState(false);
+  // O custeio vem inteiro numa consulta só; filtrar aqui evita ida e volta ao servidor.
+  const [filtros, setFiltros] = useState<Valores>({});
   const { dados, carregando, erro } =
     useApi<{ taxa_indireta: TaxaIndireta; produtos: LinhaProduto[] }>('/indicadores/custos/produtos?limite=400');
 
@@ -23,7 +25,26 @@ export default function Custos() {
   if (erro) return <Aviso tipo="erro">{erro}</Aviso>;
   if (!dados) return null;
 
-  const linhas = dados.produtos.filter((p) => !soPrejuizo || p.margem < 0);
+  const grupos = [...new Set(dados.produtos.map((p) => p.grupo).filter(Boolean))] as string[];
+  const termo = (filtros.busca ?? '').trim().toLowerCase();
+
+  const linhas = dados.produtos.filter((p) =>
+    (!termo || p.produto.toLowerCase().includes(termo))
+    && (!filtros.grupo || p.grupo === filtros.grupo)
+    && (filtros.prejuizo !== 'true' || p.margem < 0)
+    && (filtros.incompletos !== 'true' || !p.completo)
+    && (!filtros.margem_max || p.margem_percentual <= Number(filtros.margem_max))
+  );
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Produto', tipo: 'busca' },
+    { chave: 'grupo', rotulo: 'Grupo', tipo: 'select', opcoes: grupos.map((g) => ({ valor: g, rotulo: g })) },
+    { chave: 'margem_max', rotulo: 'Margem até (%)', tipo: 'numero' },
+    { chave: 'prejuizo', rotulo: 'só margem negativa', tipo: 'marcar' },
+    { chave: 'incompletos', rotulo: 'só custeio incompleto', tipo: 'marcar' },
+  ];
+  const definir = (chave: string, valor: string) => setFiltros((f) => ({ ...f, [chave]: valor }));
+  const ativos = Object.values(filtros).filter((v) => v !== '').length;
   const negativas = dados.produtos.filter((p) => p.margem < 0).length;
   const incompletos = dados.produtos.filter((p) => !p.completo).length;
 
@@ -47,12 +68,6 @@ export default function Custos() {
         <div>
           <h1>Formação de custo</h1>
           <p>O que cada peça custa de verdade: material, mão de obra e a parte do custo fixo da fábrica</p>
-        </div>
-        <div className="acoes">
-          <label style={{ display: 'flex', gap: 6, margin: 0, fontWeight: 400, alignItems: 'center' }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={soPrejuizo}
-              onChange={(e) => setSoPrejuizo(e.target.checked)} /> só margem negativa
-          </label>
         </div>
       </header>
 
@@ -107,6 +122,8 @@ export default function Custos() {
       )}
 
       <Cartao titulo={`Custo por produto (${linhas.length})`}>
+        <BarraFiltros campos={campos} valores={filtros} aoMudar={definir}
+          aoLimpar={() => setFiltros({})} ativos={ativos} />
         {linhas.length === 0 ? (
           <Vazio texto="Nenhum produto com ficha técnica ou processo cadastrado ainda." />
         ) : (

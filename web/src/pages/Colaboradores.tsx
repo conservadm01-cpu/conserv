@@ -2,6 +2,7 @@ import { useApi } from '../lib/hooks';
 import { moeda, data } from '../lib/formato';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
 import { Etiqueta, Indicador } from '../components/ui';
+import type { CampoFiltro } from '../components/Filtros';
 import type { Colaborador, Departamento, CustoSetor } from '../tipos';
 
 const COLUNAS: Coluna<Colaborador>[] = [
@@ -64,6 +65,22 @@ export default function Colaboradores() {
     { nome: 'observacao', rotulo: 'Observação' },
   ];
 
+  const filtros: CampoFiltro[] = [
+    { chave: 'departamento_id', rotulo: 'Setor', tipo: 'select',
+      opcoes: (setores ?? []).map((d) => ({ valor: d.id, rotulo: d.nome })) },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select', opcoes: [
+      { valor: 'ATIVO', rotulo: 'Ativo' },
+      { valor: 'AFASTADO', rotulo: 'Afastado' },
+      { valor: 'INATIVO', rotulo: 'Inativo' },
+    ] },
+    { chave: 'produtivo', rotulo: 'Produção', tipo: 'select', opcoes: [
+      { valor: '1', rotulo: 'Produtivo' }, { valor: '0', rotulo: 'Apoio' },
+    ] },
+    { chave: 'admissao_de', rotulo: 'Admitido de', tipo: 'data' },
+    { chave: 'admissao_ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+  ];
+
   return (
     <>
       <header className="cabecalho">
@@ -87,6 +104,8 @@ export default function Colaboradores() {
         colunas={COLUNAS}
         campos={campos}
         aoMudar={recarregar}
+        filtros={filtros}
+        filtrosIniciais={{ ativo: 'true' }}
       />
     </>
   );

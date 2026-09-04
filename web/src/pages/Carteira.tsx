@@ -1,28 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useApi, useDebounce } from '../lib/hooks';
-import { query } from '../lib/api';
+import { useApi } from '../lib/hooks';
 import { data, moeda, numero } from '../lib/formato';
-import { Cartao, Carregando, Aviso, Vazio, Etiqueta, Campo, Indicador } from '../components/ui';
-import type { ItemCarteira, Simples } from '../tipos';
+import { Cartao, Carregando, Aviso, Vazio, Etiqueta, Indicador } from '../components/ui';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
+import type { ItemCarteira, Simples, Cliente } from '../tipos';
 
 export default function Carteira() {
-  const [busca, setBusca] = useState('');
-  const [grupo, setGrupo] = useState('');
-  const [somenteAtraso, setSomenteAtraso] = useState(false);
-  const [incluirEntregues, setIncluirEntregues] = useState(false);
-  const buscaLenta = useDebounce(busca);
-
   const { dados: grupos } = useApi<Simples[]>('/grupos-produto');
-  const caminho = `/pedidos/itens/carteira${query({
-    busca: buscaLenta, grupo, somente_abertos: incluirEntregues ? 'false' : 'true', limite: 1000,
-  })}`;
-  const { dados, carregando, erro } = useApi<ItemCarteira[]>(caminho, [caminho]);
+  const { dados: clientes } = useApi<Cliente[]>('/clientes?ativo=true');
+  const { dados: vendedores } = useApi<Simples[]>('/vendedores?ativo=true');
 
-  const linhas = useMemo(
-    () => (dados ?? []).filter((i) => !somenteAtraso || (i.dias_atraso ?? 0) > 0),
-    [dados, somenteAtraso]
-  );
+  const filtros = useFiltros('/pedidos/itens/carteira', { somente_abertos: 'true', limite: '1000' });
+  const { dados, carregando, erro } = useApi<ItemCarteira[]>(filtros.caminho, [filtros.caminho]);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Cliente, produto ou pedido', tipo: 'busca' },
+    { chave: 'grupo', rotulo: 'Grupo', tipo: 'select',
+      opcoes: (grupos ?? []).map((g) => ({ valor: g.nome, rotulo: g.nome })) },
+    { chave: 'cliente_id', rotulo: 'Cliente', tipo: 'select',
+      opcoes: (clientes ?? []).map((c) => ({ valor: c.id, rotulo: c.nome })) },
+    { chave: 'vendedor', rotulo: 'Vendedor', tipo: 'select',
+      opcoes: (vendedores ?? []).map((v) => ({ valor: v.nome, rotulo: v.nome })) },
+    { chave: 'linha', rotulo: 'Linha', tipo: 'select',
+      opcoes: [{ valor: 'LEVE', rotulo: 'Leve' }, { valor: 'PESADA', rotulo: 'Pesada' }, { valor: 'AMBAS', rotulo: 'Ambas' }] },
+    { chave: 'entrega_de', rotulo: 'Entrega de', tipo: 'data' },
+    { chave: 'entrega_ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'atrasados', rotulo: 'só atrasados', tipo: 'marcar' },
+  ];
+
+  const linhas = useMemo(() => dados ?? [], [dados]);
 
   const totais = useMemo(
     () => linhas.reduce(
@@ -57,29 +64,21 @@ export default function Carteira() {
       </div>
 
       <Cartao>
-        <div className="filtros" style={{ marginBottom: 14 }}>
-          <Campo rotulo="Buscar">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, produto ou pedido" />
-          </Campo>
-          <Campo rotulo="Grupo">
-            <select value={grupo} onChange={(e) => setGrupo(e.target.value)}>
-              <option value="">Todos</option>
-              {grupos?.map((g) => <option key={g.id} value={g.nome}>{g.nome}</option>)}
-            </select>
-          </Campo>
-          <Campo rotulo="Filtros">
-            <div style={{ display: 'flex', gap: 14, paddingTop: 7, fontSize: 13 }}>
-              <label style={{ display: 'flex', gap: 6, margin: 0, fontWeight: 400 }}>
-                <input type="checkbox" style={{ width: 'auto' }} checked={somenteAtraso}
-                  onChange={(e) => setSomenteAtraso(e.target.checked)} /> só atrasados
-              </label>
-              <label style={{ display: 'flex', gap: 6, margin: 0, fontWeight: 400 }}>
-                <input type="checkbox" style={{ width: 'auto' }} checked={incluirEntregues}
-                  onChange={(e) => setIncluirEntregues(e.target.checked)} /> incluir entregues
-              </label>
-            </div>
-          </Campo>
-        </div>
+        <BarraFiltros
+          campos={campos}
+          valores={filtros.valores}
+          aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar}
+          ativos={filtros.ativos}
+          extra={
+            <label className="marcar filtro-marcar">
+              <input type="checkbox" style={{ width: 'auto' }}
+                checked={filtros.valores.somente_abertos === 'false'}
+                onChange={(e) => filtros.definir('somente_abertos', e.target.checked ? 'false' : 'true')} />
+              incluir entregues
+            </label>
+          }
+        />
 
         {carregando && <Carregando />}
         {erro && <Aviso tipo="erro">{erro}</Aviso>}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { api, ApiError, query } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/hooks';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import { data } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta, Modal } from '../components/ui';
 import type { Manifestacao } from '../tipos';
@@ -18,13 +19,25 @@ const TOM: Record<string, string> = {
 };
 
 export default function Canal() {
-  const [status, setStatus] = useState('');
-  const [tipo, setTipo] = useState('');
   const [novo, setNovo] = useState(false);
   const [tratando, setTratando] = useState<Manifestacao | null>(null);
 
-  const caminho = `/canal/manifestacoes${query({ status, tipo })}`;
-  const { dados, carregando, erro, recarregar } = useApi<Manifestacao[]>(caminho, [caminho]);
+  const filtros = useFiltros('/canal/manifestacoes', {});
+  const { dados, carregando, erro, recarregar } = useApi<Manifestacao[]>(filtros.caminho, [filtros.caminho]);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Assunto, mensagem ou tratativa', tipo: 'busca' },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select', opcoes: [
+      { valor: 'ABERTA', rotulo: 'Aberta' },
+      { valor: 'EM_ANALISE', rotulo: 'Em análise' },
+      { valor: 'RESOLVIDA', rotulo: 'Resolvida' },
+      { valor: 'ARQUIVADA', rotulo: 'Arquivada' },
+    ] },
+    { chave: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: TIPOS.map((t) => ({ valor: t.valor, rotulo: t.rotulo })) },
+    { chave: 'de', rotulo: 'De', tipo: 'data' },
+    { chave: 'ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'anonimas', rotulo: 'só anônimas', tipo: 'marcar' },
+  ];
 
   const abertas = (dados ?? []).filter((m) => m.status === 'ABERTA').length;
   const riscos = (dados ?? []).filter((m) => m.tipo === 'RISCO' && m.status !== 'RESOLVIDA').length;
@@ -48,23 +61,8 @@ export default function Canal() {
       </div>
 
       <Cartao>
-        <div className="filtros" style={{ marginBottom: 14 }}>
-          <Campo rotulo="Situação">
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Todas</option>
-              <option value="ABERTA">Aberta</option>
-              <option value="EM_ANALISE">Em análise</option>
-              <option value="RESOLVIDA">Resolvida</option>
-              <option value="ARQUIVADA">Arquivada</option>
-            </select>
-          </Campo>
-          <Campo rotulo="Tipo">
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-              <option value="">Todos</option>
-              {TIPOS.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
-            </select>
-          </Campo>
-        </div>
+        <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar} ativos={filtros.ativos} />
 
         {carregando && <Carregando />}
         {erro && <Aviso tipo="erro">{erro}</Aviso>}

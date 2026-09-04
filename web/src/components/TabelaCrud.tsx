@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { api, ApiError, query } from '../lib/api';
-import { useApi, useDebounce } from '../lib/hooks';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { api, ApiError } from '../lib/api';
+import { useApi } from '../lib/hooks';
+import { BarraFiltros, useFiltros, type CampoFiltro, type Valores } from './Filtros';
 import { Cartao, Carregando, Aviso, Vazio, Modal, Campo } from './ui';
 
 export type CampoForm = {
@@ -25,7 +26,8 @@ export type Coluna<T> = {
  * Fala com os endpoints CRUD padrão do backend: GET/POST na raiz, PUT/DELETE por id.
  */
 export default function TabelaCrud<T extends { id: number }>({
-  titulo, descricao, recurso, colunas, campos, buscavel = true, aoMudar, acoesExtras, permiteExcluir = true,
+  titulo, descricao, recurso, colunas, campos, buscavel = true, aoMudar, acoesExtras,
+  permiteExcluir = true, filtros, filtrosIniciais,
 }: {
   titulo: string;
   descricao?: string;
@@ -36,14 +38,23 @@ export default function TabelaCrud<T extends { id: number }>({
   aoMudar?: () => void;
   acoesExtras?: (linha: T) => ReactNode;
   permiteExcluir?: boolean;
+  /** Filtros próprios do cadastro; a busca por texto já entra na frente deles. */
+  filtros?: CampoFiltro[];
+  filtrosIniciais?: Valores;
 }) {
-  const [busca, setBusca] = useState('');
-  const buscaLenta = useDebounce(busca);
   const [editando, setEditando] = useState<Partial<T> | null>(null);
   const [falha, setFalha] = useState('');
 
-  const caminho = `${recurso}${query({ busca: buscavel ? buscaLenta : '' })}`;
-  const { dados, carregando, erro, recarregar } = useApi<T[]>(caminho, [caminho]);
+  // `iniciais` precisa ser estável: entra nas dependências de "limpar".
+  const iniciais = useMemo(() => filtrosIniciais ?? {}, [JSON.stringify(filtrosIniciais ?? {})]);
+  const estado = useFiltros(recurso, iniciais);
+  const barra = Boolean(filtros?.length);
+
+  const campoBusca: CampoFiltro[] = buscavel
+    ? [{ chave: 'busca', rotulo: 'Buscar', tipo: 'busca' }]
+    : [];
+
+  const { dados, carregando, erro, recarregar } = useApi<T[]>(estado.caminho, [estado.caminho]);
 
   const atualizar = () => {
     recarregar();
@@ -72,16 +83,32 @@ export default function TabelaCrud<T extends { id: number }>({
         }
         acao={
           <div className="acoes">
-            {buscavel && (
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar…" style={{ width: 210 }} />
+            {buscavel && !barra && (
+              <input
+                value={estado.valores.busca ?? ''}
+                onChange={(e) => estado.definir('busca', e.target.value)}
+                placeholder="Buscar…"
+                style={{ width: 210 }}
+              />
             )}
             <button className="primario" onClick={() => setEditando({})}>Novo</button>
           </div>
         }
       >
+        {barra && (
+          <BarraFiltros
+            campos={[...campoBusca, ...(filtros ?? [])]}
+            valores={estado.valores}
+            aoMudar={estado.definir}
+            aoLimpar={estado.limpar}
+            ativos={estado.ativos}
+          />
+        )}
         <Aviso tipo="erro">{falha || erro}</Aviso>
         {carregando && <Carregando />}
-        {dados && dados.length === 0 && <Vazio texto="Nenhum registro cadastrado." />}
+        {dados && dados.length === 0 && (
+          <Vazio texto={estado.ativos > 0 ? 'Nenhum registro com estes filtros.' : 'Nenhum registro cadastrado.'} />
+        )}
         {dados && dados.length > 0 && (
           <div className="tabela-rolagem" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
             <table>
@@ -109,6 +136,9 @@ export default function TabelaCrud<T extends { id: number }>({
               </tbody>
             </table>
           </div>
+        )}
+        {dados && dados.length > 0 && (
+          <div className="rodape-lista"><span>{dados.length} registro(s)</span></div>
         )}
       </Cartao>
 

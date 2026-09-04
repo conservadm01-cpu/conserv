@@ -25,6 +25,22 @@ e margem.
 - **Baixa automática** do material previsto quando a ordem consome o almoxarifado.
 - **Necessidade de compra (MRP)**: explode a ficha técnica das ordens em aberto, desconta o
   saldo e mostra o que falta comprar, de qual fornecedor e por quanto.
+- **Inventário**: abre a folha de contagem (todo o almoxarifado ou uma lista de materiais),
+  registra o contado item a item e, no fechamento, lança o ajuste da diferença no estoque.
+
+### Compras
+- **Requisições** avulsas ou geradas em lote: do MRP (o que as ordens em aberto vão exigir)
+  ou do estoque mínimo (repõe até o dobro do mínimo). Materiais que já têm requisição
+  aberta são pulados, para não empilhar pedido do mesmo item.
+- **Pedido de compra** com numeração própria (`PC-AAAA-NNNN`), frete, desconto, condição de
+  pagamento e previsão de entrega. As requisições selecionadas viram pedidos **agrupados
+  por fornecedor**, somando o que se repete.
+- **Recebimento total ou parcial**: o que entra vira movimento de estoque e, se você quiser,
+  a conta a pagar já com o vencimento do prazo do fornecedor. O estorno desfaz os três.
+- O status do pedido (Parcial, Recebido) **sai do que já entrou** — editar o cabeçalho não
+  devolve o pedido a "Enviado".
+- Painel com o valor requisitado, o comprometido em pedidos, as entregas previstas e o
+  ranking por fornecedor.
 
 ### Engenharia e formação de custo
 - **Setores, equipamentos e jornada de trabalho** — cada etapa do roteiro pertence a um setor.
@@ -79,6 +95,16 @@ e margem.
 - **Aging** por faixa de atraso, realizado mês a mês e ranking de quem mais deve
   e a quem mais se deve.
 - Plano de contas e contas bancárias.
+
+### Filtros e cadastro em todas as telas
+- Toda listagem tem a **mesma barra de filtros**: busca por texto (com atraso, para não
+  consultar a cada tecla), recortes por situação, período, faixa de valor e marcadores como
+  "só atrasados" ou "só em aberto". O botão *Limpar* mostra quantos filtros estão ativos.
+- Os filtros são aplicados **no banco**, não na tela: a lista filtrada é a lista carregada.
+- Cadastro, edição e exclusão em todas as etapas — pedidos, ordens, requisições, pedidos de
+  compra, títulos, oportunidades, orçamentos, apontamentos e as tabelas auxiliares.
+- Registro com histórico nunca é apagado: pedido com entrega, título com baixa, ordem com
+  apontamento e orçamento convertido são **cancelados**, preservando a trilha.
 
 ### Acesso e permissões
 - **31 áreas** em oito grupos, de "ver estoque" a "alterar jornada e encargos".
@@ -211,7 +237,8 @@ de cada produto.
 ```
 server/            API em Node + Express + SQLite
   src/db/          schema.sql e conexão
-  src/services/    regras de negócio (PCP, estoque/MRP, indicadores)
+  src/services/    regras de negócio (PCP, estoque/MRP, compras, custeio, comercial)
+  src/lib/         filtros de listagem, CRUD genérico, permissões
   src/routes/      endpoints REST
   src/import/      leitor da planilha
   test/            testes automatizados
@@ -233,8 +260,10 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 |---|---|
 | Sessão | `POST /api/auth/login`, `GET /api/auth/eu`, `PUT /api/auth/senha` |
 | Pedidos | `GET|POST|PUT|DELETE /api/pedidos`, `GET /api/pedidos/itens/carteira` |
-| Produção | `GET /api/ordens`, `GET /api/ordens/quadro`, `PUT /api/ordens/:id/etapas/:etapaId`, `POST /api/ordens/:id/recalcular`, `POST /api/ordens/:id/baixar-materiais` |
+| Produção | `GET /api/ordens`, `GET /api/ordens/quadro`, `PUT|DELETE /api/ordens/:id`, `PUT /api/ordens/:id/etapas/:etapaId`, `POST /api/ordens/:id/recalcular`, `POST /api/ordens/:id/baixar-materiais` |
 | Materiais | `GET|POST|PUT|DELETE /api/materiais`, `GET /api/materiais/estoque/posicao`, `GET /api/materiais/estoque/necessidade`, `POST /api/materiais/estoque/movimentos` |
+| Compras | `GET|POST|PUT|DELETE /api/compras/requisicoes`, `POST /api/compras/requisicoes/gerar-mrp`, `/gerar-minimo`, `/gerar-pedidos`, `GET|POST|PUT|DELETE /api/compras/pedidos`, `POST /api/compras/pedidos/:id/receber`, `DELETE /api/compras/recebimentos/:id`, `GET /api/compras/resumo` |
+| Inventário | `GET|POST|DELETE /api/compras/inventarios`, `PUT /api/compras/inventarios/:id/contagem`, `POST /api/compras/inventarios/:id/fechar` |
 | Produtos | `GET|POST /api/produtos/:id/ficha-tecnica`, `GET|PUT /api/produtos/:id/custos-processo` |
 | Engenharia | `GET|PUT /api/engenharia/parametros`, `GET /api/engenharia/custo-setores`, `/capacidade`, `/custo-indireto`, CRUD em `/departamentos`, `/equipamentos`, `/custos-fixos` |
 | Pessoas | `GET|POST|PUT|DELETE /api/colaboradores` |
@@ -247,3 +276,7 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |
+
+**Todas as listagens aceitam os mesmos parâmetros**: `?busca=`, os recortes próprios de cada
+recurso (situação, período, faixa de valor), `?ordenar_por=` + `?direcao=` — que só aceitam
+colunas declaradas pela rota — e `?limite=`.

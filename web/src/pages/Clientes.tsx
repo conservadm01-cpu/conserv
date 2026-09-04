@@ -1,6 +1,10 @@
 import { useApi } from '../lib/hooks';
 import TabelaCrud, { type Coluna, type CampoForm } from '../components/TabelaCrud';
+import type { CampoFiltro } from '../components/Filtros';
 import type { Cliente, Simples } from '../tipos';
+
+const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT',
+             'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 
 const COLUNAS: Coluna<Cliente>[] = [
   { chave: 'nome', rotulo: 'Cliente' },
@@ -41,6 +45,14 @@ export default function Clientes() {
     { nome: 'observacao', rotulo: 'Observação' },
   ];
 
+  const filtros: CampoFiltro[] = [
+    { chave: 'categoria_id', rotulo: 'Categoria', tipo: 'select',
+      opcoes: (categorias ?? []).map((c) => ({ valor: c.id, rotulo: c.nome })) },
+    { chave: 'uf', rotulo: 'UF', tipo: 'select',
+      opcoes: UFS.map((u) => ({ valor: u, rotulo: u })) },
+    { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+  ];
+
   return (
     <>
       <header className="cabecalho">
@@ -54,6 +66,8 @@ export default function Clientes() {
         recurso="/clientes"
         colunas={COLUNAS}
         campos={campos}
+        filtros={filtros}
+        filtrosIniciais={{ ativo: 'true' }}
       />
     </>
   );

@@ -210,3 +210,29 @@ router.put(
     res.json(buscarOrdem(ordem.id, db));
   })
 );
+
+router.delete(
+  '/:id',
+  podeOrdens,
+  asyncHandler((req, res) => {
+    const db = getDb();
+    const ordem = db.prepare(`SELECT * FROM ordens_producao WHERE id = ?`).get(req.params.id);
+    if (!ordem) throw notFound('Ordem de produção não encontrada');
+
+    // Ordem que já produziu ou consumiu material vira histórico: cancela, não apaga.
+    const { apontada } = db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM apontamentos a WHERE a.ordem_id = ?) +
+           (SELECT COUNT(*) FROM movimentos_estoque m WHERE m.ordem_id = ?) AS apontada`
+      )
+      .get(ordem.id, ordem.id);
+
+    if (apontada > 0) {
+      db.prepare(`UPDATE ordens_producao SET status = 'CANCELADA' WHERE id = ?`).run(ordem.id);
+      return res.json({ ok: true, cancelada: true });
+    }
+    db.prepare(`DELETE FROM ordens_producao WHERE id = ?`).run(ordem.id);
+    res.json({ ok: true, removida: true });
+  })
+);

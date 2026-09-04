@@ -231,3 +231,29 @@ button.pequeno { padding: 5px 9px; font-size: 12.5px; }
   .menu-grupo { display: none; }
   .conteudo { padding: 16px; }
 }
+
+/* ---------- Barra de filtros ---------- */
+.barra-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--borda);
+}
+.barra-filtros .campo { margin-bottom: 0; }
+.filtro-busca { flex: 1 1 240px; min-width: 200px; }
+.filtro-campo { flex: 0 1 160px; min-width: 130px; }
+.filtro-marcar { padding-bottom: 8px; white-space: nowrap; }
+.filtro-limpar { margin-left: auto; margin-bottom: 1px; }
+
+/* Rodapé de contagem das listagens */
+.rodape-lista {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding-top: 10px; font-size: 12.5px; color: var(--texto-suave); flex-wrap: wrap;
+}
+
+/* Linha secundária dentro da célula (código do material, número do documento) */
+.sub { color: var(--texto-suave); font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }

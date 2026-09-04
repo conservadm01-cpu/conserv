@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError, pode } from '../lib/api';
 import { useApi } from '../lib/hooks';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import { moeda, moedaCurta, numero, data, decimal, hoje } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta, Modal } from '../components/ui';
 import type {
@@ -28,18 +29,14 @@ const TIPOS_INTERACAO = [
 ];
 
 export default function Crm() {
+  const [aba, setAba] = useState<'Funil' | 'Oportunidades'>('Funil');
   const [aberta, setAberta] = useState<number | null>(null);
   const [nova, setNova] = useState(false);
+  const [editando, setEditando] = useState<Oportunidade | null>(null);
   const [recarga, setRecarga] = useState(0);
 
-  const { dados: resumo, carregando, erro } = useApi<ResumoComercial>('/crm/resumo', [recarga]);
   const { dados: etapas } = useApi<EtapaFunil[]>('/crm/etapas-funil');
-
   const atualizar = () => setRecarga((n) => n + 1);
-
-  if (carregando) return <Carregando />;
-  if (erro) return <Aviso tipo="erro">{erro}</Aviso>;
-  if (!resumo) return null;
 
   return (
     <>
@@ -54,6 +51,45 @@ export default function Crm() {
           </div>
         )}
       </header>
+
+      <div className="abas">
+        {(['Funil', 'Oportunidades'] as const).map((a) => (
+          <button key={a} className={`aba${aba === a ? ' ativa' : ''}`} onClick={() => setAba(a)}>{a}</button>
+        ))}
+      </div>
+
+      {aba === 'Funil' && <Quadro chave={recarga} aoAbrir={setAberta} />}
+      {aba === 'Oportunidades' && (
+        <Lista chave={recarga} etapas={etapas ?? []} aoAbrir={setAberta} aoEditar={setEditando} aoMudar={atualizar} />
+      )}
+
+      <DetalheOportunidade
+        id={aberta}
+        etapas={etapas ?? []}
+        aoFechar={() => setAberta(null)}
+        aoMudar={atualizar}
+      />
+      <NovaOportunidade
+        aberto={nova}
+        oportunidade={editando}
+        etapas={etapas ?? []}
+        aoFechar={() => { setNova(false); setEditando(null); }}
+        aoSalvar={() => { setNova(false); setEditando(null); atualizar(); }}
+      />
+    </>
+  );
+}
+
+/** Kanban do funil: uma coluna por etapa aberta. */
+function Quadro({ chave, aoAbrir }: { chave: number; aoAbrir: (id: number) => void }) {
+  const { dados: resumo, carregando, erro } = useApi<ResumoComercial>('/crm/resumo', [chave]);
+
+  if (carregando) return <Carregando />;
+  if (erro) return <Aviso tipo="erro">{erro}</Aviso>;
+  if (!resumo) return null;
+
+  return (
+    <>
 
       <div className="grade c4">
         <Indicador rotulo="Em aberto" valor={numero(resumo.abertas)}
@@ -70,7 +106,7 @@ export default function Crm() {
 
       <div className="quadro">
         {resumo.funil.filter((c) => c.etapa.tipo === 'ABERTA').map((coluna) => (
-          <ColunaKanban key={coluna.etapa.id} coluna={coluna} aoAbrir={setAberta} />
+          <ColunaKanban key={coluna.etapa.id} coluna={coluna} aoAbrir={aoAbrir} />
         ))}
       </div>
 
@@ -91,7 +127,7 @@ export default function Crm() {
                       <td>{a.proximo_passo ?? a.resumo.slice(0, 40)}</td>
                       <td>
                         {a.oportunidade_id
-                          ? <button className="pequeno" onClick={() => setAberta(a.oportunidade_id!)}>abrir</button>
+                          ? <button className="pequeno" onClick={() => aoAbrir(a.oportunidade_id!)}>abrir</button>
                           : '—'}
                       </td>
                     </tr>
@@ -137,7 +173,7 @@ export default function Crm() {
                     <td>{o.vendedor ?? '—'}</td>
                     <td className="num">{moeda(o.valor_estimado)}</td>
                     <td className="num"><Etiqueta texto={`${o.dias_parada}d`} tom="amarela" /></td>
-                    <td><button className="pequeno" onClick={() => setAberta(o.id)}>abrir</button></td>
+                    <td><button className="pequeno" onClick={() => aoAbrir(o.id)}>abrir</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -146,18 +182,109 @@ export default function Crm() {
         </Cartao>
       )}
 
-      <DetalheOportunidade
-        id={aberta}
-        etapas={etapas ?? []}
-        aoFechar={() => setAberta(null)}
-        aoMudar={atualizar}
-      />
-      <NovaOportunidade
-        aberto={nova}
-        etapas={etapas ?? []}
-        aoFechar={() => setNova(false)}
-        aoSalvar={() => { setNova(false); atualizar(); }}
-      />
+    </>
+  );
+}
+
+/** Lista filtrável: o mesmo funil visto como tabela, com edição e exclusão. */
+function Lista({ chave, etapas, aoAbrir, aoEditar, aoMudar }: {
+  chave: number; etapas: EtapaFunil[];
+  aoAbrir: (id: number) => void; aoEditar: (o: Oportunidade) => void; aoMudar: () => void;
+}) {
+  const [falha, setFalha] = useState('');
+  const { dados: vendedores } = useApi<Simples[]>('/vendedores?ativo=true');
+  const filtros = useFiltros('/crm/oportunidades', { abertas: 'true', limite: '400' });
+  const { dados, carregando, erro, recarregar } = useApi<Oportunidade[]>(
+    filtros.caminho, [filtros.caminho, chave]
+  );
+
+  const escreve = pode('crm.editar');
+  const lista = dados ?? [];
+  const total = lista.reduce((s, o) => s + o.valor_estimado, 0);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Negócio, cliente ou observação', tipo: 'busca' },
+    { chave: 'etapa_id', rotulo: 'Etapa', tipo: 'select',
+      opcoes: etapas.map((e) => ({ valor: e.id, rotulo: e.nome })) },
+    { chave: 'vendedor_id', rotulo: 'Vendedor', tipo: 'select',
+      opcoes: (vendedores ?? []).map((v) => ({ valor: v.id, rotulo: v.nome })) },
+    { chave: 'origem', rotulo: 'Origem', tipo: 'select', opcoes: ORIGENS.map((o) => ({ valor: o.valor, rotulo: o.rotulo })) },
+    { chave: 'previsao_de', rotulo: 'Previsão de', tipo: 'data' },
+    { chave: 'previsao_ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'valor_min', rotulo: 'Valor mínimo', tipo: 'numero' },
+    { chave: 'abertas', rotulo: 'só em aberto', tipo: 'marcar' },
+    { chave: 'paradas', rotulo: 'só paradas', tipo: 'marcar' },
+  ];
+
+  async function excluir(o: Oportunidade) {
+    if (!confirm(`Excluir a oportunidade "${o.titulo}"? As interações registradas somem junto.`)) return;
+    setFalha('');
+    try {
+      await api.delete(`/crm/oportunidades/${o.id}`);
+      recarregar();
+      aoMudar();
+    } catch (e) {
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível remover');
+    }
+  }
+
+  return (
+    <>
+      <div className="grade c3">
+        <Indicador rotulo="Oportunidades listadas" valor={numero(lista.length)} />
+        <Indicador rotulo="Valor em jogo" valor={moeda(total)} />
+        <Indicador rotulo="Paradas há 14+ dias"
+          valor={numero(lista.filter((o) => (o.dias_parada ?? 0) >= 14).length)} />
+      </div>
+
+      <Cartao titulo="Oportunidades">
+        <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar} ativos={filtros.ativos} />
+
+        {carregando && <Carregando />}
+        <Aviso tipo="erro">{falha || erro}</Aviso>
+        {!carregando && lista.length === 0 && <Vazio texto="Nenhuma oportunidade com estes filtros." />}
+        {lista.length > 0 && (
+          <div className="tabela-rolagem" style={{ maxHeight: '58vh', overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Negócio</th><th>Cliente</th><th>Etapa</th><th>Vendedor</th><th>Origem</th>
+                  <th className="num">Valor</th><th>Previsão</th><th className="num">Parada</th><th />
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map((o) => (
+                  <tr key={o.id}>
+                    <td title={o.titulo}>{o.titulo.slice(0, 38)}</td>
+                    <td>{o.parte ?? '—'}</td>
+                    <td><Etiqueta texto={o.etapa ?? '—'} tom={o.etapa_tipo === 'GANHA' ? 'verde' : o.etapa_tipo === 'PERDIDA' ? 'vermelha' : 'azul'} /></td>
+                    <td>{o.vendedor ?? '—'}</td>
+                    <td><span className="sub">{ORIGENS.find((x) => x.valor === o.origem)?.rotulo ?? o.origem}</span></td>
+                    <td className="num">{moeda(o.valor_estimado)}</td>
+                    <td>{data(o.previsao_fechamento)}</td>
+                    <td className="num">
+                      {(o.dias_parada ?? 0) >= 14
+                        ? <Etiqueta texto={`${o.dias_parada}d`} tom="amarela" />
+                        : '—'}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="pequeno" onClick={() => aoAbrir(o.id)}>Abrir</button>{' '}
+                      {escreve && (
+                        <>
+                          <button className="pequeno" onClick={() => aoEditar(o)}>Editar</button>{' '}
+                          <button className="pequeno perigo" onClick={() => excluir(o)}>Excluir</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="rodape-lista"><span>{lista.length} oportunidade(s)</span></div>
+      </Cartao>
     </>
   );
 }
@@ -371,11 +498,13 @@ function DetalheOportunidade({ id, etapas, aoFechar, aoMudar }: {
   );
 }
 
-function NovaOportunidade({ aberto, etapas, aoFechar, aoSalvar }: {
-  aberto: boolean; etapas: EtapaFunil[]; aoFechar: () => void; aoSalvar: () => void;
+function NovaOportunidade({ aberto, oportunidade = null, etapas, aoFechar, aoSalvar }: {
+  aberto: boolean; oportunidade?: Oportunidade | null; etapas: EtapaFunil[];
+  aoFechar: () => void; aoSalvar: () => void;
 }) {
-  const { dados: clientes } = useApi<Cliente[]>(aberto ? '/clientes?ativo=true' : null);
-  const { dados: vendedores } = useApi<Simples[]>(aberto ? '/vendedores?ativo=true' : null);
+  const visivel = aberto || Boolean(oportunidade);
+  const { dados: clientes } = useApi<Cliente[]>(visivel ? '/clientes?ativo=true' : null);
+  const { dados: vendedores } = useApi<Simples[]>(visivel ? '/vendedores?ativo=true' : null);
 
   const [titulo, setTitulo] = useState('');
   const [clienteId, setClienteId] = useState<number | ''>('');
@@ -392,24 +521,41 @@ function NovaOportunidade({ aberto, etapas, aoFechar, aoSalvar }: {
 
   const primeiraAberta = etapas.find((e) => e.tipo === 'ABERTA');
 
+  useEffect(() => {
+    if (!visivel) return;
+    setTitulo(oportunidade?.titulo ?? '');
+    setClienteId(oportunidade?.cliente_id ?? '');
+    setProspect(oportunidade?.prospect ?? '');
+    setContato(oportunidade?.contato ?? '');
+    setTelefone(oportunidade?.telefone ?? '');
+    setVendedorId(oportunidade?.vendedor_id ?? '');
+    setEtapaId(oportunidade?.etapa_id ?? '');
+    setOrigem(oportunidade?.origem ?? 'INDICACAO');
+    setValor(oportunidade ? String(oportunidade.valor_estimado) : '');
+    setPrevisao(oportunidade?.previsao_fechamento ?? '');
+    setErro('');
+  }, [visivel, oportunidade]);
+
   async function salvar() {
     if (!titulo.trim()) return setErro('Descreva o negócio.');
     if (!clienteId && !prospect.trim()) return setErro('Escolha o cliente ou informe o prospect.');
     setSalvando(true);
     setErro('');
+    const corpo = {
+      titulo: titulo.trim(),
+      cliente_id: clienteId ? Number(clienteId) : null,
+      prospect: prospect.trim() || null,
+      contato: contato.trim() || null,
+      telefone: telefone.trim() || null,
+      vendedor_id: vendedorId ? Number(vendedorId) : null,
+      etapa_id: Number(etapaId || primeiraAberta?.id),
+      origem,
+      valor_estimado: Number(valor) || 0,
+      previsao_fechamento: previsao || null,
+    };
     try {
-      await api.post('/crm/oportunidades', {
-        titulo: titulo.trim(),
-        cliente_id: clienteId ? Number(clienteId) : null,
-        prospect: prospect.trim() || null,
-        contato: contato.trim() || null,
-        telefone: telefone.trim() || null,
-        vendedor_id: vendedorId ? Number(vendedorId) : null,
-        etapa_id: Number(etapaId || primeiraAberta?.id),
-        origem,
-        valor_estimado: Number(valor) || 0,
-        previsao_fechamento: previsao || null,
-      });
+      if (oportunidade) await api.put(`/crm/oportunidades/${oportunidade.id}`, corpo);
+      else await api.post('/crm/oportunidades', corpo);
       setTitulo(''); setProspect(''); setValor(''); setContato('');
       aoSalvar();
     } catch (e) {
@@ -421,14 +567,14 @@ function NovaOportunidade({ aberto, etapas, aoFechar, aoSalvar }: {
 
   return (
     <Modal
-      titulo="Nova oportunidade"
-      aberto={aberto}
+      titulo={oportunidade ? 'Editar oportunidade' : 'Nova oportunidade'}
+      aberto={visivel}
       aoFechar={aoFechar}
       rodape={
         <>
           <button onClick={aoFechar}>Cancelar</button>
           <button className="primario" onClick={salvar} disabled={salvando}>
-            {salvando ? 'Criando…' : 'Criar'}
+            {salvando ? 'Salvando…' : oportunidade ? 'Salvar' : 'Criar'}
           </button>
         </>
       }

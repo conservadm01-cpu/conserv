@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Line, Legend, ReferenceLine,
 } from 'recharts';
-import { api, ApiError, query, pode } from '../lib/api';
-import { useApi, useDebounce } from '../lib/hooks';
+import { api, ApiError, pode } from '../lib/api';
+import { useApi } from '../lib/hooks';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import { moeda, moedaCurta, numero, data, decimal, hoje, mesCurto } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta, Modal } from '../components/ui';
 import type {
@@ -213,19 +214,40 @@ const TabelaRanking = ({ linhas, rotulo }: { linhas: ResumoFinanceiro['maiores_d
 function Titulos({ tipo, chave, aoMudar }: {
   tipo: 'RECEBER' | 'PAGAR'; chave: number; aoMudar: () => void;
 }) {
-  const [busca, setBusca] = useState('');
-  const [status, setStatus] = useState('');
-  const [soVencidos, setSoVencidos] = useState(false);
   const [baixando, setBaixando] = useState<Titulo | null>(null);
-  const buscaLenta = useDebounce(busca);
+  const [editando, setEditando] = useState<Titulo | null>(null);
+  const [falha, setFalha] = useState('');
 
-  const caminho = `/financeiro/titulos${query({
-    tipo, busca: buscaLenta, status,
-    abertos: status ? 'false' : 'true',
-    vencidos: soVencidos ? 'true' : '',
-    limite: 500,
-  })}`;
-  const { dados, carregando, erro, recarregar } = useApi<Titulo[]>(caminho, [caminho, chave]);
+  const { dados: categorias } = useApi<CategoriaFinanceira[]>('/financeiro/categorias');
+  const filtros = useFiltros('/financeiro/titulos', { tipo, limite: '500' });
+  const { dados, carregando, erro, recarregar } = useApi<Titulo[]>(filtros.caminho, [filtros.caminho, chave]);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: tipo === 'RECEBER' ? 'Cliente, descrição ou NF' : 'Fornecedor, descrição ou NF', tipo: 'busca' },
+    { chave: 'status', rotulo: 'Situação', tipo: 'select',
+      opcoes: Object.entries(ROTULO_STATUS).map(([v, r]) => ({ valor: v, rotulo: r })) },
+    { chave: 'categoria', rotulo: 'Categoria', tipo: 'select',
+      opcoes: (categorias ?? []).filter((c) => c.tipo === tipo).map((c) => ({ valor: c.nome, rotulo: c.nome })) },
+    { chave: 'de', rotulo: 'Vencimento de', tipo: 'data' },
+    { chave: 'ate', rotulo: 'até', tipo: 'data' },
+    { chave: 'valor_min', rotulo: 'Valor mínimo', tipo: 'numero' },
+    { chave: 'vencidos', rotulo: 'só vencidos', tipo: 'marcar' },
+  ];
+
+  async function excluir(t: Titulo) {
+    const aviso = t.pago > 0
+      ? `Cancelar "${t.descricao}"? As baixas ficam no histórico.`
+      : `Excluir "${t.descricao}"?`;
+    if (!confirm(aviso)) return;
+    setFalha('');
+    try {
+      await api.delete(`/financeiro/titulos/${t.id}`);
+      recarregar();
+      aoMudar();
+    } catch (e) {
+      setFalha(e instanceof ApiError ? e.message : 'Não foi possível remover');
+    }
+  }
 
   const total = (dados ?? []).reduce((s, t) => s + t.saldo, 0);
   const vencido = (dados ?? []).filter((t) => t.dias_atraso > 0).reduce((s, t) => s + t.saldo, 0);
@@ -241,30 +263,11 @@ function Titulos({ tipo, chave, aoMudar }: {
       </div>
 
       <Cartao titulo={tipo === 'RECEBER' ? 'Contas a receber' : 'Contas a pagar'}>
-        <div className="filtros" style={{ marginBottom: 14 }}>
-          <Campo rotulo="Buscar">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)}
-              placeholder={tipo === 'RECEBER' ? 'Cliente, descrição ou NF' : 'Fornecedor, descrição ou NF'} />
-          </Campo>
-          <Campo rotulo="Situação">
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Em aberto</option>
-              <option value="ABERTO">Aberto</option>
-              <option value="PARCIAL">Parcial</option>
-              <option value="QUITADO">Quitado</option>
-              <option value="CANCELADO">Cancelado</option>
-            </select>
-          </Campo>
-          <Campo rotulo="Filtro">
-            <label style={{ display: 'flex', gap: 6, margin: 0, paddingTop: 7, fontWeight: 400 }}>
-              <input type="checkbox" style={{ width: 'auto' }} checked={soVencidos}
-                onChange={(e) => setSoVencidos(e.target.checked)} /> só vencidos
-            </label>
-          </Campo>
-        </div>
+        <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar} ativos={filtros.ativos} />
 
         {carregando && <Carregando />}
-        {erro && <Aviso tipo="erro">{erro}</Aviso>}
+        <Aviso tipo="erro">{falha || erro}</Aviso>
         {dados && dados.length === 0 && <Vazio texto="Nenhum título com estes filtros." />}
         {dados && dados.length > 0 && (
           <div className="tabela-rolagem" style={{ maxHeight: '58vh', overflowY: 'auto' }}>
@@ -299,9 +302,17 @@ function Titulos({ tipo, chave, aoMudar }: {
                     <td><Etiqueta texto={ROTULO_STATUS[t.status]} tom={TOM_STATUS[t.status]} /></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {pode('financeiro.baixar') && t.saldo > 0 && t.status !== 'CANCELADO' && (
-                        <button className="pequeno" onClick={() => setBaixando(t)}>
+                        <><button className="pequeno" onClick={() => setBaixando(t)}>
                           {tipo === 'RECEBER' ? 'Receber' : 'Pagar'}
-                        </button>
+                        </button>{' '}</>
+                      )}
+                      {pode('financeiro.lancar') && t.status !== 'CANCELADO' && (
+                        <>
+                          <button className="pequeno" onClick={() => setEditando(t)}>Editar</button>{' '}
+                          <button className="pequeno perigo" onClick={() => excluir(t)}>
+                            {t.pago > 0 ? 'Cancelar' : 'Excluir'}
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -314,7 +325,108 @@ function Titulos({ tipo, chave, aoMudar }: {
 
       <FormularioBaixa titulo={baixando} aoFechar={() => setBaixando(null)}
         aoSalvar={() => { setBaixando(null); atualizar(); }} />
+      <EditarTitulo titulo={editando} aoFechar={() => setEditando(null)}
+        aoSalvar={() => { setEditando(null); atualizar(); }} />
     </>
+  );
+}
+
+/** Edição do título já lançado: valor, vencimento, categoria e documento. */
+function EditarTitulo({ titulo, aoFechar, aoSalvar }: {
+  titulo: Titulo | null; aoFechar: () => void; aoSalvar: () => void;
+}) {
+  const { dados: categorias } = useApi<CategoriaFinanceira[]>(titulo ? '/financeiro/categorias' : null);
+  const [descricao, setDescricao] = useState('');
+  const [valor, setValor] = useState('');
+  const [vencimento, setVencimento] = useState('');
+  const [documento, setDocumento] = useState('');
+  const [categoriaId, setCategoriaId] = useState<number | ''>('');
+  const [observacao, setObservacao] = useState('');
+  const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!titulo) return;
+    setDescricao(titulo.descricao);
+    setValor(String(titulo.valor));
+    setVencimento(titulo.vencimento);
+    setDocumento(titulo.documento ?? '');
+    setCategoriaId(titulo.categoria_id ?? '');
+    setObservacao(titulo.observacao ?? '');
+    setErro('');
+  }, [titulo]);
+
+  async function salvar() {
+    if (!titulo) return;
+    if (!descricao.trim()) return setErro('Informe a descrição.');
+    if (!(Number(valor) > 0)) return setErro('O valor precisa ser maior que zero.');
+    if (Number(valor) < titulo.pago) {
+      return setErro(`O valor não pode ficar abaixo do que já foi pago (${moeda(titulo.pago)}).`);
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      await api.put(`/financeiro/titulos/${titulo.id}`, {
+        descricao: descricao.trim(),
+        valor: Number(valor),
+        vencimento,
+        documento: documento.trim() || null,
+        categoria_id: categoriaId ? Number(categoriaId) : null,
+        observacao: observacao.trim() || null,
+      });
+      aoSalvar();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : 'Não foi possível salvar');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal
+      titulo={titulo ? `Editar — ${titulo.descricao.slice(0, 40)}` : ''}
+      aberto={Boolean(titulo)}
+      aoFechar={aoFechar}
+      rodape={
+        <>
+          <button onClick={aoFechar}>Cancelar</button>
+          <button className="primario" onClick={salvar} disabled={salvando}>
+            {salvando ? 'Salvando…' : 'Salvar'}
+          </button>
+        </>
+      }
+    >
+      <Aviso tipo="erro">{erro}</Aviso>
+      {titulo && titulo.pago > 0 && (
+        <Aviso tipo="info">
+          Este título já tem {moeda(titulo.pago)} baixado. O valor não pode ficar abaixo disso.
+        </Aviso>
+      )}
+      <Campo rotulo="Descrição">
+        <input value={descricao} onChange={(e) => setDescricao(e.target.value)} autoFocus />
+      </Campo>
+      <div className="linha-campos">
+        <Campo rotulo="Valor">
+          <input type="number" min="0" step="any" value={valor} onChange={(e) => setValor(e.target.value)} />
+        </Campo>
+        <Campo rotulo="Vencimento">
+          <input type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+        </Campo>
+        <Campo rotulo="Documento">
+          <input value={documento} onChange={(e) => setDocumento(e.target.value)} />
+        </Campo>
+        <Campo rotulo="Categoria">
+          <select value={categoriaId} onChange={(e) => setCategoriaId(Number(e.target.value) || '')}>
+            <option value="">—</option>
+            {(categorias ?? []).filter((c) => c.tipo === titulo?.tipo)
+              .map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        </Campo>
+      </div>
+      <Campo rotulo="Observação">
+        <input value={observacao} onChange={(e) => setObservacao(e.target.value)} />
+      </Campo>
+    </Modal>
   );
 }
 

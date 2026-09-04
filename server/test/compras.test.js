@@ -316,3 +316,29 @@ test('resumo de compras separa requisição de pedido', () => {
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+test('editar o cabeçalho de um pedido parcial não desfaz o status do recebimento', () => {
+  const fornecedor = novoFornecedor();
+  const material = novoMaterial({ custo: 5, fornecedor });
+  const pedido = criarPedidoCompra({
+    fornecedor_id: fornecedor,
+    itens: [{ material_id: material, quantidade: 100, preco_unitario: 5 }],
+  });
+
+  receber(pedido.id, { itens: [{ item_id: buscarPedidoCompra(pedido.id).linhas[0].id, quantidade: 40 }] });
+  assert.equal(buscarPedidoCompra(pedido.id).status, 'PARCIAL');
+
+  // O editor manda o cabeçalho inteiro; um "ENVIADO" vindo dali não pode valer.
+  const depois = atualizarPedidoCompra(pedido.id, {
+    previsao_entrega: '2030-01-01',
+    observacao: 'entrega remarcada',
+    status: 'ENVIADO',
+  });
+  assert.equal(depois.status, 'PARCIAL');
+  assert.equal(depois.previsao_entrega, '2030-01-01');
+  assert.equal(depois.observacao, 'entrega remarcada');
+  assert.equal(depois.linhas[0].recebido, 40);
+
+  // Cancelar segue sendo decisão de quem edita.
+  assert.equal(atualizarPedidoCompra(pedido.id, { status: 'CANCELADO' }).status, 'CANCELADO');
+});

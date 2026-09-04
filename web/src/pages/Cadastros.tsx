@@ -5,6 +5,9 @@ import type { Simples, Fornecedor, Etapa } from '../tipos';
 const ABAS = ['Vendedores', 'Categorias de cliente', 'Grupos de produto', 'Fornecedores',
               'Etapas do processo', 'Categorias financeiras', 'Contas bancárias'] as const;
 
+const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT',
+             'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+
 const NOME_SIMPLES: Coluna<Simples>[] = [{ chave: 'nome', rotulo: 'Nome' }];
 const CAMPO_NOME: CampoForm[] = [{ nome: 'nome', rotulo: 'Nome', obrigatorio: true }];
 
@@ -93,6 +96,11 @@ export default function Cadastros() {
             { nome: 'condicao_pagamento', rotulo: 'Condição de pagamento', ajuda: 'Ex.: 30/60 dias' },
             { nome: 'observacao', rotulo: 'Observação' },
           ]}
+          filtros={[
+            { chave: 'uf', rotulo: 'UF', tipo: 'select', opcoes: UFS.map((u) => ({ valor: u, rotulo: u })) },
+            { chave: 'ativo', rotulo: 'só ativos', tipo: 'marcar' },
+          ]}
+          filtrosIniciais={{ ativo: 'true' }}
         />
       )}
 
@@ -112,6 +120,13 @@ export default function Cadastros() {
               opcoes: [{ valor: 'RECEBER', rotulo: 'Receita' }, { valor: 'PAGAR', rotulo: 'Despesa' }] },
             { nome: 'grupo', rotulo: 'Grupo', ajuda: 'Ex.: Matéria-prima, Estrutura, Pessoal' },
           ]}
+          filtros={[
+            { chave: 'tipo', rotulo: 'Natureza', tipo: 'select', opcoes: [
+              { valor: 'RECEBER', rotulo: 'Receita' }, { valor: 'PAGAR', rotulo: 'Despesa' },
+            ] },
+            { chave: 'ativo', rotulo: 'só ativas', tipo: 'marcar' },
+          ]}
+          filtrosIniciais={{ ativo: 'true' }}
         />
       )}
 

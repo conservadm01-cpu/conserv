@@ -1,24 +1,30 @@
 import { useState } from 'react';
-import { api, ApiError, query } from '../lib/api';
-import { useApi, useDebounce } from '../lib/hooks';
+import { api, ApiError, pode } from '../lib/api';
+import { useApi } from '../lib/hooks';
 import { data, decimal, moeda } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Etiqueta, Campo, Modal, Indicador } from '../components/ui';
+import { BarraFiltros, useFiltros, type CampoFiltro } from '../components/Filtros';
 import type { PosicaoEstoque, Movimento, Fornecedor } from '../tipos';
 
 const TIPOS = ['TECIDO', 'AVIAMENTO', 'EMBALAGEM', 'TINTA', 'ETIQUETA', 'SERVICO', 'OUTRO'];
 
 export default function Estoque() {
-  const [busca, setBusca] = useState('');
-  const [tipo, setTipo] = useState('');
-  const [soAbaixo, setSoAbaixo] = useState(false);
   const [movimentar, setMovimentar] = useState<PosicaoEstoque | null>(null);
   const [historico, setHistorico] = useState<PosicaoEstoque | null>(null);
-  const buscaLenta = useDebounce(busca);
 
-  const caminho = `/materiais/estoque/posicao${query({
-    busca: buscaLenta, tipo, abaixo_minimo: soAbaixo ? 'true' : '',
-  })}`;
-  const { dados, carregando, erro, recarregar } = useApi<PosicaoEstoque[]>(caminho, [caminho]);
+  const { dados: fornecedores } = useApi<Fornecedor[]>('/fornecedores?ativo=true');
+  const filtros = useFiltros('/materiais/estoque/posicao');
+  const { dados, carregando, erro, recarregar } = useApi<PosicaoEstoque[]>(filtros.caminho, [filtros.caminho]);
+
+  const campos: CampoFiltro[] = [
+    { chave: 'busca', rotulo: 'Material, código ou localização', tipo: 'busca' },
+    { chave: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: TIPOS.map((t) => ({ valor: t, rotulo: t })) },
+    { chave: 'fornecedor_id', rotulo: 'Fornecedor', tipo: 'select',
+      opcoes: (fornecedores ?? []).map((f) => ({ valor: f.id, rotulo: f.nome })) },
+    { chave: 'saldo_max', rotulo: 'Saldo até', tipo: 'numero' },
+    { chave: 'abaixo_minimo', rotulo: 'abaixo do mínimo', tipo: 'marcar' },
+    { chave: 'zerados', rotulo: 'zerados', tipo: 'marcar' },
+  ];
 
   const valorTotal = (dados ?? []).reduce((s, m) => s + m.valor_estoque, 0);
   const abaixo = (dados ?? []).filter((m) => m.abaixo_minimo).length;
@@ -39,23 +45,8 @@ export default function Estoque() {
       </div>
 
       <Cartao>
-        <div className="filtros" style={{ marginBottom: 14 }}>
-          <Campo rotulo="Buscar">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Descrição ou código" />
-          </Campo>
-          <Campo rotulo="Tipo">
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-              <option value="">Todos</option>
-              {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Campo>
-          <Campo rotulo="Filtro">
-            <label style={{ display: 'flex', gap: 6, margin: 0, paddingTop: 7, fontWeight: 400 }}>
-              <input type="checkbox" style={{ width: 'auto' }} checked={soAbaixo}
-                onChange={(e) => setSoAbaixo(e.target.checked)} /> só abaixo do mínimo
-            </label>
-          </Campo>
-        </div>
+        <BarraFiltros campos={campos} valores={filtros.valores} aoMudar={filtros.definir}
+          aoLimpar={filtros.limpar} ativos={filtros.ativos} />
 
         {carregando && <Carregando />}
         {erro && <Aviso tipo="erro">{erro}</Aviso>}
@@ -85,7 +76,9 @@ export default function Estoque() {
                     <td className="num">{moeda(m.custo_unitario)}</td>
                     <td className="num">{moeda(m.valor_estoque)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="pequeno" onClick={() => setMovimentar(m)}>Movimentar</button>{' '}
+                      {pode('materiais.mover') && (
+                        <><button className="pequeno" onClick={() => setMovimentar(m)}>Movimentar</button>{' '}</>
+                      )}
                       <button className="pequeno" onClick={() => setHistorico(m)}>Extrato</button>
                     </td>
                   </tr>
