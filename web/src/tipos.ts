@@ -347,3 +347,86 @@ export type MediaAfericao = {
   etapa_id: number; etapa: string; ordem: number; medicoes: number;
   tempo_por_peca: number; melhor: number; pior: number; tempo_padrao: number | null;
 };
+
+/* ---------- Comercial ---------- */
+
+export type EtapaFunil = {
+  id: number; nome: string; ordem: number; probabilidade: number;
+  tipo: 'ABERTA' | 'GANHA' | 'PERDIDA'; ativo: number;
+};
+
+export type Oportunidade = {
+  id: number; titulo: string;
+  cliente_id: number | null; cliente: string | null; prospect: string | null; parte: string | null;
+  contato: string | null; telefone: string | null; email: string | null;
+  vendedor_id: number | null; vendedor: string | null;
+  etapa_id: number; etapa: string; etapa_tipo: string;
+  probabilidade: number | null; probabilidade_etapa: number;
+  origem: string; valor_estimado: number;
+  previsao_fechamento: string | null; motivo_perda: string | null; fechada_em: string | null;
+  observacao: string | null; criado_em: string; atualizado_em: string;
+  dias_parada?: number; proximo_contato?: string | null;
+  interacoes?: Interacao[]; orcamentos?: Orcamento[];
+};
+
+export type Interacao = {
+  id: number; oportunidade_id: number | null; cliente_id: number | null;
+  tipo: string; data: string; resumo: string;
+  proximo_passo: string | null; proxima_data: string | null; concluida: number;
+  usuario: string | null; oportunidade?: string; parte?: string;
+};
+
+export type ColunaFunil = {
+  etapa: EtapaFunil; oportunidades: Oportunidade[];
+  total: number; valor: number; valor_ponderado: number;
+};
+
+export type ResumoComercial = {
+  funil: ColunaFunil[];
+  abertas: number; valor_aberto: number; valor_ponderado: number;
+  ganhas: number; valor_ganho: number; perdidas: number; valor_perdido: number;
+  conversao: number;
+  paradas: Oportunidade[];
+  motivos_perda: Array<{ motivo: string; total: number; valor: number }>;
+  agenda: Interacao[];
+};
+
+export type Orcamento = {
+  id: number; numero: string;
+  cliente_id: number | null; cliente: string | null; prospect: string | null; parte: string | null;
+  oportunidade_id: number | null; oportunidade: string | null;
+  vendedor_id: number | null; vendedor: string | null;
+  data: string; validade: string | null; prazo_entrega_dias: number;
+  condicao_pagamento: string | null; desconto_percentual: number; frete: number;
+  status: string; motivo_recusa: string | null;
+  pedido_id: number | null; pedido_numero: string | null;
+  itens: number; pecas: number;
+  valor_bruto: number; valor_total: number; custo_total: number; vencido: number;
+  observacao: string | null;
+  desconto?: number; margem?: number; margem_percentual?: number; minutos_fabrica?: number;
+  linhas?: LinhaOrcamento[];
+};
+
+export type LinhaOrcamento = {
+  id: number; produto_id: number; produto: string; grupo: string | null; linha: string;
+  descricao: string | null; quantidade: number;
+  preco_unitario: number; custo_unitario: number;
+  total: number; custo: number; margem_percentual: number; sequencia: number;
+};
+
+export type Precificacao = {
+  produto_id: number; produto: string; quantidade: number;
+  custo_unitario: number; custo_total: number;
+  material: number; mao_de_obra: number; indireto: number; minutos_por_peca: number;
+  preco_tabela: number; preco_sugerido: number; base: string;
+  margem_no_sugerido: number; margem_no_tabela: number;
+  completo: boolean; avisos: string[];
+};
+
+export type DesempenhoOrcamentos = {
+  por_status: Array<{ status: string; total: number; valor: number }>;
+  total: number; valor_total: number; aprovados: number; valor_aprovado: number;
+  recusados: number; conversao: number; ticket_medio: number;
+  por_vendedor: Array<{ vendedor: string; orcamentos: number; aprovados: number; valor_aprovado: number; valor_total: number }>;
+  taxa_indireta: number;
+};

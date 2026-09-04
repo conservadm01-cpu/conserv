@@ -19,6 +19,8 @@ import Relatorios from './pages/Relatorios';
 import Importacao from './pages/Importacao';
 import Financeiro from './pages/Financeiro';
 import Permissoes from './pages/Permissoes';
+import Crm from './pages/Crm';
+import Orcamentos from './pages/Orcamentos';
 import Engenharia from './pages/Engenharia';
 import Colaboradores from './pages/Colaboradores';
 import Apontamento from './pages/Apontamento';
@@ -37,6 +39,13 @@ const MENU = [
       { para: '/carteira', rotulo: 'Carteira', icone: '☰', area: 'pedidos.ver' },
       { para: '/relatorios', rotulo: 'Relatórios', icone: '◔', area: 'pedidos.ver' },
       { para: '/custos', rotulo: 'Formação de custo', icone: '⛁', area: 'produtos.custo' },
+    ],
+  },
+  {
+    grupo: 'Comercial',
+    itens: [
+      { para: '/crm', rotulo: 'Funil de vendas', icone: '◈', area: 'crm.ver' },
+      { para: '/orcamentos', rotulo: 'Orçamentos', icone: '◇', area: 'orcamentos.ver' },
     ],
   },
   {
@@ -161,6 +170,8 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/canal" element={<Canal />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/permissoes" element={<Permissoes />} />
+          <Route path="/crm" element={<Crm />} />
+          <Route path="/orcamentos" element={<Orcamentos />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -49,6 +49,25 @@ e margem.
   **ocorrências** — o que parou a linha, por quanto tempo e como foi resolvido.
 - **Custo real da ordem** = material baixado + MO apontada + indireto pelos minutos gastos.
 
+### Comercial
+- **Funil de vendas** configurável, com probabilidade por etapa. O valor da carteira
+  sai **ponderado** — é o que separa um pipeline de uma lista de desejos.
+- Oportunidade aceita **prospect** antes de o cliente existir no cadastro; ele vira
+  cliente quando o negócio fecha.
+- **Perder exige motivo** e carimba o fechamento; reabrir limpa os dois. A análise de
+  motivos de perda sai daí.
+- **Interações** com próximo passo e data, que alimentam a agenda de contatos, e o
+  alerta de oportunidades paradas há mais de duas semanas.
+- **Orçamento precificado pelo custo real**: ao escolher o produto, o preço vem
+  sugerido pela margem alvo sobre o custo formado (material + mão de obra + rateio da
+  fábrica). Markup e margem são contas diferentes e o sistema deixa isso explícito —
+  50% de markup dá 33% de margem, não 50%.
+- O **custo de cada item é congelado na proposta**, então a margem do dia em que ela
+  foi feita continua legível depois que o material mudar de preço.
+- **Converter** aprova o orçamento, cria o pedido com o desconto rateado no item, abre
+  as ordens de produção e leva a oportunidade para ganha — o ciclo inteiro num clique.
+- Desempenho por status e por vendedor, com conversão e ticket médio.
+
 ### Financeiro
 - **Contas a pagar e a receber** com parcelamento, vencimento e vínculo a cliente,
   fornecedor ou pedido.
@@ -62,9 +81,9 @@ e margem.
 - Plano de contas e contas bancárias.
 
 ### Acesso e permissões
-- **26 áreas** em sete grupos, de "ver estoque" a "alterar jornada e encargos".
-- **Sete níveis prontos** — total, gerencial, PCP, almoxarifado, financeiro, chão de
-  fábrica e consulta — ajustáveis área a área para cada usuário. Só as diferenças em
+- **31 áreas** em oito grupos, de "ver estoque" a "alterar jornada e encargos".
+- **Oito níveis prontos** — total, gerencial, PCP, comercial, almoxarifado, financeiro,
+  chão de fábrica e consulta — ajustáveis área a área para cada usuário. Só as diferenças em
   relação ao nível são gravadas, então trocar de nível depois traz o conjunto novo
   por inteiro.
 - **Ler e alterar são permissões distintas**: quem lança movimentação de estoque não
@@ -111,7 +130,7 @@ veja `.env.example`).
 
 ```bash
 npm run dev          # API em :3333 e interface em :5173 com recarga automática
-npm test             # 52 testes de PCP, estoque, MRP, custeio, financeiro e permissões
+npm test             # 72 testes de PCP, custeio, financeiro, comercial e permissões
 ```
 
 ---
@@ -149,6 +168,7 @@ O “A liquidar” calculado bate exatamente com o da planilha (R$ 246.959,50).
 npm run db:seed            # materiais, estoque inicial e ficha técnica
 npm run db:seed-fabrica    # equipe, máquinas, custos fixos e tempo das operações
 npm run db:seed-financeiro # contas a receber dos pedidos e a pagar dos custos fixos
+npm run db:seed-comercial  # funil de vendas e orçamentos a partir do histórico
 ```
 
 O primeiro cria 15 materiais com estoque e ficha técnica para os grupos mais comuns. O segundo
@@ -222,6 +242,8 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | Apontamento | `GET|POST /api/apontamentos`, `/produtividade`, `/eficiencia`, CRUD em `/api/ocorrencias` |
 | Conversa aberta | `POST /api/canal/manifestacoes` (sem login), `GET|PUT /api/canal/manifestacoes` |
 | Financeiro | `GET|POST|PUT|DELETE /api/financeiro/titulos`, `POST /api/financeiro/baixas`, `POST /api/financeiro/pedidos/:id/faturar`, `GET /api/financeiro/resumo`, `/fluxo`, `/aging/:tipo`, `/ranking/:tipo` |
+| CRM | `GET /api/crm/resumo`, `/funil`, `GET|POST|PUT|DELETE /api/crm/oportunidades`, `PUT /api/crm/oportunidades/:id/etapa`, `POST /api/crm/interacoes` |
+| Orçamentos | `GET|POST|PUT|DELETE /api/orcamentos`, `GET /api/orcamentos/precificar/:produtoId`, `POST /api/orcamentos/:id/converter`, `GET /api/orcamentos/desempenho` |
 | Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |
