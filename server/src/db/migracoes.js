@@ -61,5 +61,10 @@ export function aplicarMigracoes(db) {
     ['pix', 'TEXT'], ['contato_emergencia', 'TEXT'], ['data_demissao', 'TEXT'],
   ]) alterar('colaboradores', coluna, tipo);
 
+  // O pedido passa a saber de onde veio: do orçamento aprovado e da oportunidade.
+  alterar('pedidos', 'orcamento_id', 'INTEGER REFERENCES orcamentos(id) ON DELETE SET NULL');
+  alterar('pedidos', 'oportunidade_id', 'INTEGER REFERENCES oportunidades(id) ON DELETE SET NULL');
+  alterar('pedidos', 'condicao_pagamento', 'TEXT');
+
   return feitas;
 }

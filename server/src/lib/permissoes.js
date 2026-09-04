@@ -36,6 +36,16 @@ export const AREAS = [
     ],
   },
   {
+    grupo: 'Comercial',
+    itens: [
+      { id: 'crm.ver', nome: 'Ver o funil e as oportunidades' },
+      { id: 'crm.editar', nome: 'Criar e mover oportunidades' },
+      { id: 'orcamentos.ver', nome: 'Ver orçamentos' },
+      { id: 'orcamentos.editar', nome: 'Criar e editar orçamentos' },
+      { id: 'orcamentos.aprovar', nome: 'Aprovar e converter em pedido' },
+    ],
+  },
+  {
     grupo: 'Produção',
     itens: [
       { id: 'producao.ver', nome: 'Acompanhar a produção' },
@@ -100,7 +110,17 @@ export const NIVEIS = [
       'cadastros.ver', 'produtos.editar', 'produtos.processo', 'produtos.custo',
       'pessoas.ver', 'materiais.ver', 'materiais.mover',
       'producao.ver', 'producao.apontar', 'producao.ordens',
-      'pedidos.ver', 'pedidos.editar', 'engenharia.ver',
+      'pedidos.ver', 'pedidos.editar', 'engenharia.ver', 'crm.ver', 'orcamentos.ver',
+    ],
+  },
+  {
+    id: 'comercial',
+    nome: 'Comercial',
+    descricao: 'Cuida do funil, orça e fecha pedido; vê o custo para precificar, não a folha.',
+    areas: [
+      'cadastros.ver', 'cadastros.editar', 'produtos.custo',
+      'crm.ver', 'crm.editar', 'orcamentos.ver', 'orcamentos.editar', 'orcamentos.aprovar',
+      'pedidos.ver', 'pedidos.editar', 'producao.ver', 'materiais.ver',
     ],
   },
   {
@@ -113,7 +133,8 @@ export const NIVEIS = [
     id: 'financeiro',
     nome: 'Financeiro',
     descricao: 'Lança e baixa títulos; vê os cadastros, não a produção.',
-    areas: ['cadastros.ver', 'cadastros.editar', 'pedidos.ver', 'financeiro.ver', 'financeiro.lancar', 'financeiro.baixar'],
+    areas: ['cadastros.ver', 'cadastros.editar', 'pedidos.ver', 'orcamentos.ver',
+            'financeiro.ver', 'financeiro.lancar', 'financeiro.baixar'],
   },
   {
     id: 'chao_de_fabrica',

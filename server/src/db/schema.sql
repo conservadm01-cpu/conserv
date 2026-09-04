@@ -592,3 +592,126 @@ LEFT JOIN clientes c ON c.id = t.cliente_id
 LEFT JOIN fornecedores f ON f.id = t.fornecedor_id
 LEFT JOIN categorias_financeiras cf ON cf.id = t.categoria_id
 LEFT JOIN pedidos p ON p.id = t.pedido_id;
+
+-- ============================================================
+-- COMERCIAL — CRM, funil e orçamentos
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS etapas_funil (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome          TEXT    NOT NULL UNIQUE,
+  ordem         INTEGER NOT NULL,
+  probabilidade REAL    NOT NULL DEFAULT 0 CHECK (probabilidade BETWEEN 0 AND 100),
+  tipo          TEXT    NOT NULL DEFAULT 'ABERTA' CHECK (tipo IN ('ABERTA','GANHA','PERDIDA')),
+  ativo         INTEGER NOT NULL DEFAULT 1
+);
+
+/* Uma oportunidade pode nascer antes do cliente existir no cadastro:
+   o prospect entra pelo nome e vira cliente quando o negócio fecha. */
+CREATE TABLE IF NOT EXISTS oportunidades (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  titulo            TEXT    NOT NULL,
+  cliente_id        INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+  prospect          TEXT,
+  contato           TEXT,
+  telefone          TEXT,
+  email             TEXT,
+  vendedor_id       INTEGER REFERENCES vendedores(id) ON DELETE SET NULL,
+  etapa_id          INTEGER NOT NULL REFERENCES etapas_funil(id) ON DELETE RESTRICT,
+  origem            TEXT    NOT NULL DEFAULT 'OUTRO'
+                    CHECK (origem IN ('INDICACAO','SITE','REDES','FEIRA','PROSPECCAO','CLIENTE_ATIVO','OUTRO')),
+  valor_estimado    REAL    NOT NULL DEFAULT 0,
+  probabilidade     REAL,
+  previsao_fechamento TEXT,
+  motivo_perda      TEXT,
+  fechada_em        TEXT,
+  observacao        TEXT,
+  criado_em         TEXT    NOT NULL DEFAULT (datetime('now')),
+  atualizado_em     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_oport_etapa ON oportunidades(etapa_id);
+CREATE INDEX IF NOT EXISTS idx_oport_cliente ON oportunidades(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_oport_vendedor ON oportunidades(vendedor_id);
+
+CREATE TABLE IF NOT EXISTS interacoes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  oportunidade_id INTEGER REFERENCES oportunidades(id) ON DELETE CASCADE,
+  cliente_id      INTEGER REFERENCES clientes(id) ON DELETE CASCADE,
+  tipo            TEXT    NOT NULL DEFAULT 'LIGACAO'
+                  CHECK (tipo IN ('LIGACAO','VISITA','REUNIAO','EMAIL','WHATSAPP','PROPOSTA','OUTRO')),
+  data            TEXT    NOT NULL DEFAULT (date('now')),
+  resumo          TEXT    NOT NULL,
+  proximo_passo   TEXT,
+  proxima_data    TEXT,
+  concluida       INTEGER NOT NULL DEFAULT 1,
+  usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_inter_oport ON interacoes(oportunidade_id);
+CREATE INDEX IF NOT EXISTS idx_inter_proxima ON interacoes(proxima_data);
+
+CREATE TABLE IF NOT EXISTS orcamentos (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero            TEXT    NOT NULL UNIQUE,
+  cliente_id        INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+  prospect          TEXT,
+  oportunidade_id   INTEGER REFERENCES oportunidades(id) ON DELETE SET NULL,
+  vendedor_id       INTEGER REFERENCES vendedores(id) ON DELETE SET NULL,
+  data              TEXT    NOT NULL DEFAULT (date('now')),
+  validade          TEXT,
+  prazo_entrega_dias INTEGER NOT NULL DEFAULT 0,
+  condicao_pagamento TEXT,
+  desconto_percentual REAL   NOT NULL DEFAULT 0 CHECK (desconto_percentual BETWEEN 0 AND 100),
+  frete             REAL    NOT NULL DEFAULT 0,
+  status            TEXT    NOT NULL DEFAULT 'RASCUNHO'
+                    CHECK (status IN ('RASCUNHO','ENVIADO','EM_NEGOCIACAO','APROVADO','RECUSADO','EXPIRADO')),
+  motivo_recusa     TEXT,
+  pedido_id         INTEGER REFERENCES pedidos(id) ON DELETE SET NULL,
+  observacao        TEXT,
+  usuario_id        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_orc_status ON orcamentos(status);
+CREATE INDEX IF NOT EXISTS idx_orc_cliente ON orcamentos(cliente_id);
+
+CREATE TABLE IF NOT EXISTS orcamento_itens (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  orcamento_id   INTEGER NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
+  produto_id     INTEGER NOT NULL REFERENCES produtos(id) ON DELETE RESTRICT,
+  descricao      TEXT,
+  quantidade     REAL    NOT NULL CHECK (quantidade > 0),
+  preco_unitario REAL    NOT NULL DEFAULT 0,
+  custo_unitario REAL    NOT NULL DEFAULT 0,
+  sequencia      INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_orc_itens ON orcamento_itens(orcamento_id);
+
+DROP VIEW IF EXISTS vw_orcamentos;
+CREATE VIEW vw_orcamentos AS
+SELECT
+  o.*,
+  COALESCE(c.nome, o.prospect)                       AS parte,
+  c.nome                                             AS cliente,
+  v.nome                                             AS vendedor,
+  op.titulo                                          AS oportunidade,
+  p.numero                                           AS pedido_numero,
+  COALESCE(i.itens, 0)                               AS itens,
+  COALESCE(i.pecas, 0)                               AS pecas,
+  ROUND(COALESCE(i.bruto, 0), 2)                     AS valor_bruto,
+  ROUND(COALESCE(i.bruto, 0) * (1 - o.desconto_percentual / 100.0) + o.frete, 2) AS valor_total,
+  ROUND(COALESCE(i.custo, 0), 2)                     AS custo_total,
+  CASE WHEN o.validade IS NOT NULL AND o.validade < date('now')
+            AND o.status IN ('ENVIADO','EM_NEGOCIACAO') THEN 1 ELSE 0 END AS vencido
+FROM orcamentos o
+LEFT JOIN clientes c ON c.id = o.cliente_id
+LEFT JOIN vendedores v ON v.id = o.vendedor_id
+LEFT JOIN oportunidades op ON op.id = o.oportunidade_id
+LEFT JOIN pedidos p ON p.id = o.pedido_id
+LEFT JOIN (
+  SELECT orcamento_id,
+         COUNT(*) AS itens,
+         SUM(quantidade) AS pecas,
+         SUM(quantidade * preco_unitario) AS bruto,
+         SUM(quantidade * custo_unitario) AS custo
+  FROM orcamento_itens GROUP BY orcamento_id
+) i ON i.orcamento_id = o.id;

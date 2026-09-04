@@ -18,6 +18,7 @@ import { router as pessoasRouter } from './routes/pessoas.js';
 import { router as apontamentosRouter, ocorrencias as ocorrenciasRouter } from './routes/apontamentos.js';
 import { router as canalRouter, publico as canalPublicoRouter } from './routes/canal.js';
 import { router as financeiroRouter } from './routes/financeiro.js';
+import { crm as crmRouter, orcamentos as orcamentosRouter } from './routes/comercial.js';
 
 export function criarApp() {
   migrate();
@@ -45,7 +46,9 @@ export function criarApp() {
   app.use('/api/canal', exigir('canal.tratar'), canalRouter);
   app.use('/api/importacao', exigir('importacao'), importacaoRouter);
   app.use('/api/financeiro', exigir('financeiro.ver'), financeiroRouter);
-  app.use('/api/indicadores', exigir('producao.ver', 'pedidos.ver', 'financeiro.ver'), indicadoresRouter);
+  app.use('/api/crm', exigir('crm.ver'), crmRouter);
+  app.use('/api/orcamentos', exigir('orcamentos.ver'), orcamentosRouter);
+  app.use('/api/indicadores', exigir('producao.ver', 'pedidos.ver', 'financeiro.ver', 'orcamentos.ver'), indicadoresRouter);
   app.use('/api', cadastrosRouter);
 
   app.use('/api', naoEncontrado);

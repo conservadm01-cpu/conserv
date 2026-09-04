@@ -57,6 +57,14 @@ function seedEstruturaFabrica(db) {
      ON CONFLICT(nome) DO NOTHING`
   ).run();
 
+  // Funil comercial padrão. As probabilidades ponderam o valor da carteira
+  // de oportunidades — é o que separa "pipeline" de "lista de desejos".
+  const inserirFunil = db.prepare(
+    `INSERT INTO etapas_funil (nome, ordem, probabilidade, tipo) VALUES (?, ?, ?, ?)
+     ON CONFLICT(nome) DO NOTHING`
+  );
+  for (const e of ETAPAS_FUNIL_PADRAO) inserirFunil.run(e.nome, e.ordem, e.probabilidade, e.tipo);
+
   const inserirDepto = db.prepare(
     `INSERT INTO departamentos (nome, produtivo) VALUES (?, 1) ON CONFLICT(nome) DO NOTHING`
   );
@@ -73,6 +81,15 @@ function seedEstruturaFabrica(db) {
   });
   tx();
 }
+
+export const ETAPAS_FUNIL_PADRAO = [
+  { nome: 'Contato inicial', ordem: 1, probabilidade: 10, tipo: 'ABERTA' },
+  { nome: 'Levantamento',    ordem: 2, probabilidade: 25, tipo: 'ABERTA' },
+  { nome: 'Orçamento enviado', ordem: 3, probabilidade: 50, tipo: 'ABERTA' },
+  { nome: 'Negociação',      ordem: 4, probabilidade: 75, tipo: 'ABERTA' },
+  { nome: 'Ganha',           ordem: 5, probabilidade: 100, tipo: 'GANHA' },
+  { nome: 'Perdida',         ordem: 6, probabilidade: 0, tipo: 'PERDIDA' },
+];
 
 function seedEtapas(db) {
   const insert = db.prepare(
