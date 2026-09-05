@@ -23,7 +23,8 @@
     "test": "npm run -w server test",
     "musica": "node musica/servidor.js",
     "musica:test": "node --test musica/teste/*.test.js",
-    "musica:unico": "node musica/ferramentas/gerar-unico.js"
+    "musica:unico": "node musica/ferramentas/gerar-unico.js",
+    "musica:teste": "node musica/ferramentas/gerar-unico.js --teste"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -59,6 +59,8 @@ function telaInicial() {
       <div><strong>${p.xp}</strong><span>pontos</span></div>
       <div><strong>${banco.certificados().length}</strong><span>certificados</span></div>
     </section>
+    ${banco.emModoTeste() ? `<p class="faixa-teste">Modo de demonstração: as 10 fases já estão abertas, é só entrar e experimentar.
+      O progresso continua sendo guardado só neste aparelho — para zerar, use <a href="#/sobre">Ajustes → Apagar tudo</a>.</p>` : ''}
     <nav class="atalhos">
       <a href="#/certificados" class="atalho">🏅 Meus certificados</a>
       <a href="#/sobre" class="atalho">ℹ️ Sobre o método</a>
@@ -337,6 +339,7 @@ function desenhar() {
   let html = '';
   let depois = null;
 
+  if (partes[0] === 'teste') { banco.ativarModoTeste(); ir('#/'); return; }
   if (!partes.length) html = telaInicial();
   else if (partes[0] === 'sobre') html = telaSobre();
   else if (partes[0] === 'certificados') html = telaCertificados();
@@ -415,6 +418,7 @@ document.addEventListener('click', (evento) => {
 });
 document.addEventListener('keydown', teclado);
 document.addEventListener('change', mudancas);
+if (window.MSA_MODO_TESTE) banco.ativarModoTeste();
 window.addEventListener('hashchange', desenhar);
 window.addEventListener('DOMContentLoaded', desenhar);
 if (document.readyState !== 'loading') desenhar();

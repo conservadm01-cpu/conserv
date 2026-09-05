@@ -26,7 +26,22 @@ Pela raiz do repositório, os mesmos comandos estão como atalho:
 npm run musica                   # sobe o app
 npm run musica:test              # bateria de testes do app
 npm run musica:unico             # gera o app inteiro em um arquivo .html
+npm run musica:teste             # gera a versão de demonstração, com as fases abertas
 ```
+
+### Link rápido de teste
+
+Para experimentar sem ter que vencer fase por fase, existe uma **versão de demonstração**
+com as 10 fases já abertas:
+
+```bash
+node musica/ferramentas/gerar-unico.js --teste   # gera musica/dist/msa-teste.html
+```
+
+No app servido, o mesmo efeito sai pela rota **`#/teste`** (`http://localhost:4173/#/teste`):
+ela abre todas as fases e mostra um aviso de demonstração na tela inicial. O modo vale só
+enquanto a aba está aberta — nada é alterado no progresso guardado, e as fases voltam a ser
+liberadas uma a uma ao recarregar pelo endereço normal.
 
 ### Arquivo único
 

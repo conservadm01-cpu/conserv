@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SAIDA = join(APP, 'dist');
+// --teste gera a versão de demonstração, com as 10 fases já abertas.
+const TESTE = process.argv.includes('--teste');
 
 // Ordem de dependência dos módulos (o app não tem ciclos).
 const MODULOS = [
@@ -56,9 +58,11 @@ async function construir() {
     const fonte = semServiceWorker(await readFile(join(APP, caminho), 'utf8'));
     partes.push(empacotar(caminho, fonte));
   }
-  const script = `const __modulos = {};\n${partes.join('\n\n')}`;
+  const abertura = TESTE ? 'window.MSA_MODO_TESTE = true;\n' : '';
+  const script = `${abertura}const __modulos = {};\n${partes.join('\n\n')}`;
 
-  const miolo = `<title>Estudo Musical — MSA</title>
+  const titulo = TESTE ? 'Estudo Musical MSA — demonstração' : 'Estudo Musical — MSA';
+  const miolo = `<title>${titulo}</title>
 <style>
 ${css}
 </style>
@@ -78,11 +82,14 @@ ${miolo}
 </head>
 </html>`;
 
+  const nome = TESTE ? 'msa-teste' : 'msa-app';
+  // O miolo do app principal mantém o nome histórico (é o arquivo publicado).
+  const nomeMiolo = TESTE ? 'msa-teste-miolo' : 'msa-miolo';
   await mkdir(SAIDA, { recursive: true });
-  await writeFile(join(SAIDA, 'msa-app.html'), completo);
-  await writeFile(join(SAIDA, 'msa-miolo.html'), miolo);
-  console.log(`Arquivo único: ${join(SAIDA, 'msa-app.html')} (${Math.round(completo.length / 1024)} KB)`);
-  console.log(`Miolo sem <html>/<head>: ${join(SAIDA, 'msa-miolo.html')}`);
+  await writeFile(join(SAIDA, `${nome}.html`), completo);
+  await writeFile(join(SAIDA, `${nomeMiolo}.html`), miolo);
+  console.log(`Arquivo único${TESTE ? ' (demonstração)' : ''}: ${join(SAIDA, `${nome}.html`)} (${Math.round(completo.length / 1024)} KB)`);
+  console.log(`Miolo sem <html>/<head>: ${join(SAIDA, `${nomeMiolo}.html`)}`);
 }
 
 construir().catch((erro) => { console.error(erro); process.exit(1); });

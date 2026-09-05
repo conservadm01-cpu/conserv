@@ -109,8 +109,20 @@ export const certificados = () => ler().certificados;
 
 export const faseAprovada = (numero) => Boolean(faseDoAluno(numero).aprovadoEm);
 
+// Modo de demonstração: abre todas as fases para quem só quer experimentar o
+// app. Vale enquanto a aba estiver aberta e não mexe no progresso guardado.
+let modoTeste = false;
+
+export function ativarModoTeste() {
+  modoTeste = true;
+  const p = ler();
+  if (!p.aluno.nome) definirAluno('Aluno de teste');
+}
+
+export const emModoTeste = () => modoTeste;
+
 // A fase 1 está sempre aberta; as demais abrem quando a anterior é aprovada.
-export const faseLiberada = (numero) => numero === 1 || faseAprovada(numero - 1);
+export const faseLiberada = (numero) => numero === 1 || modoTeste || faseAprovada(numero - 1);
 
 export function apagarTudo() {
   cache = vazio();
