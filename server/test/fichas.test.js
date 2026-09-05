@@ -275,3 +275,53 @@ test('texto de cadastro não vira fórmula no CSV exportado', () => {
   assert.match(linha, /;'\+CMD;/);
   assert.match(linha, /;10$/, 'número continua número');
 });
+
+test('pela API: a carteira lista o item sem ordem e a OP nasce dele', async () => {
+  const bcrypt = (await import('bcryptjs')).default;
+  const { criarApp } = await import('../src/index.js');
+  const app = criarApp();
+
+  db.prepare(`INSERT INTO usuarios (nome, email, senha_hash, perfil, nivel_acesso)
+              VALUES ('PCP', 'pcp@conserv.com.br', ?, 'ADMIN', 'total')`)
+    .run(bcrypt.hashSync('pcp12345', 4));
+
+  const { produtoId, itemId } = cenario({ quantidade: 40 });
+  // Um segundo item do mesmo pedido, ainda sem ordem — é o que o PCP vai abrir.
+  const pedidoId = db.prepare(`SELECT pedido_id FROM pedido_itens WHERE id = ?`).get(itemId).pedido_id;
+  const semOrdem = db
+    .prepare(`INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, 25, 30)`)
+    .run(pedidoId, produtoId).lastInsertRowid;
+
+  const servidor = app.listen(0);
+  const base = `http://127.0.0.1:${servidor.address().port}/api`;
+  try {
+    const login = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'pcp@conserv.com.br', senha: 'pcp12345' }),
+    });
+    const { token } = await login.json();
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    const lista = await (await fetch(`${base}/pedidos/itens/carteira?sem_ordem=true&limite=200`, { headers })).json();
+    const ids = lista.map((l) => l.item_id);
+    assert.ok(ids.includes(semOrdem), 'o item sem ordem aparece');
+    assert.ok(!ids.includes(itemId), 'o item que já tem ordem fica de fora');
+
+    const criada = await fetch(`${base}/ordens`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ pedido_item_id: semOrdem, observacao: 'Aberta pelo PCP' }),
+    });
+    assert.equal(criada.status, 201);
+    const ordem = await criada.json();
+    assert.equal(ordem.quantidade, 25);
+    assert.equal(ordem.observacao, 'Aberta pelo PCP');
+    assert.ok(ordem.etapas.length >= 5, 'a ordem nasce com o roteiro completo');
+
+    const depois = await (await fetch(`${base}/pedidos/itens/carteira?sem_ordem=true&limite=200`, { headers })).json();
+    assert.ok(!depois.map((l) => l.item_id).includes(semOrdem), 'aberta a OP, o item sai da lista');
+  } finally {
+    servidor.close();
+  }
+});

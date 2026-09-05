@@ -102,6 +102,8 @@ const FILTROS_CARTEIRA = {
   entrega_de: { tipo: 'de', coluna: 'v.data_entrega' },
   entrega_ate: { tipo: 'ate', coluna: 'v.data_entrega' },
   atrasados: { tipo: 'booleano', quandoVerdadeiro: `v.data_entrega < date('now')` },
+  // Itens ainda sem ordem: é o que a tela do PCP oferece para abrir produção.
+  sem_ordem: { tipo: 'booleano', quandoVerdadeiro: `v.ordem_id IS NULL` },
 };
 
 /** Carteira em nível de item — a visão equivalente à planilha "PCP + MO". */
