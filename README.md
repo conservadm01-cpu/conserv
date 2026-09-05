@@ -394,3 +394,18 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 **Todas as listagens aceitam os mesmos parâmetros**: `?busca=`, os recortes próprios de cada
 recurso (situação, período, faixa de valor), `?ordenar_por=` + `?direcao=` — que só aceitam
 colunas declaradas pela rota — e `?limite=`.
+
+---
+
+## Também neste repositório: `musica/`
+
+Além do ERP, o repositório guarda o **[Estudo Musical — MSA](musica/README.md)**: um aplicativo
+de celular (PWA) para estudar música fase a fase, com avaliação que nunca repete a mesma pergunta
+e certificado por fase. É independente do CSVSIST — não usa o servidor, o banco nem as
+dependências dele.
+
+```bash
+npm run musica        # abre em http://localhost:4173
+npm run musica:test   # testes do app de música
+```
+

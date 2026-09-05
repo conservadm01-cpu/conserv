@@ -20,7 +20,10 @@
     "dev:web": "npm run -w web dev",
     "build": "npm run -w web build",
     "start": "npm run -w server start",
-    "test": "npm run -w server test"
+    "test": "npm run -w server test",
+    "musica": "node musica/servidor.js",
+    "musica:test": "node --test musica/teste/*.test.js",
+    "musica:unico": "node musica/ferramentas/gerar-unico.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
