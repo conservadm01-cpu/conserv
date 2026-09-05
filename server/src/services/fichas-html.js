@@ -25,6 +25,17 @@ const CORES = {
   EMBALAGEM: '#0e9f6e',
 };
 
+/** Nome do setor como ele é falado na fábrica — o id é sem acento, a via não. */
+const NOME_SETOR = {
+  PRODUCAO: 'produção',
+  PREPARACAO: 'preparação',
+  CORTE: 'corte',
+  SILK: 'silk',
+  MODELAGEM: 'modelagem',
+  COSTURA: 'costura',
+  EMBALAGEM: 'embalagem',
+};
+
 const ROTULO_ETAPA = {
   MATERIA_PRIMA: 'Matéria-prima',
   CORTE: 'Corte',
@@ -386,7 +397,7 @@ function paginaSetor(ficha, via) {
   ${blocoImagens(via.imagens)}
   ${tabelaGrade(ficha, cor)}
   ${tabelaMateriais(via.materiais, cor)}
-  ${tabelaSequencia(via.sequencia, cor, `Sequência operacional ${via.setor.toLowerCase()}`)}
+  ${tabelaSequencia(via.sequencia, cor, `Sequência operacional ${NOME_SETOR[via.setor] ?? via.setor.toLowerCase()}`)}
   ${via.setor === 'SILK' ? blocoTintas(ficha.arte, cor) : ''}
   ${blocoAssinaturas(via.assinaturas, cor)}
 </section>`;

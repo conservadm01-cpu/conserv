@@ -13,6 +13,7 @@
     "db:seed-financeiro": "node src/scripts/seed-financeiro.js",
     "db:seed-comercial": "node src/scripts/seed-comercial.js",
     "db:seed-compras": "node src/scripts/seed-compras.js",
+    "db:demo": "node src/scripts/seed-demo.js",
     "import": "node src/scripts/import-xlsx.js",
     "test": "node --test test/*.test.js"
   },

@@ -267,13 +267,42 @@ A planilha atual importa assim:
 Total: **1.022 pedidos, 2.031 itens, 450 clientes, 356 produtos**.
 O “A liquidar” calculado bate exatamente com o da planilha (R$ 246.959,50).
 
-### Dados de exemplo
+### Base de teste (o sistema cheio, num comando)
+
+Para conhecer o CSVSIST antes de colocar dado de verdade:
+
+```bash
+npm run db:demo      # monta a base de demonstração completa
+npm run build && npm start
+```
+
+Monta em sequência tudo o que dá para avaliar: usuário administrador, a carteira da planilha de
+origem (1.022 pedidos), materiais com ficha técnica e estoque, a fábrica com equipe e custo por
+minuto, financeiro, funil comercial e compras. No fim prepara o que é próprio da ficha —
+grade de tamanhos em algumas ordens, arte, instruções por setor e horários apontados — e deixa
+uma **ordem-vitrine** (pedido `DEMO-238`) com o dossiê completo: abra em *Produção (PCP)* → a
+ordem → aba **Ficha de produção** → *Abrir ficha para impressão*.
+
+A base de teste **não roda sobre um banco que já tem pedidos**. Se quiser as duas coisas, monte
+a demonstração num arquivo à parte:
+
+```bash
+DB_PATH=./data/demo.db npm run db:demo
+DB_PATH=./data/demo.db npm start     # sobe o sistema com a base de teste
+npm run db:demo -- --recriar         # apaga o banco atual e monta a demonstração do zero
+```
+
+Os números de custo, folha e aluguel são exemplo, não a sua realidade — troque-os antes de
+tirar conclusão de margem.
+
+### Dados de exemplo (peça por peça)
 
 ```bash
 npm run db:seed            # materiais, estoque inicial e ficha técnica
 npm run db:seed-fabrica    # equipe, máquinas, custos fixos e tempo das operações
 npm run db:seed-financeiro # contas a receber dos pedidos e a pagar dos custos fixos
 npm run db:seed-comercial  # funil de vendas e orçamentos a partir do histórico
+npm run db:seed-compras    # requisições, pedidos de compra e recebimentos
 ```
 
 O primeiro cria 15 materiais com estoque e ficha técnica para os grupos mais comuns. O segundo
