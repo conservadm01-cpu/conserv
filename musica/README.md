@@ -29,6 +29,19 @@ npm run musica:unico             # gera o app inteiro em um arquivo .html
 npm run musica:teste             # gera a versão de demonstração, com as fases abertas
 ```
 
+### Endereço público (GitHub Pages)
+
+O repositório é público, então o app pode ser servido direto pelo GitHub Pages, sem
+depender de máquina ligada:
+
+- app: **https://conservadm01-cpu.github.io/conserv/musica/**
+- demonstração com as fases abertas: **https://conservadm01-cpu.github.io/conserv/musica/#/teste**
+
+Para ligar: *Settings → Pages → Build and deployment → Source: **Deploy from a branch***,
+escolhendo o branch com este código e a pasta `/ (root)`. Todos os caminhos do app são
+relativos, então ele funciona em qualquer subpasta; o `.nojekyll` na raiz evita que o
+GitHub tente processar os arquivos, e o `index.html` da raiz leva até aqui.
+
 ### Link rápido de teste
 
 Para experimentar sem ter que vencer fase por fase, existe uma **versão de demonstração**

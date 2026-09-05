@@ -409,3 +409,6 @@ npm run musica        # abre em http://localhost:4173
 npm run musica:test   # testes do app de música
 ```
 
+Publicado pelo GitHub Pages em **https://conservadm01-cpu.github.io/conserv/musica/**
+(`index.html` e `.nojekyll` na raiz existem só para isso).
+

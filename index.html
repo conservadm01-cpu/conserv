@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConServ — aplicativos</title>
+<meta name="description" content="Aplicativos publicados do repositório ConServ.">
+<meta name="theme-color" content="#2f9e6b">
+<style>
+  :root {
+    --fundo: #f6f4ef; --papel: #fff; --tinta: #23201c; --tinta-fraca: #6b6559;
+    --linha: #e2ddd2; --marca: #2f9e6b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fundo: #14161a; --papel: #1c1f25; --tinta: #eceae5; --tinta-fraca: #a09a90; --linha: #2c313a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--fundo); color: var(--tinta);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    display: grid; place-items: center; padding: 24px;
+  }
+  main { max-width: 520px; width: 100%; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.sub { color: var(--tinta-fraca); margin: 0 0 24px; font-size: 14px; }
+  a.cartao {
+    display: grid; gap: 4px; background: var(--papel); color: inherit; text-decoration: none;
+    border-radius: 14px; padding: 18px 16px; border-left: 5px solid var(--marca);
+    box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+  }
+  a.cartao strong { font-size: 18px; }
+  a.cartao span { font-size: 14px; color: var(--tinta-fraca); }
+  a.cartao:focus-visible { outline: 3px solid var(--marca); outline-offset: 2px; }
+  footer { margin-top: 22px; font-size: 12px; color: var(--tinta-fraca); }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ConServ</h1>
+  <p class="sub">Aplicativos publicados deste repositório.</p>
+  <a class="cartao" href="./musica/">
+    <strong>🎼 Estudo Musical — MSA</strong>
+    <span>Estudo do Método Simplificado de Aprendizagem Musical em 10 fases, com exercícios,
+    avaliação sem perguntas repetidas e certificado. Funciona offline depois de instalado.</span>
+  </a>
+  <footer>
+    Para experimentar com todas as fases abertas, use
+    <a href="./musica/#/teste">a versão de demonstração</a>.
+    O CSVSIST (ERP) não é publicado aqui — ele roda em servidor próprio.
+  </footer>
+</main>
+</body>
+</html>
