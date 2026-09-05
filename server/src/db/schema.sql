@@ -871,3 +871,126 @@ LEFT JOIN (
          SUM(quantidade - recebido) AS pendente
   FROM pedido_compra_itens GROUP BY pedido_compra_id
 ) i ON i.pedido_compra_id = pc.id;
+
+-- ============================================================
+-- FICHAS DE PRODUÇÃO — os documentos que descem para o chão de fábrica
+-- ============================================================
+
+/*
+ * Grade de tamanhos do item vendido.
+ *
+ * A quantidade do pedido é um número só; a fábrica precisa saber como ele se
+ * reparte entre ÚNICO, P, M, G, GG, XG, G1 e G2 — é isso que o corte enfesta e
+ * o que a embalagem confere. Quando o item não tem grade lançada, a ficha
+ * imprime tudo em ÚNICO, que é o caso da maior parte dos aventais e sacolas.
+ */
+CREATE TABLE IF NOT EXISTS item_grade (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id    INTEGER NOT NULL REFERENCES pedido_itens(id) ON DELETE CASCADE,
+  tamanho    TEXT    NOT NULL CHECK (tamanho IN ('ÚNICO','P','M','G','GG','XG','G1','G2')),
+  quantidade REAL    NOT NULL CHECK (quantidade > 0),
+  UNIQUE (item_id, tamanho)
+);
+CREATE INDEX IF NOT EXISTS idx_grade_item ON item_grade(item_id);
+
+/* Sequência operacional padrão de cada setor — o roteiro interno impresso na ficha. */
+CREATE TABLE IF NOT EXISTS operacoes_setor (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  setor     TEXT    NOT NULL,
+  sequencia INTEGER NOT NULL,
+  nome      TEXT    NOT NULL,
+  maquina   TEXT,
+  ativo     INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (setor, nome)
+);
+
+/*
+ * A sequência copiada para a ordem, com espaço para início, término e operador.
+ *
+ * A cópia é proposital: mudar o roteiro padrão amanhã não pode reescrever o que
+ * a fábrica já assinou ontem.
+ */
+CREATE TABLE IF NOT EXISTS ordem_operacoes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordem_id   INTEGER NOT NULL REFERENCES ordens_producao(id) ON DELETE CASCADE,
+  setor      TEXT    NOT NULL,
+  sequencia  INTEGER NOT NULL,
+  nome       TEXT    NOT NULL,
+  maquina    TEXT,
+  inicio     TEXT,
+  termino    TEXT,
+  operador   TEXT,
+  observacao TEXT,
+  UNIQUE (ordem_id, setor, nome)
+);
+CREATE INDEX IF NOT EXISTS idx_ordem_operacoes ON ordem_operacoes(ordem_id, setor);
+
+/* Personalização do produto: como a arte é aplicada e com que tinta. */
+CREATE TABLE IF NOT EXISTS produto_arte (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id     INTEGER NOT NULL UNIQUE REFERENCES produtos(id) ON DELETE CASCADE,
+  personalizacao TEXT    NOT NULL DEFAULT 'SILK'
+                 CHECK (personalizacao IN ('SILK','TRANSFER','BORDADO','SUBLIMACAO','SEM')),
+  origem_arte    TEXT    NOT NULL DEFAULT 'VETOR' CHECK (origem_arte IN ('VETOR','IMAGEM')),
+  base_tinta     TEXT    CHECK (base_tinta IS NULL OR base_tinta IN ('AGUA','VINILICA')),
+  tinta_pronta   INTEGER NOT NULL DEFAULT 0,
+  observacao     TEXT
+);
+
+/* Cada logo aplicado: onde vai e com que medida — o que o silk mede na tela. */
+CREATE TABLE IF NOT EXISTS arte_logos (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  descricao  TEXT    NOT NULL,
+  posicao    TEXT,
+  largura_cm REAL,
+  altura_cm  REAL,
+  cor        TEXT,
+  cor_hex    TEXT,
+  ordem      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_logos_produto ON arte_logos(produto_id);
+
+/* Receita das tintas: cor por cor, com a referência que o estampador procura no pote. */
+CREATE TABLE IF NOT EXISTS arte_cores (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id  INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  sequencia   INTEGER NOT NULL DEFAULT 1,
+  nome        TEXT    NOT NULL,
+  referencia  TEXT,
+  hex         TEXT,
+  UNIQUE (produto_id, sequencia)
+);
+
+/*
+ * Instrução impressa em destaque na via do setor.
+ *
+ * É onde mora o "CORTAR 9000 ALÇAS COM 65CM": não cabe em campo estruturado,
+ * mas errar isso perde o lote inteiro.
+ */
+CREATE TABLE IF NOT EXISTS produto_instrucoes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  setor      TEXT    NOT NULL,
+  texto      TEXT    NOT NULL,
+  destaque   INTEGER NOT NULL DEFAULT 0,
+  ordem      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_instrucoes_produto ON produto_instrucoes(produto_id, setor);
+
+/*
+ * Imagens da ficha: foto do produto, molde da modelagem, layout do silk.
+ *
+ * Guardadas como data URI dentro do banco — a ficha é impressa em máquina que
+ * pode não ter acesso à rede de arquivos, e uma via sem o desenho não serve.
+ */
+CREATE TABLE IF NOT EXISTS produto_imagens (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  produto_id INTEGER NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  setor      TEXT    NOT NULL DEFAULT 'PRODUCAO',
+  titulo     TEXT,
+  arquivo    TEXT    NOT NULL,
+  ordem      INTEGER NOT NULL DEFAULT 0,
+  criado_em  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_imagens_produto ON produto_imagens(produto_id, setor);
