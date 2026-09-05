@@ -394,3 +394,12 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 **Todas as listagens aceitam os mesmos parâmetros**: `?busca=`, os recortes próprios de cada
 recurso (situação, período, faixa de valor), `?ordenar_por=` + `?direcao=` — que só aceitam
 colunas declaradas pela rota — e `?limite=`.
+
+---
+
+## Outro app neste repositório: `musica/`
+
+A pasta `musica/` guarda o **CLAVE**, um app independente para acompanhar o progresso de alunos
+de música — trilha, fase, avaliação por objetivo com peso e boletim impresso. Ele não compartilha
+banco, dependências nem código com o ERP: sobe sozinho com `cd musica && npm run db:seed && npm start`.
+O porquê e as regras estão em [`musica/README.md`](musica/README.md).

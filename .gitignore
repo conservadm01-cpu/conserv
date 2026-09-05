@@ -3,6 +3,9 @@ dist/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+musica/data/*.db
+musica/data/*.db-shm
+musica/data/*.db-wal
 .env
 .DS_Store
 *.log

@@ -1,0 +1,16 @@
+{
+  "name": "clave",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLAVE - acompanhamento de progresso de alunos de música: trilhas, fases, avaliação por objetivo e boletim",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --no-warnings src/index.js",
+    "dev": "node --no-warnings --watch src/index.js",
+    "db:init": "node --no-warnings src/scripts/init-db.js",
+    "db:seed": "node --no-warnings src/scripts/seed.js",
+    "test": "node --no-warnings --test test/*.test.js"
+  },
+  "engines": { "node": ">=22" }
+}
