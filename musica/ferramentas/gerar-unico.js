@@ -13,9 +13,10 @@ const TESTE = process.argv.includes('--teste');
 
 // Ordem de dependência dos módulos (o app não tem ciclos).
 const MODULOS = [
-  'js/aleatorio.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js', 'js/download.js',
-  'js/conteudo/fases.js', 'js/conteudo/geradores.js', 'js/armazenamento.js',
-  'js/quiz.js', 'js/certificado.js', 'js/jogos.js', 'js/app.js',
+  'js/aleatorio.js', 'js/senha.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js', 'js/download.js',
+  'js/conteudo/apoio.js', 'js/conteudo/instrumentos.js', 'js/conteudo/fases.js',
+  'js/conteudo/fases-instrumento.js', 'js/conteudo/geradores.js', 'js/conteudo/trilhas.js',
+  'js/armazenamento.js', 'js/quiz.js', 'js/certificado.js', 'js/jogos.js', 'js/app.js',
 ];
 
 const chaveDoModulo = (caminho) => caminho.replace(/^js\//, '').replace(/\.js$/, '');

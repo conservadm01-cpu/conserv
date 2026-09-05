@@ -8,18 +8,18 @@ import { universoDaFase } from './conteudo/geradores.js';
 export const QUESTOES_POR_PROVA = 10;
 export const NOTA_MINIMA = 70;
 
-export function perguntasIneditas(fase, usadas) {
+export function perguntasIneditas(faseId, usadas, contexto = null) {
   const jaVistas = new Set(usadas);
-  return universoDaFase(fase).filter((item) => !jaVistas.has(item.assinatura)).length;
+  return universoDaFase(faseId, contexto).filter((item) => !jaVistas.has(item.assinatura)).length;
 }
 
 /**
  * Monta uma prova espalhando as perguntas entre os geradores da fase, para
  * que a avaliação cubra assuntos diferentes e não caia tudo no mesmo ponto.
  */
-export function montarProva(fase, usadas = [], { quantidade = QUESTOES_POR_PROVA, semente = novaSemente() } = {}) {
+export function montarProva(faseId, usadas = [], { quantidade = QUESTOES_POR_PROVA, semente = novaSemente(), contexto = null } = {}) {
   const rnd = criarAleatorio(semente);
-  const universo = universoDaFase(fase);
+  const universo = universoDaFase(faseId, contexto);
   const jaVistas = new Set(usadas);
   let disponiveis = universo.filter((item) => !jaVistas.has(item.assinatura));
   let reciclou = false;
@@ -53,7 +53,7 @@ export function montarProva(fase, usadas = [], { quantidade = QUESTOES_POR_PROVA
   }
 
   const questoes = embaralhar(escolhidos, rnd).slice(0, quantidade).map((item, indice) => {
-    const montada = item.gerador.montar(item.variante, rnd);
+    const montada = item.gerador.montar(item.variante, rnd, contexto);
     return {
       indice,
       assinatura: item.assinatura,
@@ -67,7 +67,7 @@ export function montarProva(fase, usadas = [], { quantidade = QUESTOES_POR_PROVA
     };
   });
 
-  return { fase, semente, reciclou, questoes, ineditasRestantes: universo.length - jaVistas.size };
+  return { faseId: String(faseId), semente, reciclou, questoes, ineditasRestantes: universo.length - jaVistas.size };
 }
 
 export function corrigir(prova, respostas) {

@@ -1,9 +1,15 @@
 # Estudo Musical — MSA
 
-Aplicativo de celular para estudar música **fase a fase**, seguindo os assuntos do
-**Método Simplificado de Aprendizagem Musical** (Congregação Cristã no Brasil, 1ª edição,
-dezembro/2022). Cada fase tem lições curtas, exercícios lúdicos, uma **avaliação de múltipla
-escolha que nunca repete a mesma pergunta** e um **certificado** ao ser concluída.
+Aplicativo de celular para estudar música **fase a fase**, em duas trilhas:
+
+- **Teoria — MSA**: os assuntos do **Método Simplificado de Aprendizagem Musical**
+  (Congregação Cristã no Brasil, 1ª edição, dezembro/2022), em 10 fases;
+- **Método do instrumento**: 4 fases montadas para o instrumento que o aluno toca —
+  clave, afinação, transposição, produção do som, cuidados e rotina de estudo.
+
+Cada fase tem lições curtas, exercícios lúdicos, uma **avaliação de múltipla escolha que nunca
+repete a mesma pergunta** e um **certificado** ao ser concluída. Há **cadastro de alunos com
+senha** e **painel do instrutor**.
 
 É um **PWA**: roda no navegador do celular, instala na tela de início ("Adicionar à tela de
 início") e depois disso funciona **sem internet**. Não há servidor, cadastro nem envio de dados —
@@ -65,7 +71,25 @@ passar o app adiante por mensagem.
 
 ---
 
-## As dez fases
+## Acesso: instrutor e alunos
+
+| Perfil | Entra com | O que faz |
+|--------|-----------|-----------|
+| **Instrutor** | usuário `RENATO`, senha `CCB123` (de fábrica) | cadastra alunos, define instrumento e senha de cada um, acompanha o progresso, exporta cópia de segurança |
+| **Aluno** | o seu nome na lista, com senha se o cadastro exigir | estuda as duas trilhas, joga, faz avaliação e tira certificado |
+
+O app avisa enquanto a senha do instrutor for a de fábrica e oferece a troca no painel.
+Cada aluno tem **progresso, histórico de perguntas e certificados próprios** — o que um estuda
+não aparece no do outro. O painel tem uma chave para **ligar ou desligar o autocadastro**
+(o aluno criar o próprio acesso); desligado, só o instrutor cadastra.
+
+> **Sobre a senha, sem enfeite:** este app roda inteiro no aparelho, sem servidor. As senhas são
+> guardadas em **resumo SHA-256 com sal por usuário** (nunca em texto), mas a verificação acontece
+> no próprio navegador — é uma **portaria de organização**, boa para separar alunos e proteger o
+> painel do uso casual, e **não** uma proteção contra quem sabe abrir o código da página.
+> Segurança de verdade exige servidor.
+
+## As dez fases da teoria (MSA)
 
 | # | Fase | Assunto | Páginas do método |
 |---|------|---------|-------------------|
@@ -82,14 +106,35 @@ passar o app adiante por mensagem.
 
 A fase 1 já vem aberta; cada fase seguinte abre quando a anterior é aprovada.
 
+## As quatro fases do instrumento
+
+| # | Fase | Assunto |
+|---|------|---------|
+| 1 | Conhecendo o instrumento | família, partes, montagem, cuidados |
+| 2 | Som, postura e afinação | produção do som, postura, respiração ou arcada, afinação |
+| 3 | A leitura no meu instrumento | clave, afinação do instrumento, transposição, extensão, a sua voz no hino |
+| 4 | Estudo diário e ensaio | rotina, articulação, metrônomo, tocar junto |
+
+As lições e as perguntas **mudam conforme o instrumento**: o clarinetista aprende que o seu Dó
+soa Si♭; o violinista, que as cordas soltas são Sol–Ré–Lá–Mi; o trompista, que a sua parte soa
+uma 5ª justa abaixo. São **21 instrumentos** cobertos — cordas (violino, viola, violoncelo,
+contrabaixo), madeiras (flauta, oboé, corne inglês, clarinete, clarone, fagote e os quatro
+saxofones), metais (trompete, trompa, trombone, bombardino, tuba) e teclas (órgão, acordeon).
+Cada fase de instrumento tem de **62 a 87 perguntas possíveis**, ou seja, ao menos 6 provas
+inéditas por fase, para cada instrumento.
+
+As duas trilhas são independentes: a fase 1 de cada uma já vem aberta, e a trilha do instrumento
+não espera a teoria terminar.
+
 ---
 
 ## A avaliação que não repete
 
-As perguntas **não vêm de uma lista pronta**. São 69 geradores, um para cada tipo de pergunta, e
-cada gerador declara o seu universo de **variantes** — a nota, a tonalidade, a fórmula de
-compasso, o exemplo e até a forma de perguntar. São **1.319 perguntas distintas** no total, entre
-100 e 181 por fase.
+As perguntas **não vêm de uma lista pronta**. São 69 geradores na teoria e 15 no instrumento, um
+para cada tipo de pergunta, e cada gerador declara o seu universo de **variantes** — a nota, a
+tonalidade, a fórmula de compasso, o instrumento, o exemplo e até a forma de perguntar. São
+**1.319 perguntas distintas** na trilha do MSA (de 100 a 181 por fase) e mais **cerca de 280 por
+instrumento** na trilha do método.
 
 Ao montar uma prova o app:
 
@@ -148,9 +193,13 @@ musica/
     jogos.js            os sete jogos
     certificado.js      certificado em SVG, impressão e PNG
     armazenamento.js    progresso no localStorage
-    conteudo/fases.js       as 10 fases e as suas lições
-    conteudo/geradores.js   os 69 geradores de pergunta
-  teste/musica.test.js  13 testes (node --test)
+    senha.js            SHA-256 puro e conferência de senha
+    conteudo/fases.js              as 10 fases do MSA e as suas lições
+    conteudo/geradores.js          os 69 geradores de pergunta do MSA
+    conteudo/instrumentos.js       os 21 instrumentos e a conta de transposição
+    conteudo/fases-instrumento.js  as 4 fases e os 15 geradores do instrumento
+    conteudo/trilhas.js            junta as duas trilhas do aluno
+  teste/                36 testes (node --test): teoria, acesso e instrumento
   ferramentas/gerar-unico.js  empacota tudo em um arquivo
   servidor.js           servidor estático mínimo, só com o Node
   sw.js                 service worker (funciona offline)
@@ -164,11 +213,17 @@ justamente o que costuma falhar em celular.
 
 ## Sobre o conteúdo
 
-O material de origem são as páginas do método fornecidas em PDF (capa, páginas de borda de cada
-faixa e o índice remissivo completo, que dá o mapa dos assuntos do livro inteiro). As lições
-seguem esse programa e citam a página correspondente; onde o texto integral do livro não estava
-disponível, o conteúdo foi escrito conforme a teoria musical padrão e a nomenclatura do próprio
-método (tético/anacrústico/acéfalo, número de equivalência, movimentos de condução, T T st).
+O material de origem da trilha de teoria são as páginas do método fornecidas em PDF (capa,
+páginas de borda de cada faixa e o índice remissivo completo, que dá o mapa dos assuntos do livro
+inteiro). As lições seguem esse programa e citam a página correspondente; onde o texto integral do
+livro não estava disponível, o conteúdo foi escrito conforme a teoria musical padrão e a
+nomenclatura do próprio método (tético/anacrústico/acéfalo, número de equivalência, movimentos de
+condução, T T st).
+
+**O método impresso de cada instrumento não foi fornecido.** A trilha do instrumento traz a
+técnica padrão daquele instrumento (família, clave, afinação, transposição, produção do som,
+cuidados, rotina) somada à teoria do MSA. Se os métodos dos instrumentos forem disponibilizados,
+as lições e as perguntas podem passar a citar página e exercício, como já acontece no MSA.
 
 **Este app é material de apoio ao estudo. Não substitui o método impresso nem a aula com o
 instrutor.**

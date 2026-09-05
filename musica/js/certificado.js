@@ -4,7 +4,6 @@
 
 import { hash } from './aleatorio.js';
 import { salvarArquivo } from './download.js';
-import { FASES } from './conteudo/fases.js';
 
 const escapar = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -16,9 +15,13 @@ export function dataPorExtenso(iso) {
 }
 
 export function montarCertificado({ nome, fase, nota, acertos, total, data = new Date().toISOString() }) {
-  const info = FASES.find((f) => f.numero === fase);
-  const codigo = `MSA-${String(fase).padStart(2, '0')}-${hash(`${nome}|${fase}|${data.slice(0, 10)}`)}`;
-  return { nome, fase, titulo: info.titulo, subtitulo: info.subtitulo, paginas: info.paginas, cor: info.cor, nota, acertos, total, data, codigo };
+  const prefixo = fase.trilha === 'instrumento' ? 'INS' : 'MSA';
+  const codigo = `${prefixo}-${String(fase.numero).padStart(2, '0')}-${hash(`${nome}|${fase.id}|${data.slice(0, 10)}`)}`;
+  return {
+    nome, faseId: fase.id, fase: fase.numero, trilha: fase.trilha, nomeTrilha: fase.nomeTrilha,
+    instrumento: fase.instrumento || null, titulo: fase.titulo, subtitulo: fase.subtitulo,
+    paginas: fase.paginas || null, cor: fase.cor, nota, acertos, total, data, codigo,
+  };
 }
 
 export function svgDoCertificado(c) {
@@ -40,8 +43,12 @@ export function svgDoCertificado(c) {
     <text x="${largura / 2}" y="394" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="46" font-weight="bold" fill="#1a1a1a">${escapar(c.nome)}</text>
     <line x1="240" y1="414" x2="${largura - 240}" y2="414" stroke="#999" stroke-width="1"/>
     <text x="${largura / 2}" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" fill="#333">concluiu a Fase ${c.fase} do estudo do</text>
-    <text x="${largura / 2}" y="504" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="bold" fill="#333">Método Simplificado de Aprendizagem Musical</text>
-    <text x="${largura / 2}" y="540" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#555">assunto das páginas ${escapar(c.paginas)}, com aproveitamento de ${c.nota}% (${c.acertos} de ${c.total} questões).</text>
+    <text x="${largura / 2}" y="504" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="bold" fill="#333">${escapar(c.trilha === 'instrumento'
+      ? `Método do instrumento — ${c.instrumento}`
+      : 'Método Simplificado de Aprendizagem Musical')}</text>
+    <text x="${largura / 2}" y="540" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#555">${escapar(c.paginas
+      ? `assunto das páginas ${c.paginas}, com aproveitamento de ${c.nota}% (${c.acertos} de ${c.total} questões).`
+      : `com aproveitamento de ${c.nota}% (${c.acertos} de ${c.total} questões).`)}</text>
     <text x="${largura / 2}" y="612" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#555">${dataPorExtenso(c.data)}</text>
     <line x1="${largura / 2 - 190}" y1="686" x2="${largura / 2 + 190}" y2="686" stroke="#666" stroke-width="1.2"/>
     <text x="${largura / 2}" y="712" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#666">Estudo dirigido — aplicativo MSA</text>

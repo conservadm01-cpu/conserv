@@ -327,6 +327,56 @@ th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 .sobre h3:first-child { margin-top: 0; }
 .sobre label { display: block; font-size: 13px; color: var(--tinta-fraca); margin: 16px 0 6px; }
 
+
+/* --------------------------------------------------- entrada e cadastro */
+.entrada { text-align: center; padding: 28px 4px 8px; }
+.entrada .marca { font-size: 60px; }
+.entrada h1 { font-size: 30px; margin: 6px 0 12px; }
+.entrada h1 span { color: var(--marca); }
+.entrada .sub { text-align: left; }
+.entrada .titulo-secao { text-align: left; }
+
+.lista-alunos { display: grid; gap: 8px; }
+.cartao-aluno {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--papel); border-radius: 12px; padding: 12px 14px; box-shadow: var(--sombra);
+}
+.cartao-aluno .dados { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.cartao-aluno small { display: block; color: var(--tinta-fraca); font-size: 12px; }
+.cartao-aluno .cadeado { color: var(--tinta-fraca); font-size: 18px; }
+.inicial {
+  width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--marca); color: #fff;
+  font-size: 18px; font-weight: 700;
+}
+.inicial.grande { width: 68px; height: 68px; flex-basis: 68px; font-size: 30px; margin: 0 auto 10px; }
+
+.login, .formulario { background: var(--papel); border-radius: var(--raio); padding: 20px 16px; box-shadow: var(--sombra); }
+.login { text-align: center; }
+.login h2 { margin: 0 0 2px; font-size: 22px; }
+.login label, .formulario label { display: block; text-align: left; font-size: 13px; color: var(--tinta-fraca); margin: 16px 0 6px; }
+.login input, .campo {
+  width: 100%; padding: 14px; font-size: 16px; border-radius: 12px;
+  border: 1.5px solid var(--linha); background: var(--fundo); color: var(--tinta); font-family: inherit;
+}
+.login input:focus, .campo:focus { outline: 2px solid var(--marca); border-color: transparent; }
+select.campo { appearance: none; background-image: linear-gradient(45deg, transparent 49%, var(--tinta-fraca) 50%), linear-gradient(135deg, var(--tinta-fraca) 50%, transparent 51%);
+  background-position: calc(100% - 20px) 22px, calc(100% - 14px) 22px; background-size: 6px 6px; background-repeat: no-repeat; }
+.opcao { display: flex !important; align-items: center; gap: 10px; margin: 18px 0 0 !important; font-size: 15px; color: var(--tinta) !important; }
+.opcao input { width: 20px; height: 20px; accent-color: var(--marca); }
+
+.recado { border-radius: 12px; padding: 12px 14px; font-size: 14px; margin: 0 0 14px; }
+.recado.ok { background: color-mix(in srgb, var(--acerto) 16%, transparent); color: var(--tinta); }
+.recado.erro { background: color-mix(in srgb, var(--erro) 16%, transparent); color: var(--tinta); }
+.recado.alerta { background: color-mix(in srgb, #e6a700 22%, transparent); color: var(--tinta); }
+.recado a { text-decoration: underline; }
+
+.etiqueta-trilha {
+  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--cor, var(--marca));
+}
+.cartao-aluno.painel .dados small:last-child { font-size: 11px; }
+
 /* ---------------------------------------------------------- impressão */
 #area-impressao { display: none; }
 @media print {

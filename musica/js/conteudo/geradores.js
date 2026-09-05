@@ -4,27 +4,12 @@
 // cai duas vezes, embora o assunto seja sempre o da fase.
 
 import { embaralhar, sortear } from '../aleatorio.js';
+import { ORDINAIS as ordinal, alternativas, pares } from './apoio.js';
+import { GERADORES_INSTRUMENTO } from './fases-instrumento.js';
 import { pentagrama, figuraSolta, teclado } from '../notacao.js';
 import * as T from '../musica.js';
 
 const nomeCurto = (n) => T.nomeDaNota(n, { curto: true });
-const ordinal = ['', '1º', '2º', '3º', '4º', '5º', '6º', '7º', '8º'];
-
-// Monta 4 alternativas: a certa e três erradas tiradas do repertório do assunto.
-function alternativas(correta, repertorio, rnd, quantidade = 4) {
-  const vistas = new Set([String(correta)]);
-  const distratores = [];
-  for (const item of embaralhar(repertorio, rnd)) {
-    const texto = String(item);
-    if (vistas.has(texto)) continue;
-    vistas.add(texto);
-    distratores.push(texto);
-    if (distratores.length === quantidade - 1) break;
-  }
-  return embaralhar([String(correta), ...distratores], rnd);
-}
-
-const pares = (lista) => lista.flatMap((a, i) => lista.slice(i + 1).map((b) => [a, b]));
 
 const NOTAS_NATURAIS = T.LETRAS.map((l) => T.nota(l));
 const TODAS_AS_NOTAS = T.LETRAS.flatMap((l) => [T.nota(l), T.nota(l, 1), T.nota(l, -1)]);
@@ -1786,18 +1771,25 @@ registrar({
 });
 
 // ------------------------------------------------------- consultas do motor
-export const geradoresDaFase = (fase) => GERADORES.filter((g) => g.fase === fase);
+
+// A fase do MSA é identificada por número ('1' a '10'); a do instrumento, por
+// 'inst1' a 'inst4'. O contexto é o instrumento do aluno, usado só na segunda.
+export function geradoresDaFase(faseId, contexto = null) {
+  const chave = String(faseId);
+  if (/^\d+$/.test(chave)) return GERADORES.filter((g) => String(g.fase) === chave);
+  return contexto ? GERADORES_INSTRUMENTO.filter((g) => g.fase === chave) : [];
+}
 
 // Universo completo de perguntas possíveis de uma fase: cada item é uma
 // pergunta distinta que ainda pode ser sorteada.
-export function universoDaFase(fase) {
+export function universoDaFase(faseId, contexto = null) {
   const itens = [];
-  for (const gerador of geradoresDaFase(fase)) {
-    for (const variante of gerador.variantes()) {
-      itens.push({ gerador, variante, assinatura: `${gerador.id}#${gerador.chave(variante)}` });
+  for (const gerador of geradoresDaFase(faseId, contexto)) {
+    for (const variante of gerador.variantes(contexto)) {
+      itens.push({ gerador, variante, contexto, assinatura: `${gerador.id}#${gerador.chave(variante)}` });
     }
   }
   return itens;
 }
 
-export const totalDeVariantes = (fase) => universoDaFase(fase).length;
+export const totalDeVariantes = (faseId, contexto = null) => universoDaFase(faseId, contexto).length;

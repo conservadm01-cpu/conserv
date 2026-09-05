@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 const T = await import('../js/musica.js');
 const { criarAleatorio } = await import('../js/aleatorio.js');
 const { GERADORES, universoDaFase, totalDeVariantes } = await import('../js/conteudo/geradores.js');
+const { faseporId } = await import('../js/conteudo/trilhas.js');
 const { FASES } = await import('../js/conteudo/fases.js');
 const { montarProva, corrigir, QUESTOES_POR_PROVA } = await import('../js/quiz.js');
 const { montarCertificado, svgDoCertificado } = await import('../js/certificado.js');
@@ -129,7 +130,7 @@ test('correção calcula nota e aprovação', () => {
 });
 
 test('certificado sai com código estável e SVG completo', () => {
-  const dados = { nome: 'Maria da Silva', fase: 4, nota: 90, acertos: 9, total: 10, data: '2026-03-10T12:00:00.000Z' };
+  const dados = { nome: 'Maria da Silva', fase: faseporId('4', ''), nota: 90, acertos: 9, total: 10, data: '2026-03-10T12:00:00.000Z' };
   const a = montarCertificado(dados);
   const b = montarCertificado(dados);
   assert.equal(a.codigo, b.codigo);
