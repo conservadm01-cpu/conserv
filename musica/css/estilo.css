@@ -16,8 +16,10 @@
   color-scheme: light dark;
 }
 
+/* Modo escuro: pela preferência do sistema e também quando o app está dentro
+   de uma casca que marca o tema na raiz (data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --fundo: #14161a;
     --papel: #1c1f25;
     --tinta: #eceae5;
@@ -25,6 +27,15 @@
     --linha: #2c313a;
     --sombra: 0 2px 10px rgba(0, 0, 0, .35);
   }
+}
+
+:root[data-theme="dark"] {
+  --fundo: #14161a;
+  --papel: #1c1f25;
+  --tinta: #eceae5;
+  --tinta-fraca: #a09a90;
+  --linha: #2c313a;
+  --sombra: 0 2px 10px rgba(0, 0, 0, .35);
 }
 
 * { box-sizing: border-box; }
@@ -301,7 +312,7 @@ th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
   padding: 14px; box-shadow: var(--sombra); border-left: 5px solid var(--cor, var(--marca)); font-size: 14px;
 }
 .cartao-certificado .codigo { font-family: "Courier New", monospace; font-size: 12px; color: var(--tinta-fraca); }
-.moldura-certificado { background: #fff; border-radius: var(--raio); padding: 8px; box-shadow: var(--sombra); overflow-x: auto; }
+.moldura-certificado { background: #fff; color: #23201c; border-radius: var(--raio); padding: 8px; box-shadow: var(--sombra); overflow-x: auto; }
 .certificado-svg { display: block; min-width: 320px; }
 
 .sobre { background: var(--papel); border-radius: var(--raio); padding: 18px 16px; box-shadow: var(--sombra); }

@@ -11,7 +11,7 @@ const SAIDA = join(APP, 'dist');
 
 // Ordem de dependência dos módulos (o app não tem ciclos).
 const MODULOS = [
-  'js/aleatorio.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js',
+  'js/aleatorio.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js', 'js/download.js',
   'js/conteudo/fases.js', 'js/conteudo/geradores.js', 'js/armazenamento.js',
   'js/quiz.js', 'js/certificado.js', 'js/jogos.js', 'js/app.js',
 ];
@@ -33,7 +33,7 @@ function empacotar(caminho, fonte) {
   corpo = corpo.replace(/^import\s*\{([^}]+)\}\s*from\s+['"]([^'"]+)['"];?$/gm,
     (_, nomes, alvo) => `const {${nomes.replace(/\s+as\s+/g, ': ')}} = __modulos['${resolverImport(caminho, alvo)}'];`);
 
-  corpo = corpo.replace(/^export\s+(const|let|function|class)\s+([\p{L}\p{N}_$]+)/gmu, (_, tipo, nome) => {
+  corpo = corpo.replace(/^export\s+((?:async\s+)?(?:const|let|function|class))\s+([\p{L}\p{N}_$]+)/gmu, (_, tipo, nome) => {
     exportados.push(nome);
     return `${tipo} ${nome}`;
   });

@@ -8,6 +8,7 @@ import { iniciarJogo, pararJogo } from './jogos.js';
 import { baixarCertificado, dataPorExtenso, imprimirCertificado, montarCertificado, svgDoCertificado } from './certificado.js';
 import { totalDeVariantes } from './conteudo/geradores.js';
 import { efeito } from './audio.js';
+import { salvarArquivo } from './download.js';
 
 const tela = () => document.getElementById('tela');
 const escapar = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -375,14 +376,7 @@ function cliques(evento) {
     const nome = document.getElementById('nome-ajuste').value.trim();
     if (nome) { banco.definirAluno(nome); botao.textContent = 'Nome salvo ✓'; setTimeout(() => { botao.textContent = 'Salvar nome'; }, 1500); }
   } else if (acao === 'exportar') {
-    const blob = new Blob([banco.exportar()], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'progresso-msa.json';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+    salvarArquivo('progresso-msa.json', new Blob([banco.exportar()], { type: 'application/json' }));
   } else if (acao === 'importar') document.getElementById('arquivo-progresso').click();
   else if (acao === 'apagar') {
     if (window.confirm('Isto apaga nome, progresso, certificados e o histórico de perguntas já respondidas. Continuar?')) {

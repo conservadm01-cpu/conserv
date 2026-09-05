@@ -6,7 +6,7 @@ const ARQUIVOS = [
   './', './index.html', './manifest.webmanifest', './css/estilo.css',
   './icones/icone.svg', './icones/icone-192.png', './icones/icone-512.png',
   './js/app.js', './js/aleatorio.js', './js/armazenamento.js', './js/audio.js',
-  './js/certificado.js', './js/jogos.js', './js/musica.js', './js/notacao.js',
+  './js/certificado.js', './js/download.js', './js/jogos.js', './js/musica.js', './js/notacao.js',
   './js/quiz.js', './js/conteudo/fases.js', './js/conteudo/geradores.js',
 ];
 

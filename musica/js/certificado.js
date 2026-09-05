@@ -3,6 +3,7 @@
 // impressora do celular ou baixar como imagem.
 
 import { hash } from './aleatorio.js';
+import { salvarArquivo } from './download.js';
 import { FASES } from './conteudo/fases.js';
 
 const escapar = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -61,6 +62,7 @@ export function baixarCertificado(c) {
   const svg = svgDoCertificado(c);
   const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
+  const nome = `certificado-fase-${c.fase}-${c.nome.replace(/\s+/g, '-').toLowerCase()}.png`;
   const imagem = new Image();
   imagem.onload = () => {
     const tela = document.createElement('canvas');
@@ -71,15 +73,7 @@ export function baixarCertificado(c) {
     pincel.fillRect(0, 0, tela.width, tela.height);
     pincel.drawImage(imagem, 0, 0, tela.width, tela.height);
     URL.revokeObjectURL(url);
-    tela.toBlob((png) => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(png);
-      link.download = `certificado-fase-${c.fase}-${c.nome.replace(/\s+/g, '-').toLowerCase()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(link.href), 2000);
-    }, 'image/png');
+    tela.toBlob((png) => salvarArquivo(nome, png), 'image/png');
   };
   imagem.onerror = () => {
     URL.revokeObjectURL(url);
