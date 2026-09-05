@@ -1,8 +1,8 @@
 {
-  "name": "conserv-erp",
+  "name": "csvsist",
   "version": "1.0.0",
   "private": true,
-  "description": "ERP Conserv - controle de materiais e processos de produção (confecção)",
+  "description": "CSVSIST - ERP de confecção da ConServ: carteira, PCP, custo e fichas de produção",
   "type": "module",
   "workspaces": ["server", "web"],
   "scripts": {

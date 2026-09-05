@@ -1,10 +1,11 @@
-# ERP Conserv — controle de materiais e processos
+# CSVSIST — ERP da ConServ Confecções
 
-ERP web para confecção, construído a partir da planilha **PEDIDOS EM CARTEIRA** e do sistema
-de referência da Conserv. Cobre o caminho completo de um pedido: entrada comercial → ordem de
-produção com o roteiro **Matéria-prima → Corte → Silk → Costura → Embalagem → Nota fiscal →
-Entrega** → consumo de material do almoxarifado → apontamento de quem produziu → custo real
-e margem.
+ERP web para confecção, construído a partir da planilha **PEDIDOS EM CARTEIRA** e do dossiê de
+produção que a ConServ imprime para o chão de fábrica. Cobre o caminho completo de um pedido:
+entrada comercial → ordem de produção com o roteiro **Matéria-prima → Corte → Silk → Costura →
+Embalagem → Nota fiscal → Entrega** → consumo de material do almoxarifado → apontamento de quem
+produziu → custo real e margem — e imprime, no fim, a **ficha de produção** que cada setor
+recebe em papel.
 
 ---
 
@@ -16,6 +17,30 @@ e margem.
 - Cada etapa registra situação, responsável, datas e o **custo de mão de obra** daquela operação.
 - A situação da OP é derivada do roteiro (não é digitada), e a situação do pedido acompanha
   as OPs dos seus itens.
+
+### Fichas de produção (o dossiê impresso)
+Toda ordem gera o conjunto de vias que a fábrica já usa em papel, agora saindo do pedido, da
+ficha técnica e do custo de processo em vez de ser copiado à mão:
+- **Ordem de produção** (capa): cliente, pedido, entrega, nota fiscal, grade de tamanhos,
+  material com consumo por peça e quantidade total, situação de compra de cada item, valor de
+  cada operação com o total de mão de obra, controle das etapas, logos com medidas e
+  personalização, e os campos de assinatura.
+- **Ficha de preparação** e **layouts de corte, silkscreen, modelagem, costura e embalagem** —
+  uma via por setor, cada uma com a sua cor.
+- Cada via lista **só o material do seu setor**: o corte não recebe saco plástico e a embalagem
+  não recebe tecido. O setor sai da ficha técnica quando está lançado e, quando não está, é
+  deduzido do tipo do material.
+- **Sequência operacional** por setor (preparar o tecido, conferir o risco, enfestar, cortar…),
+  com máquina, início, término e operador. A sequência é **copiada para a ordem**: mudar o
+  roteiro padrão amanhã não reescreve a via que a fábrica assinou ontem.
+- **Instrução em destaque** por setor — é onde mora o “CORTAR 9000 ALÇAS COM 65CM”, que não cabe
+  em campo estruturado mas perde o lote inteiro se passar batido.
+- **Arte**: logos com posição e medida, receita de tintas cor a cor, base d'água ou vinílica,
+  transfer ou serigrafia. Imagens (foto, molde, layout) são anexadas por setor e vão impressas.
+- **Grade de tamanhos** (ÚNICO, P, M, G, GG, XG, G1, G2) por item, que tem de fechar com a
+  quantidade da ordem. Sem grade lançada, a peça sai como tamanho único.
+- A impressão sai do servidor pronta em A4, uma via por página: o navegador manda para a
+  impressora ou salva em PDF, sem depender de gerador de PDF no servidor.
 
 ### Materiais
 - Cadastro de materiais (tecido, aviamento, tinta, etiqueta, embalagem) com unidade,
@@ -162,10 +187,25 @@ Registro com produção apontada nunca é cancelado: o trabalho aconteceu e o hi
 Canal de sugestões, problemas, riscos e relatos, com envio **sem login** para quem quiser
 registrar anonimamente, e acompanhamento da tratativa de cada manifestação.
 
+### Relatórios gerenciais (as abas da planilha)
+Cada leitura que a fábrica tirava da planilha virou consulta ao banco — e a diferença que importa
+não é o formato: na planilha, um pedido lançado em duas abas contava duas vezes e ninguém
+percebia; aqui a carteira é uma consulta só, sobre os mesmos itens que o PCP e o financeiro
+enxergam. Todos exportam em **CSV** com ponto e vírgula, vírgula decimal e acento — abre no Excel
+sem pedir importação.
+- **Carteira em produção** (aba “TOTAIS”): peças, a faturar, a liquidar, ticket médio, quebra por
+  grupo de produto e a mão de obra **ainda em produção** — só as etapas que não fecharam, que é
+  o que de fato falta pagar.
+- **PCP e mão de obra** (aba “PCP + MO”): item a item, com semana do pedido e da entrega, o
+  roteiro marcado etapa por etapa e o custo de MO de cada operação.
+- **Pedidos por cliente** (a aba que a ConServ mantinha por conta grande) e **pedidos do mês**,
+  agrupados por pedido, com a semana.
+- Margem por ordem (receita × MO × material), ranking de clientes e vendas mês a mês.
+- **Fila de impressão das fichas**: as ordens abertas, com o dossiê a um clique.
+
 ### Comercial e gestão
-- Carteira em nível de item (a visão que a aba “PCP + MO” trazia), com exportação em CSV.
+- Carteira em nível de item, com exportação em CSV.
 - Painel com carteira, vendas mês a mês, fila por etapa, ticket médio, atrasos e alertas de estoque.
-- Relatórios de margem por ordem (receita × MO × material), ranking de clientes e vendas mensais.
 - Formação de custo de todos os produtos, com destaque para os que estão com margem negativa.
 - Acesso com login e perfis (`ADMIN`, `GESTOR`, `PCP`, `ALMOXARIFE`, `VENDEDOR`, `OPERADOR`).
 
@@ -195,7 +235,7 @@ veja `.env.example`).
 
 ```bash
 npm run dev          # API em :3333 e interface em :5173 com recarga automática
-npm test             # 72 testes de PCP, custeio, financeiro, comercial e permissões
+npm test             # 140 testes de PCP, fichas, relatórios, custeio, financeiro e permissões
 ```
 
 ---
@@ -286,8 +326,9 @@ data/              banco SQLite (não versionado)
 docs/              planilha de origem
 ```
 
-O banco é um arquivo SQLite em `data/conserv.db` — para fazer backup, basta copiá-lo com o
-servidor parado.
+O banco é um arquivo SQLite em `data/csvsist.db` — para fazer backup, basta copiá-lo com o
+servidor parado. Instalações que já rodavam com o arquivo antigo (`data/conserv.db`) continuam
+abrindo o mesmo banco: o sistema só cria o arquivo novo quando não existe um anterior.
 
 ---
 
@@ -314,6 +355,9 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 | Orçamentos | `GET|POST|PUT|DELETE /api/orcamentos`, `GET /api/orcamentos/precificar/:produtoId`, `POST /api/orcamentos/:id/converter`, `GET /api/orcamentos/desempenho` |
 | Permissões | `GET /api/auth/areas`, `GET|PUT /api/usuarios/:id/permissoes`, `POST /api/usuarios/novo` |
 | Acesso e senha | `PUT /api/auth/senha` (a própria pessoa), `PUT /api/usuarios/:id/senha` (provisória, pelo admin), `GET /api/usuarios/situacao`, `GET /api/usuarios/log-senhas`, `/log-senhas/resumo`, `GET /api/usuarios/sugerir-email?nome=` |
+| Fichas de produção | `GET /api/fichas/opcoes`, `GET /api/fichas/ordens/:id`, `GET /api/fichas/ordens/:id/impressao?vias=`, `GET /api/fichas/ordens/:id/operacoes`, `PATCH /api/fichas/operacoes/:id`, `GET|PUT /api/fichas/itens/:id/grade`, `GET /api/fichas/produtos/:id`, `PUT /api/fichas/produtos/:id/arte`, `PUT /api/fichas/produtos/:id/cores`, `POST /api/fichas/produtos/:id/logos`, `/instrucoes`, `/imagens`, `DELETE /api/fichas/logos/:id`, `/instrucoes/:id`, `/imagens/:id` |
+| Sequência padrão | `GET|POST /api/operacoes-setor`, `DELETE /api/operacoes-setor/:id` |
+| Relatórios | `GET /api/relatorios/carteira`, `/pcp-mo`, `/pedidos-cliente`, `/pedidos-mes`, `/vendas-mensais` — todos aceitam `?formato=csv` |
 | Indicadores | `GET /api/indicadores/dashboard`, `/vendas/mensal`, `/custos/ordens`, `/custos/ordens/:id`, `/custos/produtos`, `/clientes/ranking` |
 | Importação | `POST /api/importacao/planilha` (multipart, campo `arquivo`) |
 | Qualidade | `GET /api/qualidade/resumo`, `/duplicatas`, `/pedidos-repetidos`, `/nomes`, `/parados`, `/datas`; `POST /api/qualidade/duplicatas/mesclar`, `/pedidos-repetidos/cancelar`, `/parados/encerrar`; `PUT /api/qualidade/nomes/:id`, `/datas/:itemId` |

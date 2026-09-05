@@ -114,8 +114,8 @@ function Layout({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
   return (
     <nav className="menu">
       <div className="menu-marca">
-        <strong>CONSERV</strong>
-        <span>Materiais e processos</span>
+        <strong>CSVSIST</strong>
+        <span>ConServ Confecções</span>
       </div>
       <div className="menu-lista">
         {visiveis.map((secao) => (
