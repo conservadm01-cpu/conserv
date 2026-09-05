@@ -90,6 +90,7 @@ console.log('\n=== Fichas de produção ===');
 const { getDb, migrate } = await import('../db/index.js');
 const { abrirOrdem, atualizarEtapa } = await import('../services/producao.js');
 const { salvarGrade, salvarArte, garantirOperacoes } = await import('../services/fichas.js');
+const { registrarApontamento } = await import('../services/apontamento.js');
 
 const db = migrate(getDb());
 
@@ -288,6 +289,47 @@ for (const [codigo, status, responsavel] of [
   atualizarEtapa(ordemVitrine, idDe(`SELECT id FROM etapas WHERE codigo = ?`, codigo), { status, responsavel }, db);
 }
 
+/*
+ * Apontamento do que já foi produzido na ordem-vitrine.
+ *
+ * Sem apontamento, as telas de produtividade e de custo real ficam vazias e
+ * quem avalia o sistema não vê a conta fechar. O custo de mão de obra é
+ * congelado no lançamento, então estes números seguem a folha de hoje.
+ */
+const colaboradores = db
+  .prepare(`SELECT c.id, c.nome, d.nome AS setor FROM colaboradores c
+            LEFT JOIN departamentos d ON d.id = c.departamento_id WHERE c.ativo = 1`)
+  .all();
+const doSetor = (setor) => colaboradores.find((c) => c.setor === setor) || colaboradores[0];
+
+let apontados = 0;
+for (const [codigo, setor, quantidade, refugo, minutos, dias] of [
+  // Peças boas + refugo não podem passar da ordem: o serviço recusa, e com razão.
+  ['CORTE', 'CORTE', 2988, 12, 480, -3],
+  ['SILK', 'SILK', 1775, 25, 420, -2],
+]) {
+  const pessoa = doSetor(setor);
+  if (!pessoa) continue;
+  const etapaId = idDe(`SELECT id FROM etapas WHERE codigo = ?`, codigo);
+  const jaTem = db
+    .prepare(`SELECT 1 FROM apontamentos WHERE ordem_id = ? AND etapa_id = ?`)
+    .get(ordemVitrine, etapaId);
+  if (jaTem) continue;
+  try {
+    registrarApontamento(
+      {
+        ordem_id: ordemVitrine, etapa_id: etapaId, colaborador_id: pessoa.id,
+        quantidade, refugo, minutos, data: emDias(dias),
+        observacao: 'Apontamento da base de demonstração',
+      },
+      db
+    );
+    apontados += 1;
+  } catch (erro) {
+    console.log(`  ! apontamento de ${codigo} não lançado: ${erro.message}`);
+  }
+}
+
 /* --- Grade e apontamento em algumas ordens vindas da planilha --- */
 
 const ordensImportadas = db
@@ -341,6 +383,7 @@ console.log(`Produtos:     ${numero(conta('SELECT COUNT(*) n FROM produtos'))}`)
 console.log(`Materiais:    ${numero(conta('SELECT COUNT(*) n FROM materiais'))}`);
 console.log(`Títulos:      ${numero(conta('SELECT COUNT(*) n FROM titulos'))}`);
 console.log(`Grades:       ${comGrade + 1} ordens com grade de tamanhos`);
+console.log(`Apontamentos: ${numero(conta('SELECT COUNT(*) n FROM apontamentos'))}`);
 console.log(
   `\nOrdem-vitrine com o dossiê completo: ` +
     `${db.prepare('SELECT numero FROM ordens_producao WHERE id = ?').get(ordemVitrine).numero} ` +
