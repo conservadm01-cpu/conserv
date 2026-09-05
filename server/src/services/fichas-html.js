@@ -80,11 +80,16 @@ const numero = (v, casas = 2) =>
 const marca = (status) => (status === 'CONCLUIDA' ? 'OK' : status === 'EM_ANDAMENTO' ? '…' : '');
 
 function tabelaGrade(ficha, cor) {
+  const aviso = ficha.grade_divergente
+    ? `<div class="alerta-grade">Atenção: a grade soma ${numero(ficha.total_grade, 0)} peças e a ordem
+       é de ${numero(ficha.ordem.quantidade, 0)}. Confira antes de cortar.</div>`
+    : '';
   const colunas = TAMANHOS.map((t) => `<th>${t}</th>`).join('');
   const valores = ficha.grade
     .map((g) => `<td class="c grande">${g.quantidade ? numero(g.quantidade, 0) : ''}</td>`)
     .join('');
   return `
+  ${aviso}
   <table class="grade">
     <colgroup>
       <col style="width:24%" />${TAMANHOS.map(() => '<col style="width:8%" />').join('')}<col style="width:12%" />
@@ -453,6 +458,9 @@ const ESTILO = `
 
   .grade .produto { font-weight: bold; text-transform: uppercase; }
   .grade .grande { font-size: 11pt; font-weight: bold; }
+
+  .alerta-grade { background: #fff100; border: 2px solid #d10a0a; color: #d10a0a; font-weight: bold;
+                  padding: 3px 6px; margin-bottom: 4px; font-size: 9pt; }
 
   .confidencial { background: #e01b24; color: #fff; text-align: center; font-size: 15pt; font-weight: bold;
                   letter-spacing: 1px; padding: 3px; margin: 6px 0; }

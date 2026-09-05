@@ -420,6 +420,15 @@ export function montarFicha(ordemId, { vias = null } = {}, db = getDb()) {
     grade,
     total_grade: totalGrade,
     grade_lancada: lancada,
+    /*
+     * Grade lançada que não soma mais a quantidade da ordem.
+     *
+     * Acontece quando alguém altera a quantidade do item depois de repartir os
+     * tamanhos. A ficha continua saindo — parar a impressão por isso travaria a
+     * produção —, mas sai com o aviso impresso, porque uma grade que não fecha
+     * manda o corte enfestar a quantidade errada.
+     */
+    grade_divergente: lancada && round2(totalGrade) !== round2(ordem.quantidade),
     materiais,
     operacoes,
     total_mo,

@@ -245,3 +245,33 @@ test('o CSV sai com ponto e vírgula, vírgula decimal e aspas escapadas', () =>
   assert.equal(linhas[0], 'Cliente;Valor');
   assert.equal(linhas[1], '"HYDRA; PET";1234,5');
 });
+
+test('grade que deixou de fechar com a ordem sai impressa com aviso', () => {
+  const { ordemId, itemId } = cenario({ quantidade: 100 });
+  salvarGrade(itemId, [{ tamanho: 'P', quantidade: 40 }, { tamanho: 'M', quantidade: 60 }]);
+  assert.equal(montarFicha(ordemId).grade_divergente, false);
+
+  // A quantidade do item muda depois da grade já repartida.
+  db.prepare(`UPDATE pedido_itens SET quantidade = 120 WHERE id = ?`).run(itemId);
+  db.prepare(`UPDATE ordens_producao SET quantidade = 120 WHERE id = ?`).run(ordemId);
+
+  const ficha = montarFicha(ordemId);
+  assert.equal(ficha.grade_divergente, true, 'a ficha marca a divergência');
+  assert.equal(ficha.total_grade, 100);
+  assert.match(fichaHtml(ficha), /a grade soma 100 peças e a ordem/i);
+});
+
+test('texto de cadastro não vira fórmula no CSV exportado', () => {
+  const csv = paraCsv(
+    [{ cliente: '=HYPERLINK("http://x","clique")', produto: '+CMD', total: 10 }],
+    [
+      { titulo: 'Cliente', campo: 'cliente' },
+      { titulo: 'Produto', campo: 'produto' },
+      { titulo: 'Total', campo: 'total' },
+    ]
+  );
+  const linha = csv.slice(1).trim().split('\n')[1];
+  assert.ok(linha.startsWith(`"'=HYPERLINK`), 'a fórmula sai como texto');
+  assert.match(linha, /;'\+CMD;/);
+  assert.match(linha, /;10$/, 'número continua número');
+});

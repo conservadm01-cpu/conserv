@@ -240,7 +240,14 @@ export function vendasMensais({ ano = new Date().getFullYear(), cliente_id = nul
 export function paraCsv(linhas, colunas) {
   const escapar = (v) => {
     if (v === null || v === undefined) return '';
-    const texto = typeof v === 'number' ? String(v).replace('.', ',') : String(v);
+    let texto = typeof v === 'number' ? String(v).replace('.', ',') : String(v);
+    /*
+     * Nome de cliente vem digitado por gente, e planilha trata texto que começa
+     * com =, +, - ou @ como fórmula. Um cadastro escrito "=cmd|..." viraria
+     * comando ao abrir o arquivo na máquina de quem baixou o relatório; a aspa
+     * simples à frente faz o Excel exibir o texto como texto.
+     */
+    if (/^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`;
     return /[";\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
   };
   const cabecalho = colunas.map((c) => escapar(c.titulo)).join(';');
