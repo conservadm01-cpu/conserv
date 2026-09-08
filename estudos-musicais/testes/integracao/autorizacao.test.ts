@@ -215,13 +215,17 @@ test('instrutor cadastra aluno na sua comum, e o banco aceita', async () => {
   const paulo = pessoas['paulo.instrutor@exemplo.org'];
   // Duas instruções na mesma transação, como a tela de cadastro faz.
   const saidas = await comoUsuarioEmSequencia(paulo, [
+    // Com RETURNING, como o Prisma faz — é ele que exige que a linha recém
+    // criada passe também pela política de LEITURA.
     [`INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "deveTrocarSenha", "atualizadoEm")
-      VALUES ('teste-aluno-ok', 'Aluno de Teste', 'aluno.teste@exemplo.org', 'x', 'ATIVO', $1, true, now())`, [paulo]],
+      VALUES ('teste-aluno-ok', 'Aluno de Teste', 'aluno.teste@exemplo.org', 'x', 'ATIVO', $1, true, now())
+      RETURNING id`, [paulo]],
     [`INSERT INTO vinculos (id, "usuarioId", papel, escopo, "comumId", ativo, "concedidoEm", "concedidoPorId")
-      VALUES ('teste-vinculo-ok', 'teste-aluno-ok', 'ALUNO', 'COMUM', $2, true, now(), $1)`, [paulo, comuns['COM-01']]],
+      VALUES ('teste-vinculo-ok', 'teste-aluno-ok', 'ALUNO', 'COMUM', $2, true, now(), $1)
+      RETURNING id`, [paulo, comuns['COM-01']]],
   ]);
-  assert.equal(saidas[0].rowCount, 1, 'a conta é criada');
-  assert.equal(saidas[1].rowCount, 1, 'o vínculo de aluno na própria comum é concedido');
+  assert.equal(saidas[0].rows.length, 1, 'a conta é criada E devolvida a quem a criou');
+  assert.equal(saidas[1].rows.length, 1, 'o vínculo de aluno na própria comum é concedido');
 });
 
 test('instrutor não concede papel de administração', async () => {
@@ -261,6 +265,85 @@ test('a entrada aceita nome de acesso além do e-mail', async () => {
   const porNome = await dono.query(`SELECT * FROM app.credenciais_para_login($1)`, ['MARIA  SOUZA']);
   assert.equal(porNome.rows.length, 1, 'nome em caixa alta e com espaço a mais precisa casar');
   await dono.query(`UPDATE usuarios SET "login" = NULL WHERE email = $1`, ['maria.aluna@exemplo.org']);
+});
+
+test('gravar e ler de volta funciona para quem não é administração', async () => {
+  // Regressão: `INSERT ... RETURNING` — que o Prisma usa em toda gravação —
+  // exige que a linha nova passe também pela política de LEITURA. Enquanto a
+  // política de escrita foi mais larga que a de leitura, cadastrar e auditar
+  // quebravam para todo mundo que não fosse administração.
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const auditoria = await comoUsuario(paulo,
+    `INSERT INTO auditorias (id, "usuarioId", acao, entidade, "criadoEm")
+     VALUES ('teste-auditoria', $1, 'TESTE', 'usuarios', now()) RETURNING id`, [paulo]);
+  assert.equal(auditoria.length, 1, 'quem registra a auditoria precisa poder lê-la de volta');
+});
+
+// --------------------------------------------------- edição de usuários
+
+test('instrutor altera o cadastro do aluno da sua comum', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const maria = pessoas['maria.aluna@exemplo.org']; // mesma comum
+  const linhas = await comoUsuario(paulo,
+    `UPDATE usuarios SET telefone = '(11) 90000-0000' WHERE id = $1 RETURNING id`, [maria]);
+  assert.equal(linhas.length, 1);
+});
+
+test('instrutor não altera o cadastro de aluno de outra região', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const lucas = pessoas['lucas.aluno@exemplo.org']; // Curitiba
+  const linhas = await comoUsuario(paulo,
+    `UPDATE usuarios SET telefone = '(11) 90000-0000' WHERE id = $1 RETURNING id`, [lucas]);
+  assert.equal(linhas.length, 0, 'a política não deixa a linha nem ser encontrada para escrita');
+});
+
+test('quem não é administração não altera o cadastro da administração', async () => {
+  const local = pessoas['jose.local@exemplo.org'];
+  const ana = pessoas['ana.pedagogica@exemplo.org'];
+  const linhas = await comoUsuario(local,
+    `UPDATE usuarios SET "nomeCompleto" = 'Nome Trocado' WHERE id = $1 RETURNING id`, [ana]);
+  assert.equal(linhas.length, 0);
+});
+
+test('aluno não altera o cadastro de ninguém, nem do colega', async () => {
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  const joao = pessoas['joao.aluno@exemplo.org'];
+  assert.equal((await comoUsuario(maria,
+    `UPDATE usuarios SET "nomeCompleto" = 'Trocado' WHERE id = $1 RETURNING id`, [joao])).length, 0);
+  // Mas altera o seu próprio, que é o caso da troca de senha.
+  assert.equal((await comoUsuario(maria,
+    `UPDATE usuarios SET telefone = '(11) 98888-7777' WHERE id = $1 RETURNING id`, [maria])).length, 1);
+});
+
+test('aluno não se promove alterando o próprio vínculo', async () => {
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  const linhas = await comoUsuario(maria,
+    `UPDATE vinculos SET papel = 'INSTRUTOR' WHERE "usuarioId" = $1 RETURNING id`, [maria]);
+  assert.equal(linhas.length, 0);
+});
+
+test('instrutor revoga vínculo de aluno da sua comum, e não o de fora', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  const lucas = pessoas['lucas.aluno@exemplo.org'];
+  assert.equal((await comoUsuario(paulo,
+    `UPDATE vinculos SET ativo = false, "revogadoEm" = now()
+     WHERE "usuarioId" = $1 AND papel = 'ALUNO' RETURNING id`, [maria])).length, 1);
+  assert.equal((await comoUsuario(paulo,
+    `UPDATE vinculos SET ativo = false, "revogadoEm" = now()
+     WHERE "usuarioId" = $1 AND papel = 'ALUNO' RETURNING id`, [lucas])).length, 0);
+});
+
+test('a função de escopo enxerga os vínculos do alvo, não os de quem pergunta', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  const ana = pessoas['ana.pedagogica@exemplo.org'];
+  const [dela] = await comoUsuario<{ pode: boolean }>(paulo,
+    'SELECT app.pode_editar_usuario($1) AS pode', [maria]);
+  const [daAdmin] = await comoUsuario<{ pode: boolean }>(paulo,
+    'SELECT app.pode_editar_usuario($1) AS pode', [ana]);
+  assert.equal(dela.pode, true);
+  assert.equal(daAdmin.pode, false);
 });
 
 // ------------------------------------------------------------------ turmas

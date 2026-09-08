@@ -30,17 +30,30 @@ export const PAPEIS_QUE_CONCEDE: Record<Papel, Papel[]> = {
   ALUNO: [],
 };
 
+/**
+ * Do menor privilégio para o maior. É a ordem em que os papéis são oferecidos
+ * na tela: o primeiro da lista é o padrão do seletor, e o padrão precisa ser o
+ * mais modesto — ninguém deve conceder superadministrador por descuido.
+ */
+export const PAPEIS_EM_ORDEM: Papel[] = [
+  'ALUNO', 'INSTRUTOR', 'ANCIAO', 'ENCARREGADO_LOCAL', 'ENCARREGADO_REGIONAL',
+  'ADMIN_PEDAGOGICO', 'SUPERADMIN',
+];
+
 /** Só a administração concede vínculo fora de uma comum. */
 const ESCOPOS_DE_ADMINISTRACAO: EscopoDeVinculo[] = ['GLOBAL', 'REGIAO', 'COMUM'];
 const ESCOPOS_DE_CAMPO: EscopoDeVinculo[] = ['COMUM'];
 
-/** Os papéis que este usuário pode conceder, somando todos os seus vínculos. */
+/**
+ * Os papéis que este usuário pode conceder, somando todos os seus vínculos,
+ * do menor privilégio para o maior.
+ */
 export function papeisQuePodeConceder(escopo: EscopoDoUsuario): Papel[] {
   const reunidos = new Set<Papel>();
   for (const papel of escopo.papeis) {
     for (const concedivel of PAPEIS_QUE_CONCEDE[papel] ?? []) reunidos.add(concedivel);
   }
-  return [...reunidos];
+  return PAPEIS_EM_ORDEM.filter((papel) => reunidos.has(papel));
 }
 
 export const podeCadastrar = (escopo: EscopoDoUsuario) => papeisQuePodeConceder(escopo).length > 0;
@@ -124,4 +137,101 @@ export function senhaProvisoria(): string {
   const silaba = () => sorteio(consoantes) + sorteio(vogais);
   const numero = String(Math.floor(Math.random() * 9000) + 1000);
   return `${silaba()}${silaba()}-${silaba()}${silaba()}-${numero}`;
+}
+
+// ============================================================== edição
+//
+// Editar é o outro lado do cadastro, e segue a mesma hierarquia: quem concede
+// um papel pode mexer em quem o tem, dentro do seu território. Duas travas
+// específicas da edição, que o cadastro não precisa ter:
+//
+//   • ninguém abaixo da administração mexe em quem é administração;
+//   • ninguém se tranca fora do sistema — o próprio usuário não se inativa
+//     nem se rebaixa, e a última conta de superadministrador não some.
+
+export type SituacaoDoUsuario = 'ATIVO' | 'PENDENTE' | 'INATIVO' | 'BLOQUEADO';
+
+export interface UsuarioParaEdicao {
+  id: string;
+  papeis: Papel[];
+  /** Comuns onde este usuário tem vínculo ativo. */
+  comuns: (string | null)[];
+  ehAdministracao: boolean;
+}
+
+/**
+ * Pode mexer no cadastro desta pessoa? Devolve o motivo da recusa, ou null.
+ *
+ * A pessoa sem nenhum papel concedível — porque tem papel acima do de quem
+ * edita — fica fora do alcance por inteiro: não se edita o nome de quem não se
+ * poderia ter cadastrado.
+ */
+export function motivoDaRecusaDeEdicao(
+  quemEdita: EscopoDoUsuario,
+  alvo: UsuarioParaEdicao,
+): string | null {
+  if (alvo.id === quemEdita.usuarioId) return null; // os próprios dados, sempre
+
+  if (!podeCadastrar(quemEdita)) return 'O seu perfil não administra outras pessoas.';
+
+  if (alvo.ehAdministracao && !quemEdita.ehAdministracao) {
+    return 'Cadastro da administração só é alterado pela administração.';
+  }
+
+  const concedeveis = papeisQuePodeConceder(quemEdita);
+  const foraDoAlcance = alvo.papeis.filter((papel) => !concedeveis.includes(papel));
+  if (foraDoAlcance.length) {
+    return `O seu perfil não administra ${foraDoAlcance.map(rotuloDoPapel).join(' nem ')}.`;
+  }
+
+  if (!quemEdita.ehAdministracao) {
+    const dentro = alvo.comuns.some((comum) => comum && quemEdita.comunsVisiveis.includes(comum));
+    if (!dentro) return 'Esta pessoa não está sob a sua responsabilidade.';
+  }
+  return null;
+}
+
+export const podeEditarUsuario = (quemEdita: EscopoDoUsuario, alvo: UsuarioParaEdicao) =>
+  motivoDaRecusaDeEdicao(quemEdita, alvo) === null;
+
+export function exigirPoderEditar(quemEdita: EscopoDoUsuario, alvo: UsuarioParaEdicao) {
+  const motivo = motivoDaRecusaDeEdicao(quemEdita, alvo);
+  if (motivo) throw new SemPermissao(motivo);
+}
+
+/** Só a administração mexe em situação; e ninguém se inativa. */
+export function motivoDaRecusaDeSituacao(
+  quemEdita: EscopoDoUsuario,
+  alvo: UsuarioParaEdicao,
+  novaSituacao: SituacaoDoUsuario,
+): string | null {
+  if (alvo.id === quemEdita.usuarioId && novaSituacao !== 'ATIVO') {
+    return 'Você não pode inativar nem bloquear o seu próprio acesso.';
+  }
+  return motivoDaRecusaDeEdicao(quemEdita, alvo);
+}
+
+/** Redefinir senha entrega uma provisória: quem redefine não escolhe a senha. */
+export const motivoDaRecusaDeRedefinicao = motivoDaRecusaDeEdicao;
+
+/**
+ * Revogar um vínculo. Além das regras de edição, protege a última porta: o
+ * sistema não pode ficar sem superadministrador ativo.
+ */
+export function motivoDaRecusaDeRevogacao(
+  quemEdita: EscopoDoUsuario,
+  alvo: UsuarioParaEdicao,
+  papel: Papel,
+  superadministradoresAtivos: number,
+): string | null {
+  if (alvo.id === quemEdita.usuarioId && papel === 'SUPERADMIN') {
+    return 'Você não pode retirar o seu próprio vínculo de superadministrador.';
+  }
+  if (papel === 'SUPERADMIN' && superadministradoresAtivos <= 1) {
+    return 'Este é o último superadministrador ativo: conceda o papel a outra pessoa antes de retirar.';
+  }
+  if (!papeisQuePodeConceder(quemEdita).includes(papel)) {
+    return `O seu perfil não retira o papel de ${rotuloDoPapel(papel)}.`;
+  }
+  return motivoDaRecusaDeEdicao(quemEdita, alvo);
 }

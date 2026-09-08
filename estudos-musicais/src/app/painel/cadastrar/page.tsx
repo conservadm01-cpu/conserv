@@ -226,7 +226,10 @@ export default async function PaginaDeCadastro({
         si, e o banco recusa cadastro fora do seu território mesmo que a tela deixe passar.
       </p>
 
-      <Link href="/painel" className="botao-secundario mt-6">Voltar ao painel</Link>
+      <nav className="mt-6 flex flex-wrap gap-3">
+        <Link href="/painel/pessoas" className="botao-secundario">Ver todas as pessoas</Link>
+        <Link href="/painel" className="botao-secundario">Voltar ao painel</Link>
+      </nav>
     </main>
   );
 }

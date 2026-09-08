@@ -133,11 +133,31 @@ as políticas de RLS repetem o piso no banco (segunda cerca): quem não é
 administração só concede papel de campo, com escopo de comum, e apenas em comum
 que já acompanha — mesmo que a tela deixe passar.
 
+### Administrar quem já existe
+
+Quem cadastra também administra, no mesmo território: **Painel → Pessoas** lista
+quem está sob a sua responsabilidade e abre a ficha de cada um para corrigir nome,
+e-mail, nome de acesso e telefone, conceder ou retirar perfil, mudar a situação
+(ativo, pendente, inativo, bloqueado) e redefinir a senha.
+
+Três travas próprias da edição, que o cadastro não precisa ter:
+
+- **quem não é administração não mexe em quem é** — a ficha de um administrador só
+  abre para outro administrador;
+- **não se edita quem não se poderia ter cadastrado** — um instrutor concede apenas
+  o papel de aluno, então também só administra alunos;
+- **ninguém se tranca fora** — o próprio usuário não se inativa nem retira o
+  próprio vínculo de superadministrador, e o último superadministrador ativo não
+  pode perder o papel.
+
+Inativar ou redefinir a senha **encerra as sessões abertas** daquela pessoa na hora.
+Toda alteração fica na auditoria, com o antes e o depois.
+
 ### A senha provisória
 
-Quem cadastra não escolhe a senha do outro: o sistema gera uma legível
-(`rimi-vuce-5849`), mostra **uma vez** para ser entregue em mãos, e marca a
-conta com `deveTrocarSenha`. Enquanto o dono não trocar, `usuarioDaTela()` traz
+Quem cadastra não escolhe a senha do outro — nem ao cadastrar, nem ao redefinir:
+o sistema gera uma legível (`rimi-vuce-5849`), mostra **uma vez** para ser entregue
+em mãos, e marca a conta com `deveTrocarSenha`. Enquanto o dono não trocar, `usuarioDaTela()` traz
 qualquer rota de volta para a troca — a conta existe, mas não abre nada com uma
 senha que outra pessoa conhece. Ao trocar, as sessões abertas são encerradas.
 
@@ -172,6 +192,7 @@ src/
     painel/            acompanhamento de quem tem vínculo
     painel/turmas/     central do instrutor: instrumento → método → turma → unidade
     painel/cadastrar/  cadastro de pessoas (única porta de entrada de uma conta)
+    painel/pessoas/    quem tem acesso, e a ficha de cada um para administrar
     painel/aluno/[id]/ ficha do aluno (com checagem de escopo)
     admin/metodos/     central administrativa: métodos, currículos, fila de análises
   lib/
@@ -180,7 +201,7 @@ src/
     sessao.ts          cookie, abertura e encerramento de sessão
     senha.ts           scrypt com parâmetros embutidos no resumo
     regras.ts          cálculo das regras pedagógicas e critérios por método
-    cadastro.ts        quem pode cadastrar quem, com qual papel e onde
+    cadastro.ts        quem cadastra e administra quem, com qual papel e onde
     metodos/
       estrutura.ts     o contrato genérico: unidade, item, proveniência
       analisadores/    um por FORMATO de documento, nunca por método
@@ -392,7 +413,7 @@ npm run teste:preparar    # prepara o banco de testes (migrações, permissões,
 npm run teste:integracao  # autorização e isolamento contra PostgreSQL real
 ```
 
-50 testes unitários e 38 de integração.
+60 testes unitários e 46 de integração.
 
 Os de **autorização** tentam atravessar o escopo e exigem falha: ler aluno de outra comum,
 de outra região, trocar o id na URL, promover-se a instrutor, conceder medalha a si mesmo,
@@ -404,6 +425,11 @@ quem cadastra não possa se esconder atrás de outro responsável, que instrutor
 conceda papel de administração nem cadastre em comum de outra região — e que o
 cadastro legítimo, na própria comum, passe.
 
+Os de **edição** cobram o outro lado: instrutor altera o aluno da sua comum e não
+o de outra região, quem não é administração não altera o cadastro da administração,
+aluno não se promove mexendo no próprio vínculo, e a função de escopo enxerga os
+vínculos de quem está sendo editado — não os de quem pergunta.
+
 Os de **isolamento pedagógico** cobram a outra promessa: que os critérios de um método não
 caiam sobre outro, que as competências não se misturem, que o filtro de conteúdo só deixe
 passar o que é compartilhado **e** autorizado, que as jornadas do mesmo aluno sejam
@@ -412,7 +438,17 @@ independentes, e que análise rejeitada não deixe currículo.
 Um teste vale por si: `nenhum analisador conhece o nome de um método` falha se alguém
 escrever o nome de um método na identidade de um analisador.
 
-Três defeitos reais foram pegos por estes testes durante o desenvolvimento: um vazamento em
+Um defeito que só apareceu ao exercitar o sistema como um instrutor, e não como
+administrador: no PostgreSQL, `INSERT ... RETURNING` — que o Prisma usa em toda
+gravação — exige que a linha nova passe **também** pela política de leitura.
+Enquanto a política de escrita foi mais larga que a de leitura, cadastrar uma
+pessoa e registrar auditoria quebravam para todo mundo que não fosse
+administração, com uma mensagem enganosa (`new row violates row-level security
+policy`). Corrigido em `20260908220000_corrige_leitura_apos_gravar`, com teste
+que grava **com** `RETURNING` — o teste anterior não reproduzia o caminho da
+aplicação e por isso passava.
+
+Outros três defeitos reais foram pegos por estes testes durante o desenvolvimento: um vazamento em
 que o aluno enxergava colegas da própria comum; uma consulta de autorização que rodava sem
 contexto de RLS; e uma **recursão infinita** entre as políticas de `turmas` e
 `matriculas_em_turma` — a política de escrita, declarada `FOR ALL`, também valia para o

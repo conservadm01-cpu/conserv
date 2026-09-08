@@ -108,6 +108,7 @@ export default async function PaginaDoPainel() {
 
       <nav className="mt-6 flex flex-wrap gap-3">
         {podeCadastrar(escopo) && <Link href="/painel/cadastrar" className="botao">Cadastrar pessoa</Link>}
+        {podeCadastrar(escopo) && <Link href="/painel/pessoas" className="botao-secundario">Pessoas</Link>}
         <Link href="/painel/turmas" className="botao-secundario">Turmas</Link>
         {escopo.ehAdministracao && <Link href="/admin/metodos" className="botao-secundario">Central de métodos</Link>}
         <Link href="/assunto" className="botao-secundario">Índice por assunto</Link>
