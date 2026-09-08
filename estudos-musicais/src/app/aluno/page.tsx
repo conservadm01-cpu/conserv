@@ -2,11 +2,17 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaRequisicao } from '@/lib/sessao.ts';
-import { calcularAproveitamento, preRequisitoDeFases, type EstadoProgresso } from '@/lib/regras.ts';
 import { Cabecalho, Indicador, Aviso, formatarTempo } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * A casa do aluno é a lista das suas JORNADAS.
+ *
+ * Um aluno pode estar na unidade 4 de um método de teoria, na 2 do método do
+ * seu instrumento e recém-matriculado num terceiro. Cada jornada tem currículo,
+ * progresso e critérios próprios — e nenhuma delas é "a principal".
+ */
 export default async function PaginaDoAluno() {
   const usuario = await usuarioDaRequisicao();
   if (!usuario) redirect('/entrar');
@@ -17,32 +23,49 @@ export default async function PaginaDoAluno() {
       include: { comum: { include: { regiao: true } }, instrumento: true, instrutor: { select: { nomeCompleto: true } } },
     });
 
-    const fases = await banco.fase.findMany({
-      where: { edicao: { material: { tipo: 'MSA' } } },
-      orderBy: { numero: 'asc' },
+    const jornadas = await banco.jornadaDoAluno.findMany({
+      where: { alunoId: usuario.id },
+      orderBy: [{ status: 'asc' }, { inicioEm: 'asc' }],
       include: {
-        topicos: { include: { _count: { select: { licoes: true } } } },
-        progresso: { where: { alunoId: usuario.id } },
+        metodo: { select: { id: true, nome: true, codigo: true, escopo: true, descricao: true } },
+        instrumento: { select: { nome: true } },
+        curriculo: { select: { id: true, rotulo: true, versao: true, status: true } },
+        unidadeAtual: { select: { id: true, tipo: true, codigo: true, nome: true } },
       },
     });
 
-    const progressoLicoes = await banco.progressoLicao.findMany({
+    // Progresso por jornada, contado sobre as lições do currículo dela.
+    const progressoPorJornada = await banco.progressoLicao.groupBy({
+      by: ['jornadaId', 'estado'],
       where: { alunoId: usuario.id },
-      select: { licaoId: true, estado: true, peso: true },
+      _count: { _all: true },
+    });
+
+    const licoesPorCurriculo = await Promise.all(jornadas.map(async (jornada) => ({
+      jornadaId: jornada.id,
+      total: await banco.licao.count({
+        where: { unidade: { curriculoId: jornada.curriculoId }, statusPublicacao: 'PUBLICADO' },
+      }),
+    })));
+
+    const matriculas = await banco.matriculaEmTurma.findMany({
+      where: { alunoId: usuario.id, saidaEm: null },
+      include: {
+        turma: {
+          select: {
+            id: true, nome: true,
+            metodo: { select: { codigo: true } },
+            instrutor: { select: { nomeCompleto: true } },
+          },
+        },
+      },
     });
 
     const tempos = await banco.tempoDiario.findMany({
       where: { usuarioId: usuario.id }, orderBy: { dia: 'desc' }, take: 30,
     });
 
-    const regraHinario = await banco.regraProgressao.findFirst({
-      where: { codigo: 'B-APROVEITAMENTO-HINARIO', ativo: true }, orderBy: { versao: 'desc' },
-    });
-    const regraMetodos = await banco.regraProgressao.findFirst({
-      where: { codigo: 'A-PRE-REQUISITO-MSA', ativo: true }, orderBy: { versao: 'desc' },
-    });
-
-    return { perfil, fases, progressoLicoes, tempos, regraHinario, regraMetodos };
+    return { perfil, jornadas, progressoPorJornada, licoesPorCurriculo, matriculas, tempos };
   });
 
   if (!dados.perfil) {
@@ -60,17 +83,10 @@ export default async function PaginaDoAluno() {
   const tempoHoje = dados.tempos.find((t) => t.dia.toISOString().slice(0, 10) === hoje)?.segundosDedicacao ?? 0;
   const tempoTotal = dados.tempos.reduce((soma, t) => soma + t.segundosDedicacao, 0);
 
-  const unidades = dados.progressoLicoes.map((p) => ({
-    licaoId: p.licaoId, peso: p.peso, estado: p.estado as EstadoProgresso,
-  }));
-  const percentualExigido = Number((dados.regraHinario?.parametros as { percentual?: number })?.percentual ?? 40);
-  const aproveitamento = calcularAproveitamento(unidades, percentualExigido);
-
-  const fasesExigidas = ((dados.regraMetodos?.parametros as { fases?: number[] })?.fases ?? [1, 2, 3, 4, 5]);
-  const preRequisito = preRequisitoDeFases(
-    dados.fases.map((f) => ({ numero: f.numero, estado: (f.progresso[0]?.estado ?? 'NAO_INICIADO') as EstadoProgresso })),
-    fasesExigidas,
-  );
+  const aprovadasDe = (jornadaId: string) => dados.progressoPorJornada
+    .filter((p) => p.jornadaId === jornadaId && p.estado === 'APROVADO')
+    .reduce((soma, p) => soma + p._count._all, 0);
+  const totalDe = (jornadaId: string) => dados.licoesPorCurriculo.find((l) => l.jornadaId === jornadaId)?.total ?? 0;
 
   return (
     <main className="mx-auto max-w-3xl p-6 pb-16">
@@ -82,61 +98,75 @@ export default async function PaginaDoAluno() {
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Indicador rotulo="Dedicação hoje" valor={formatarTempo(tempoHoje)} />
         <Indicador rotulo="Últimos 30 dias" valor={formatarTempo(tempoTotal)} />
-        <Indicador rotulo="Aproveitamento" valor={`${aproveitamento.percentual}%`}
-          detalhe={`${aproveitamento.unidadesAprovadas} de ${aproveitamento.unidadesElegiveis} unidades aprovadas`} />
+        <Indicador rotulo="Jornadas ativas" valor={dados.jornadas.filter((j) => j.status === 'ATIVA').length} />
         <Indicador rotulo="Instrutor" valor={dados.perfil.instrutor?.nomeCompleto.split(' ')[0] ?? '—'} />
       </section>
 
-      <section className="mt-6 space-y-3">
-        <h2 className="rotulo">Liberações</h2>
-        <div className="cartao">
-          <p className="font-semibold">Métodos do instrumento</p>
-          <p className="text-sm text-tinta-fraca">{dados.regraMetodos?.descricao}</p>
-          {preRequisito.liberado
-            ? <p className="mt-2 text-sm text-metodo-escuro">Liberado: as fases exigidas estão aprovadas.</p>
-            : <p className="mt-2 text-sm">Faltam as fases <b>{preRequisito.faltando.join(', ')}</b> aprovadas pelo instrutor.</p>}
-        </div>
-        <div className="cartao">
-          <p className="font-semibold">Exercícios de Hinário</p>
-          <p className="text-sm text-tinta-fraca">{dados.regraHinario?.descricao}</p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/10">
-            <div className="h-full bg-metodo" style={{ width: `${Math.min(100, (aproveitamento.percentual / percentualExigido) * 100)}%` }} />
-          </div>
-          <p className="mt-1 text-sm">
-            {aproveitamento.percentual}% de {percentualExigido}% —{' '}
-            {aproveitamento.percentual >= percentualExigido
-              ? 'liberado.'
-              : `faltam ${aproveitamento.faltamUnidades} unidade(s) aprovada(s).`}
-          </p>
-          <p className="mt-1 text-xs text-tinta-fraca">
-            Conta apenas unidade aprovada pelo instrutor. Página aberta e tempo de tela não entram no cálculo.
-          </p>
-        </div>
-      </section>
-
       <section className="mt-6">
-        <h2 className="rotulo">Fases do MSA</h2>
+        <h2 className="rotulo">Suas jornadas</h2>
+        {!dados.jornadas.length && (
+          <div className="mt-2">
+            <Aviso tom="pendente">
+              Você ainda não foi matriculado em nenhum método. Quem faz a matrícula é o instrutor ou o
+              responsável pela sua comum.
+            </Aviso>
+          </div>
+        )}
         <div className="mt-2 grid gap-2">
-          {dados.fases.map((fase) => {
-            const estado = fase.progresso[0]?.estado ?? 'NAO_INICIADO';
-            const licoes = fase.topicos.reduce((soma, t) => soma + t._count.licoes, 0);
+          {dados.jornadas.map((jornada) => {
+            const aprovadas = aprovadasDe(jornada.id);
+            const total = totalDe(jornada.id);
+            const percentual = total ? Math.round((aprovadas / total) * 100) : 0;
             return (
-              <Link key={fase.id} href={`/assunto?fase=${fase.numero}`} className="cartao flex items-center gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-metodo-claro font-semibold text-metodo-escuro">
-                  {fase.numero}
-                </span>
-                <span className="flex-1">
-                  <span className="block font-semibold">{fase.nome}</span>
-                  <span className="block text-xs text-tinta-fraca">
-                    {fase.topicos.length} tópicos · {licoes} lições no índice
+              <Link key={jornada.id} href={`/jornada/${jornada.id}`} className="cartao block">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-metodo-claro text-xs font-semibold text-metodo-escuro">
+                    {jornada.metodo.codigo.slice(0, 4)}
                   </span>
-                </span>
-                <span className="text-xs text-tinta-fraca">{estado.toLowerCase().replace('_', ' ')}</span>
+                  <span className="flex-1">
+                    <span className="block font-semibold">{jornada.metodo.nome}</span>
+                    <span className="block text-xs text-tinta-fraca">
+                      {jornada.instrumento?.nome ?? (jornada.metodo.escopo === 'TRANSVERSAL' ? 'comum a todos os instrumentos' : 'sem instrumento')}
+                      {' · '}{jornada.curriculo.rotulo} (v{jornada.curriculo.versao})
+                    </span>
+                    {jornada.unidadeAtual && (
+                      <span className="block text-xs text-tinta-fraca">
+                        Em {jornada.unidadeAtual.tipo.toLowerCase()} {jornada.unidadeAtual.codigo} — {jornada.unidadeAtual.nome}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs text-tinta-fraca">{jornada.status.toLowerCase()}</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10">
+                  <div className="h-full bg-metodo" style={{ width: `${percentual}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-tinta-fraca">
+                  {total
+                    ? `${aprovadas} de ${total} lições publicadas aprovadas (${percentual}%)`
+                    : 'este currículo ainda não tem lição publicada'}
+                </p>
               </Link>
             );
           })}
         </div>
       </section>
+
+      {dados.matriculas.length > 0 && (
+        <section className="mt-6">
+          <h2 className="rotulo">Suas turmas</h2>
+          <div className="mt-2 grid gap-2">
+            {dados.matriculas.map((matricula) => (
+              <div key={matricula.id} className="cartao">
+                <p className="font-semibold">{matricula.turma.nome}</p>
+                <p className="text-xs text-tinta-fraca">
+                  Método {matricula.turma.metodo.codigo}
+                  {matricula.turma.instrutor ? ` · instrutor ${matricula.turma.instrutor.nomeCompleto}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <nav className="mt-6 flex gap-3">
         <Link href="/assunto" className="botao">Estudar por assunto</Link>

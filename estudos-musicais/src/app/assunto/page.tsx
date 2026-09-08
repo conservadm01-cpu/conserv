@@ -10,31 +10,63 @@ const NOME_DA_CLAVE: Record<string, string> = { SOL: 'Clave de Sol', DO: 'Clave 
 
 /**
  * Navegação por assunto: escala → clave → compasso → exercícios de todas as
- * fases. É complementar à ordem oficial do método, que continua intacta na
- * trilha do aluno.
+ * unidades. É complementar à ordem oficial do método, que continua intacta na
+ * jornada do aluno.
+ *
+ * O recorte por método é filtro, não ramificação: a página não sabe quais
+ * métodos existem, só mostra os que o usuário alcança.
  */
 export default async function PaginaPorAssunto({
   searchParams,
-}: { searchParams: Promise<{ escala?: string; clave?: string; compasso?: string; fase?: string }> }) {
+}: { searchParams: Promise<{ escala?: string; clave?: string; compasso?: string; unidade?: string; metodo?: string }> }) {
   const usuario = await usuarioDaRequisicao();
   if (!usuario) redirect('/entrar');
   const filtros = await searchParams;
 
   const dados = await comoUsuario(usuario.id, async (banco) => {
+    // Só o que está publicado, e só dentro do que o aluno alcança. A unidade
+    // escolhida traz junto a sua subárvore, pelo caminho materializado.
+    const unidade = filtros.unidade
+      ? await banco.unidadeCurricular.findUnique({ where: { id: filtros.unidade } })
+      : null;
+
     const versoes = await banco.versaoLicao.findMany({
       where: {
         ...(filtros.escala ? { escalaReferencia: filtros.escala } : {}),
         ...(filtros.clave ? { clave: filtros.clave as 'SOL' | 'DO' | 'FA' } : {}),
         ...(filtros.compasso ? { compassos: { has: filtros.compasso } } : {}),
-        ...(filtros.fase ? { licao: { topico: { fase: { numero: Number(filtros.fase) } } } } : {}),
+        licao: {
+          statusPublicacao: 'PUBLICADO',
+          ...(filtros.metodo ? { metodo: { codigo: filtros.metodo } } : {}),
+          ...(unidade
+            ? {
+              unidade: {
+                curriculoId: unidade.curriculoId,
+                OR: [{ id: unidade.id }, { caminho: { startsWith: `${unidade.caminho}/` } }],
+              },
+            }
+            : {}),
+        },
       },
-      include: { licao: { include: { topico: { include: { fase: true } } } } },
+      include: {
+        licao: {
+          include: {
+            metodo: { select: { codigo: true, nome: true } },
+            unidade: { select: { id: true, tipo: true, codigo: true, nome: true, ordem: true } },
+          },
+        },
+      },
       orderBy: [{ escalaReferencia: 'asc' }, { clave: 'asc' }],
     });
 
     const escalas = await banco.agrupamento.findMany({ where: { tipo: 'ESCALA' }, orderBy: { valor: 'asc' } });
     const compassos = await banco.agrupamento.findMany({ where: { tipo: 'COMPASSO' }, orderBy: { valor: 'asc' } });
-    return { versoes, escalas, compassos };
+    // Os métodos que o usuário alcança — a RLS já limita o que volta daqui.
+    const metodos = await banco.metodo.findMany({
+      where: { curriculos: { some: { unidades: { some: { licoes: { some: { statusPublicacao: 'PUBLICADO' } } } } } } },
+      select: { codigo: true, nome: true }, orderBy: { nome: 'asc' },
+    });
+    return { versoes, escalas, compassos, metodos, unidade };
   });
 
   // Agrupa como o índice pede: escala → clave → compasso → fase.
@@ -63,9 +95,24 @@ export default async function PaginaPorAssunto({
   return (
     <main className="mx-auto max-w-3xl p-6 pb-16">
       <Cabecalho titulo="Estudo por assunto" voltar="/aluno"
-        subtitulo="Escolha a escala, a clave e o compasso para ver os exercícios de todas as fases." />
+        subtitulo={dados.unidade
+          ? `Dentro de ${dados.unidade.tipo.toLowerCase()} ${dados.unidade.codigo} — ${dados.unidade.nome}`
+          : 'Escolha o método, a escala, a clave e o compasso.'} />
 
       <section className="cartao mb-4 space-y-3">
+        <div>
+          <p className="rotulo">Método</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <Link href={link({ metodo: undefined, unidade: undefined })}
+              className={`etiqueta border ${!filtros.metodo ? 'border-metodo bg-metodo-claro' : 'border-black/10'}`}>todos</Link>
+            {dados.metodos.map((m) => (
+              <Link key={m.codigo} href={link({ metodo: m.codigo, unidade: undefined })}
+                className={`etiqueta border ${filtros.metodo === m.codigo ? 'border-metodo bg-metodo-claro' : 'border-black/10'}`}>
+                {m.nome}
+              </Link>
+            ))}
+          </div>
+        </div>
         <div>
           <p className="rotulo">Escala de referência</p>
           <div className="mt-1 flex flex-wrap gap-2">
@@ -125,12 +172,17 @@ export default async function PaginaPorAssunto({
                   <p className="rotulo">Compasso {compasso}</p>
                   <ul className="mt-1 space-y-1">
                     {versoes
-                      .sort((a, b) => a.licao.topico.fase.numero - b.licao.topico.fase.numero)
+                      .sort((a, b) => a.licao.unidade.ordem - b.licao.unidade.ordem
+                        || a.licao.ordemPedagogica - b.licao.ordemPedagogica)
                       .map((versao) => (
                         <li key={versao.id}>
                           <Link href={`/licao/${versao.licaoId}`} className="flex flex-wrap items-baseline gap-2 rounded p-1 hover:bg-black/5">
-                            <span className="font-semibold">Fase {versao.licao.topico.fase.numero}</span>
-                            <span>· exercício {versao.licao.numeroOriginal}</span>
+                            <span className="etiqueta bg-black/5">{versao.licao.metodo.codigo}</span>
+                            <span className="font-semibold">
+                              {versao.licao.unidade.tipo.charAt(0) + versao.licao.unidade.tipo.slice(1).toLowerCase()}{' '}
+                              {versao.licao.unidade.codigo}
+                            </span>
+                            <span>· {versao.licao.numeroOriginal}</span>
                             {versao.paginaImpressaInicio && (
                               <span className="text-sm text-tinta-fraca">
                                 · pág. {versao.paginaImpressaInicio}

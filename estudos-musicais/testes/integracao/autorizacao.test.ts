@@ -150,17 +150,17 @@ test('aluno não consegue se promover a instrutor', async () => {
 
 test('aluno não concede medalha nem certificado a si mesmo', async () => {
   const maria = pessoas['maria.aluna@exemplo.org'];
-  const material = (await dono.query('SELECT id FROM materiais LIMIT 1')).rows[0].id;
+  const metodo = (await dono.query('SELECT id FROM metodos LIMIT 1')).rows[0].id;
   await assert.rejects(
     () => comoUsuario(maria,
-      `INSERT INTO medalhas (id, "alunoId", "materialId", codigo, "concedidaEm")
-       VALUES ('teste-medalha', $1, $2, 'TESTE-1', now())`, [maria, material]),
+      `INSERT INTO medalhas (id, "alunoId", "metodoId", codigo, "concedidaEm")
+       VALUES ('teste-medalha', $1, $2, 'TESTE-1', now())`, [maria, metodo]),
     /row-level security|violates/i,
   );
   await assert.rejects(
     () => comoUsuario(maria,
       `INSERT INTO certificados (id, "alunoId", trilha, fases, codigo, "emitidoEm")
-       VALUES ('teste-certificado', $1, 'MSA', '[]'::jsonb, 'TESTE-2', now())`, [maria]),
+       VALUES ('teste-certificado', $1, 'trilha de teste', '[]'::jsonb, 'TESTE-2', now())`, [maria]),
     /row-level security|violates/i,
   );
 });
@@ -170,6 +170,39 @@ test('aluno não altera o conteúdo do método', async () => {
   const alteradas = await comoUsuario(maria,
     `UPDATE licoes SET titulo = 'alterado pelo aluno' WHERE "statusPublicacao" = 'PUBLICADO' RETURNING id`);
   assert.equal(alteradas.length, 0, 'a política de escrita não deixa o aluno mexer no material');
+});
+
+// ------------------------------------------------------------------ turmas
+
+test('turma e matrícula são legíveis sem que as políticas entrem em recursão', async () => {
+  // Regressão: `turmas_leitura` consultava matriculas_em_turma e a política de
+  // escrita das matrículas, declarada FOR ALL, consultava turmas — o SELECT ia
+  // de uma à outra sem fim. Ver 20260908191000_corrige_recursao_de_turmas.
+  for (const email of ['paulo.instrutor@exemplo.org', 'maria.aluna@exemplo.org', 'ana.pedagogica@exemplo.org']) {
+    await comoUsuario(pessoas[email], 'SELECT id FROM turmas');
+    await comoUsuario(pessoas[email], 'SELECT id FROM matriculas_em_turma');
+  }
+});
+
+test('o aluno vê a sua turma e nenhuma outra', async () => {
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  const turmas = await comoUsuario<{ id: string }>(maria, 'SELECT id FROM turmas');
+  const matriculas = await comoUsuario<{ alunoId: string }>(maria, 'SELECT "alunoId" FROM matriculas_em_turma');
+  assert.ok(turmas.length >= 1, 'a turma em que está matriculada precisa aparecer');
+  assert.ok(matriculas.every((m) => m.alunoId === maria), 'nenhuma matrícula de colega');
+});
+
+test('instrutor não matricula aluno em turma de outra comum', async () => {
+  const marcos = pessoas['marcos.instrutor@exemplo.org']; // comum Centro
+  const turmaDoNorte = (await dono.query(
+    `SELECT t.id FROM turmas t JOIN comuns c ON c.id = t."comumId" WHERE c.codigo = 'COM-01' LIMIT 1`)).rows[0].id;
+  await assert.rejects(
+    () => comoUsuario(marcos,
+      `INSERT INTO matriculas_em_turma (id, "turmaId", "alunoId", "entradaEm")
+       VALUES ('teste-matricula', $1, $2, now())`,
+      [turmaDoNorte, pessoas['maria.aluna@exemplo.org']]),
+    /row-level security|violates/i,
+  );
 });
 
 // ------------------------------------------------------------ administração

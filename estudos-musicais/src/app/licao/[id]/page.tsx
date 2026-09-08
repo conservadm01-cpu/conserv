@@ -17,7 +17,10 @@ export default async function PaginaDaLicao({ params }: { params: Promise<{ id: 
     where: { id },
     include: {
       versoes: { orderBy: { clave: 'asc' } },
-      topico: { include: { fase: { include: { edicao: { include: { material: true } } } } } },
+      metodo: { select: { nome: true, codigo: true, notaDireitos: true } },
+      instrumento: { select: { nome: true } },
+      unidade: { include: { pai: { select: { tipo: true, codigo: true, nome: true } } } },
+      documentoOrigem: { select: { nomeArquivo: true, versao: true } },
       conteudos: { where: { publicado: true }, orderBy: { ordem: 'asc' } },
       atividades: { where: { ativo: true } },
     },
@@ -25,21 +28,44 @@ export default async function PaginaDaLicao({ params }: { params: Promise<{ id: 
 
   if (!licao) notFound();
 
-  const material = licao.topico.fase.edicao.material;
+  // Proveniência: método, instrumento, unidade, documento e página. É o que
+  // permite conferir qualquer registro contra a fonte de onde ele veio.
+  const caminho = [
+    licao.unidade.pai ? `${licao.unidade.pai.codigo} ${licao.unidade.pai.nome}` : null,
+    `${licao.unidade.codigo} ${licao.unidade.nome}`,
+  ].filter(Boolean).join(' · ');
 
   return (
     <main className="mx-auto max-w-3xl p-6 pb-16">
       <Cabecalho
         titulo={licao.titulo}
-        subtitulo={`${material.nome} · ${licao.topico.fase.nome} · ${licao.topico.codigo} ${licao.topico.nome}`}
+        subtitulo={`${licao.metodo.nome} · ${caminho}`}
         voltar="/assunto"
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SeloDeConferencia situacao={licao.statusConferencia} />
         <span className="etiqueta bg-black/5">{licao.tipo.toLowerCase().replace(/_/g, ' ')}</span>
-        <span className="etiqueta bg-black/5">exercício {licao.numeroOriginal} no método</span>
+        <span className="etiqueta bg-black/5">nº {licao.numeroOriginal} no método</span>
+        {licao.instrumento && <span className="etiqueta bg-black/5">{licao.instrumento.nome}</span>}
+        {licao.compartilhado && <span className="etiqueta bg-black/5">conteúdo compartilhado</span>}
       </div>
+
+      <section className="cartao mb-4">
+        <p className="rotulo">Proveniência</p>
+        <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+          <div><dt className="rotulo">Método</dt><dd>{licao.metodo.codigo}</dd></div>
+          <div><dt className="rotulo">Unidade</dt>
+            <dd>{licao.unidade.tipo.toLowerCase()} {licao.unidade.codigo}</dd></div>
+          <div><dt className="rotulo">Documento de origem</dt>
+            <dd>{licao.documentoOrigem?.nomeArquivo ?? '—'}</dd></div>
+          <div><dt className="rotulo">Página de origem</dt>
+            <dd className="tabular-nums">{licao.paginaOrigemInicio ?? '—'}
+              {licao.paginaOrigemFim && licao.paginaOrigemFim !== licao.paginaOrigemInicio ? `–${licao.paginaOrigemFim}` : ''}</dd></div>
+          <div><dt className="rotulo">Referência</dt><dd>{licao.referenciaOrigem ?? '—'}</dd></div>
+          <div><dt className="rotulo">Fonte</dt><dd>{licao.fonte ?? '—'}</dd></div>
+        </dl>
+      </section>
 
       {licao.statusConferencia !== 'CONFERIDO' && (
         <Aviso tom={licao.statusConferencia === 'DIVERGENTE' ? 'alerta' : 'pendente'}>
@@ -112,7 +138,8 @@ export default async function PaginaDaLicao({ params }: { params: Promise<{ id: 
       </section>
 
       <p className="mt-8 text-xs text-tinta-fraca">
-        A plataforma registra a referência de página do método impresso; o arquivo do método não é distribuído aqui.
+        {licao.metodo.notaDireitos
+          ?? 'A plataforma registra a referência de página do método impresso; o arquivo do método não é distribuído aqui.'}
       </p>
       <Link href="/assunto" className="botao-secundario mt-4">Voltar ao índice por assunto</Link>
     </main>

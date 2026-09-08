@@ -44,6 +44,7 @@ model Comum {
   regiao        Regiao   @relation(fields: [regiaoId], references: [id], onDelete: Restrict)
   vinculos      Vinculo[]
   alunos        PerfilAluno[]
+  turmas        Turma[]
 
   @@unique([regiaoId, nome])
   @@index([ativo])
@@ -85,7 +86,13 @@ model Usuario {
   visualizacoes       VisualizacaoPagina[]
   tempos              TempoDiario[]
   progressoLicoes     ProgressoLicao[]
-  progressoFases      ProgressoFase[]
+  progressoUnidades   ProgressoUnidade[]
+  jornadas            JornadaDoAluno[]      @relation("alunoDaJornada")
+  turmasComoInstrutor Turma[]               @relation("instrutorDaTurma")
+  matriculas          MatriculaEmTurma[]
+  documentosEnviados  DocumentoMetodo[]
+  autorizacoesDeMetodo MetodoInstrumento[]
+  analisesRevisadas   AnaliseDeMetodo[]
   tentativas          TentativaAvaliacao[]  @relation("alunoDaTentativa")
   correcoes           TentativaAvaliacao[]  @relation("corretorDaTentativa")
   questoesRecebidas   QuestaoRecebida[]
@@ -254,8 +261,10 @@ model Auditoria {
 model CategoriaInstrumento {
   id          String        @id @default(cuid())
   nome        String        @unique
+  codigo      String?       @unique
+  descricao   String?
   ordem       Int           @default(0)
-  ativo       Boolean       @default(true)
+  status      Situacao      @default(ATIVO)
   instrumentos Instrumento[]
 
   @@map("categorias_instrumento")
@@ -267,122 +276,297 @@ enum Clave {
   FA
 }
 
+enum Situacao {
+  ATIVO
+  INATIVO
+  RASCUNHO
+  ARQUIVADO
+}
+
+/// Qualquer instrumento pode ser cadastrado pelo painel — inclusive Canto e
+/// Teoria Musical, que não têm clave nem transposição. Nada aqui é lista fixa
+/// no código.
 model Instrumento {
   id                    String   @id @default(cuid())
   nome                  String   @unique
+  codigo                String?  @unique
+  descricao             String?
   categoriaId           String
   afinacao              String   @default("Dó")
   transposicaoGrau      Int      @default(0)
   transposicaoSemitons  Int      @default(0)
   transposicaoDescricao String?
-  clavePrincipal        Clave    @default(SOL)
+  clavePrincipal        Clave?
   clavesAlternativas    Clave[]  @default([])
   extensaoEscrita       String?
   observacoesTecnicas   String?
-  ativo                 Boolean  @default(true)
+  status                Situacao @default(ATIVO)
   criadoEm              DateTime @default(now())
   atualizadoEm          DateTime @updatedAt
 
   categoria             CategoriaInstrumento @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
   alunos                PerfilAluno[]
-  metodos               InstrumentoMaterial[]
+  metodos               Metodo[]
+  metodosAutorizados    MetodoInstrumento[]
+  jornadas              JornadaDoAluno[]
+  turmas                Turma[]
   questoes              Questao[]
+  licoes                Licao[]
 
-  @@index([ativo])
+  @@index([status])
   @@map("instrumentos")
 }
 
-/// Métodos autorizados para cada instrumento, com os pré-requisitos de estudo.
-model InstrumentoMaterial {
+// ================================================================== métodos
+
+enum EscopoDoMetodo {
+  INSTRUMENTO
+  TRANSVERSAL
+}
+
+/// Método de ensino cadastrado na plataforma. MSA, Melodia em Movimento e o
+/// método de cada instrumento são LINHAS desta tabela — nunca ramificações no
+/// código. Um método transversal (teoria, percepção) não pertence a um
+/// instrumento e só alcança outro instrumento por autorização explícita.
+model Metodo {
+  id             String         @id @default(cuid())
+  nome           String
+  codigo         String         @unique
+  escopo         EscopoDoMetodo @default(INSTRUMENTO)
+  instrumentoId  String?
+  autor          String?
+  organizacao    String?
+  versao         String?
+  descricao      String?
+  nivel          String?
+  totalFases     Int?
+  /// Conteúdo deste método pode ser reaproveitado por outro método?
+  /// Só vale junto com uma autorização em MetodoInstrumento.
+  conteudoCompartilhado Boolean  @default(false)
+  notaDireitos   String?
+  status         Situacao       @default(RASCUNHO)
+  documentoOrigemId String?
+  criadoEm       DateTime       @default(now())
+  atualizadoEm   DateTime       @updatedAt
+
+  instrumento    Instrumento?   @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  documentos     DocumentoMetodo[]
+  curriculos     Curriculo[]
+  competencias   Competencia[]
+  configuracoes  ConfiguracaoDoMetodo[]
+  autorizacoes   MetodoInstrumento[]
+  jornadas       JornadaDoAluno[]
+  turmas         Turma[]
+  licoes         Licao[]
+  questoes       Questao[]
+  analises       AnaliseDeMetodo[]
+  medalhas       Medalha[]
+  certificados   Certificado[]
+  avaliacoes     Avaliacao[]
+
+  @@index([escopo, status])
+  @@map("metodos")
+}
+
+/// Autorização para um método (normalmente transversal) ser usado com um
+/// instrumento. Sem esta linha, o conteúdo de um método não aparece na
+/// jornada de outro.
+model MetodoInstrumento {
+  metodoId      String
   instrumentoId String
-  materialId    String
+  autorizadoPorId String?
+  autorizadoEm  DateTime @default(now())
   observacao    String?
 
+  metodo        Metodo      @relation(fields: [metodoId], references: [id], onDelete: Cascade)
   instrumento   Instrumento @relation(fields: [instrumentoId], references: [id], onDelete: Cascade)
-  material      Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  autorizadoPor Usuario?    @relation(fields: [autorizadoPorId], references: [id], onDelete: SetNull)
 
-  @@id([instrumentoId, materialId])
-  @@map("instrumentos_materiais")
+  @@id([metodoId, instrumentoId])
+  @@map("metodos_instrumentos")
+}
+
+enum TipoDeDocumento {
+  PDF
+  MSCZ
+  MUSICXML
+  MP3
+  WAV
+  PNG
+  JPG
+  MP4
+  TXT
+  DOCX
+  XLSX
+  CSV
+  OUTRO
+}
+
+/// Documento de origem do método: é dele que a análise tira a estrutura, e é
+/// a ele que toda proveniência aponta.
+model DocumentoMetodo {
+  id          String          @id @default(cuid())
+  metodoId    String
+  nomeArquivo String
+  tipoArquivo TipoDeDocumento
+  arquivoId   String?
+  caminho     String?
+  versao      String?
+  descricao   String?
+  fonte       String?
+  enviadoPorId String?
+  enviadoEm   DateTime        @default(now())
+  status      Situacao        @default(ATIVO)
+
+  metodo      Metodo    @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  arquivo     Arquivo?  @relation(fields: [arquivoId], references: [id], onDelete: SetNull)
+  enviadoPor  Usuario?  @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+  unidades    UnidadeCurricular[]
+  licoes      Licao[]
+  analises    AnaliseDeMetodo[]
+
+  @@index([metodoId, status])
+  @@map("documentos_metodo")
+}
+
+/// Competências do método — postura, arco, embocadura, leitura… Cada método
+/// define as suas; não há lista fixa no código.
+model Competencia {
+  id          String   @id @default(cuid())
+  metodoId    String
+  codigo      String
+  nome        String
+  descricao   String?
+  ordem       Int      @default(0)
+  peso        Int      @default(1)
+  status      Situacao @default(ATIVO)
+
+  metodo      Metodo   @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  avaliacoes  CriterioDaAvaliacao[]
+
+  @@unique([metodoId, codigo])
+  @@map("competencias")
+}
+
+enum ChaveDeConfiguracao {
+  NOTA_MINIMA
+  TENTATIVAS_MAXIMAS
+  QUESTOES_POR_AVALIACAO
+  PERCENTUAL_DE_APROVEITAMENTO
+  EXIGE_APROVACAO_INSTRUTOR
+  PRE_REQUISITO_DE_UNIDADES
+  PESOS_DE_COMPETENCIA
+  OUTRO
+}
+
+/// Configuração pedagógica POR MÉTODO. É o que impede o critério do MSA de
+/// cair automaticamente sobre um método de violino: cada método traz o seu,
+/// e quem não define herda o padrão da plataforma, declarado no seed.
+model ConfiguracaoDoMetodo {
+  id         String              @id @default(cuid())
+  metodoId   String
+  chave      ChaveDeConfiguracao
+  valor      Json
+  descricao  String?
+  versao     Int                 @default(1)
+  vigenteDe  DateTime            @default(now())
+  vigenteAte DateTime?
+
+  metodo     Metodo              @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+
+  @@unique([metodoId, chave, versao])
+  @@map("configuracoes_metodo")
 }
 
 // ================================================================ conteúdo
 
-enum TipoMaterial {
-  MSA
-  METODO_INSTRUMENTO
-  HINARIO
-  COMPLEMENTAR
-  APOIO
-  AVALIACAO_PRATICA
+enum StatusDoCurriculo {
+  RASCUNHO
+  EM_REVISAO
+  PUBLICADO
+  ARQUIVADO
 }
 
-model Material {
-  id           String       @id @default(cuid())
-  tipo         TipoMaterial
+/// Currículo é uma versão da estrutura de um método. Publicar um currículo
+/// novo não reescreve o histórico de quem estudou pelo anterior.
+model Curriculo {
+  id          String            @id @default(cuid())
+  metodoId    String
+  rotulo      String
+  versao      Int               @default(1)
+  descricao   String?
+  status      StatusDoCurriculo @default(RASCUNHO)
+  vigenteDe   DateTime?
+  vigenteAte  DateTime?
+  origemAnaliseId String?
+  criadoEm    DateTime          @default(now())
+  atualizadoEm DateTime         @updatedAt
+
+  metodo      Metodo            @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  unidades    UnidadeCurricular[]
+  jornadas    JornadaDoAluno[]
+
+  @@unique([metodoId, versao])
+  @@map("curriculos")
+}
+
+/// Tipos possíveis de unidade. Um método pode usar só FASE, outro NIVEL →
+/// FASE → MODULO, outro só MODULO. A profundidade é do método, não do código.
+enum TipoDeUnidade {
+  NIVEL
+  FASE
+  MODULO
+  AULA
+  TOPICO
+}
+
+/// A estrutura pedagógica em árvore.
+///
+/// É a peça que torna a plataforma method-agnostic: em vez de tabelas fixas
+/// de "fase" e "tópico", cada método monta a sua própria hierarquia com a
+/// profundidade que tiver. 10 fases, 16 fases, 8 níveis ou 20 módulos são o
+/// mesmo modelo, com dados diferentes.
+model UnidadeCurricular {
+  id           String        @id @default(cuid())
+  curriculoId  String
+  paiId        String?
+  tipo         TipoDeUnidade
+  codigo       String
   nome         String
   descricao    String?
-  notaDireitos String?
-  ativo        Boolean      @default(true)
-  criadoEm     DateTime     @default(now())
+  ordem        Int           @default(0)
+  profundidade Int           @default(0)
+  /// Caminho materializado ("1/1.4/1.4.2") para listar a subárvore numa
+  /// consulta só, sem recursão a cada tela.
+  caminho      String        @default("")
 
-  edicoes      Edicao[]
-  instrumentos InstrumentoMaterial[]
+  // ------------------------------------------------------- proveniência
+  documentoOrigemId    String?
+  paginaOrigemInicio   Int?
+  paginaOrigemFim      Int?
+  referenciaOrigem     String?
+  statusConferencia    StatusConferencia @default(PENDENTE_CONFERENCIA)
+
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+
+  curriculo    Curriculo     @relation(fields: [curriculoId], references: [id], onDelete: Cascade)
+  pai          UnidadeCurricular?  @relation("arvoreDaUnidade", fields: [paiId], references: [id], onDelete: Cascade)
+  filhas       UnidadeCurricular[] @relation("arvoreDaUnidade")
+  documentoOrigem DocumentoMetodo? @relation(fields: [documentoOrigemId], references: [id], onDelete: SetNull)
+
+  licoes       Licao[]
   questoes     Questao[]
+  progresso    ProgressoUnidade[]
+  jornadas     JornadaDoAluno[]
+  turmas       Turma[]
   medalhas     Medalha[]
-  certificados Certificado[]
 
-  @@unique([tipo, nome])
-  @@map("materiais")
-}
-
-model Edicao {
-  id             String   @id @default(cuid())
-  materialId     String
-  rotulo         String
-  ano            Int?
-  mes            Int?
-  paginasArquivo Int?
-  observacao     String?
-  criadoEm       DateTime @default(now())
-
-  material       Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  fases          Fase[]
-
-  @@unique([materialId, rotulo])
-  @@map("edicoes")
-}
-
-model Fase {
-  id        String  @id @default(cuid())
-  edicaoId  String
-  numero    Int
-  nome      String
-  descricao String?
-  ordem     Int     @default(0)
-
-  edicao    Edicao  @relation(fields: [edicaoId], references: [id], onDelete: Cascade)
-  topicos   Topico[]
-  questoes  Questao[]
-  progresso ProgressoFase[]
-  medalhas  Medalha[]
-
-  @@unique([edicaoId, numero])
-  @@map("fases")
-}
-
-model Topico {
-  id      String @id @default(cuid())
-  faseId  String
-  codigo  String
-  nome    String
-  ordem   Int    @default(0)
-
-  fase    Fase   @relation(fields: [faseId], references: [id], onDelete: Cascade)
-  licoes  Licao[]
-  questoes Questao[]
-
-  @@unique([faseId, codigo])
-  @@map("topicos")
+  @@unique([curriculoId, codigo])
+  @@index([curriculoId, tipo, ordem])
+  @@index([paiId, ordem])
+  @@index([caminho])
+  @@map("unidades_curriculares")
 }
 
 enum TipoLicao {
@@ -407,23 +591,34 @@ enum StatusPublicacao {
   ARQUIVADO
 }
 
-/// A lição guarda a numeração ORIGINAL do exercício. As páginas e a clave
-/// ficam nas versões, porque o mesmo exercício aparece em Sol, Dó e Fá.
+/// Item de estudo (lição, exercício, peça). Guarda a numeração ORIGINAL do
+/// método e carrega a proveniência completa: método, instrumento, unidade,
+/// documento, página e referência. Nunca se perde de onde o conteúdo veio.
 model Licao {
   id                String            @id @default(cuid())
-  topicoId          String
+  unidadeId         String
+  metodoId          String
+  instrumentoId     String?
   numeroOriginal    String
-  /// Distingue lições que dividem o mesmo rótulo no índice — por exemplo,
-  /// "Exemplo de construção" aparece uma vez para cada escala do tópico.
-  /// Vazio (não nulo) quando não há variante: em índice único, NULL não
-  /// impediria duplicatas.
+  /// Distingue itens que dividem o mesmo rótulo na fonte — por exemplo,
+  /// "Exemplo de construção", uma vez para cada escala. Vazio (não nulo)
+  /// quando não há variante: em índice único, NULL não impediria duplicatas.
   variante          String            @default("")
   titulo            String
   tipo              TipoLicao
   ordemPedagogica   Int               @default(0)
   objetivos         String?
   preRequisitos     String?
+  /// Conteúdo reaproveitável por outro método, quando houver autorização.
+  compartilhado     Boolean           @default(false)
+
+  // ------------------------------------------------------- proveniência
+  documentoOrigemId String?
+  paginaOrigemInicio Int?
+  paginaOrigemFim   Int?
+  referenciaOrigem  String?
   fonte             String?
+
   observacoes       String?
   statusConferencia StatusConferencia @default(PENDENTE_CONFERENCIA)
   statusPublicacao  StatusPublicacao  @default(RASCUNHO)
@@ -431,7 +626,11 @@ model Licao {
   criadoEm          DateTime          @default(now())
   atualizadoEm      DateTime          @updatedAt
 
-  topico            Topico            @relation(fields: [topicoId], references: [id], onDelete: Cascade)
+  unidade           UnidadeCurricular @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+  metodo            Metodo            @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  instrumento       Instrumento?      @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  documentoOrigem   DocumentoMetodo?  @relation(fields: [documentoOrigemId], references: [id], onDelete: SetNull)
+
   versoes           VersaoLicao[]
   conteudos         Conteudo[]
   atividades        Atividade[]
@@ -441,7 +640,8 @@ model Licao {
   visualizacoes     VisualizacaoPagina[]
   batimentos        Batimento[]
 
-  @@unique([topicoId, numeroOriginal, variante])
+  @@unique([unidadeId, numeroOriginal, variante])
+  @@index([metodoId, statusPublicacao])
   @@index([tipo, statusPublicacao])
   @@map("licoes")
 }
@@ -554,6 +754,7 @@ model Arquivo {
   conteudos    Conteudo[]
   enviosArquivo EnvioArquivo[]
   certificados Certificado[]
+  documentosDeMetodo DocumentoMetodo[]
 
   @@map("arquivos")
 }
@@ -591,12 +792,11 @@ enum OrigemQuestao {
 
 model Questao {
   id             String        @id @default(cuid())
-  materialId     String?
-  faseId         String?
-  topicoId       String?
+  metodoId       String
+  unidadeId      String?
   licaoId        String?
   instrumentoId  String?
-  categoriaId    String?
+  competenciaId  String?
   tipo           TipoQuestao
   enunciado      String
   alternativas   Json?
@@ -613,43 +813,61 @@ model Questao {
   criadoEm       DateTime      @default(now())
   atualizadoEm   DateTime      @updatedAt
 
-  material       Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
-  fase           Fase?         @relation(fields: [faseId], references: [id], onDelete: SetNull)
-  topico         Topico?       @relation(fields: [topicoId], references: [id], onDelete: SetNull)
-  licao          Licao?        @relation(fields: [licaoId], references: [id], onDelete: SetNull)
+  metodo         Metodo            @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  unidade        UnidadeCurricular? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+  licao          Licao?            @relation(fields: [licaoId], references: [id], onDelete: SetNull)
   instrumento    Instrumento?  @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
   autor          Usuario?      @relation("autorDaQuestao", fields: [autorId], references: [id], onDelete: SetNull)
   revisor        Usuario?      @relation("revisorDaQuestao", fields: [revisorId], references: [id], onDelete: SetNull)
   recebidas      QuestaoRecebida[]
 
-  @@index([faseId, statusRevisao])
+  @@index([metodoId, statusRevisao])
   @@index([instrumentoId, statusRevisao])
   @@map("questoes")
 }
 
 enum EscopoAvaliacao {
   LICAO
-  TOPICO
-  FASE
-  MATERIAL
+  UNIDADE
+  METODO
 }
 
+/// Avaliação de um método. Os parâmetros vêm do próprio método (nota mínima,
+/// tentativas, quantidade de questões); nada é herdado de outro método.
 model Avaliacao {
   id                String          @id @default(cuid())
+  metodoId          String
   escopo            EscopoAvaliacao
-  referenciaId      String
+  referenciaId      String?
   nome              String
-  quantidadeQuestoes Int            @default(10)
-  notaMinima        Int             @default(70)
+  quantidadeQuestoes Int?
+  notaMinima        Int?
   tentativasMax     Int?
   regras            Json?
-  ativo             Boolean         @default(true)
+  status            Situacao        @default(ATIVO)
   criadoEm          DateTime        @default(now())
 
+  metodo            Metodo          @relation(fields: [metodoId], references: [id], onDelete: Cascade)
   tentativas        TentativaAvaliacao[]
+  criterios         CriterioDaAvaliacao[]
 
-  @@unique([escopo, referenciaId, nome])
+  @@unique([metodoId, escopo, referenciaId, nome])
   @@map("avaliacoes")
+}
+
+/// Liga a avaliação às competências do método, com peso próprio.
+model CriterioDaAvaliacao {
+  id            String @id @default(cuid())
+  avaliacaoId   String
+  competenciaId String
+  peso          Int    @default(1)
+  descricao     String?
+
+  avaliacao     Avaliacao   @relation(fields: [avaliacaoId], references: [id], onDelete: Cascade)
+  competencia   Competencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+
+  @@unique([avaliacaoId, competenciaId])
+  @@map("criterios_avaliacao")
 }
 
 model TentativaAvaliacao {
@@ -896,6 +1114,7 @@ model ProgressoLicao {
   id           String          @id @default(cuid())
   alunoId      String
   licaoId      String
+  jornadaId    String?
   estado       EstadoProgresso @default(NAO_INICIADO)
   peso         Int             @default(1)
   iniciadoEm   DateTime?
@@ -906,16 +1125,20 @@ model ProgressoLicao {
 
   aluno        Usuario         @relation(fields: [alunoId], references: [id], onDelete: Cascade)
   licao        Licao           @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  jornada      JornadaDoAluno? @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
 
   @@unique([alunoId, licaoId])
   @@index([alunoId, estado])
   @@map("progresso_licoes")
 }
 
-model ProgressoFase {
+/// Progresso do aluno numa unidade do currículo — serve para fase, módulo,
+/// nível ou aula, porque a unidade é a mesma entidade em qualquer nível.
+model ProgressoUnidade {
   id            String          @id @default(cuid())
   alunoId       String
-  faseId        String
+  unidadeId     String
+  jornadaId     String?
   estado        EstadoProgresso @default(NAO_INICIADO)
   percentual    Int             @default(0)
   aprovadoEm    DateTime?
@@ -924,37 +1147,42 @@ model ProgressoFase {
   regraVersao   Int?
   atualizadoEm  DateTime        @updatedAt
 
-  aluno         Usuario         @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  fase          Fase            @relation(fields: [faseId], references: [id], onDelete: Cascade)
+  aluno         Usuario           @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  unidade       UnidadeCurricular @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+  jornada       JornadaDoAluno?   @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
 
-  @@unique([alunoId, faseId])
-  @@map("progresso_fases")
+  @@unique([alunoId, unidadeId])
+  @@index([jornadaId])
+  @@map("progresso_unidades")
 }
 
 model Medalha {
   id          String   @id @default(cuid())
   alunoId     String
-  materialId  String
-  faseId      String?
+  metodoId    String
+  unidadeId   String?
+  jornadaId   String?
   codigo      String   @unique
   concedidaEm DateTime @default(now())
   instrutorId String?
   regraCodigo String?
   regraVersao Int?
 
-  aluno       Usuario  @relation("alunoDaMedalha", fields: [alunoId], references: [id], onDelete: Cascade)
-  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  fase        Fase?    @relation(fields: [faseId], references: [id], onDelete: SetNull)
-  instrutor   Usuario? @relation("instrutorDaMedalha", fields: [instrutorId], references: [id], onDelete: SetNull)
+  aluno       Usuario            @relation("alunoDaMedalha", fields: [alunoId], references: [id], onDelete: Cascade)
+  metodo      Metodo             @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  unidade     UnidadeCurricular? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+  jornada     JornadaDoAluno?    @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
+  instrutor   Usuario?           @relation("instrutorDaMedalha", fields: [instrutorId], references: [id], onDelete: SetNull)
 
-  @@unique([alunoId, materialId, faseId])
+  @@unique([alunoId, metodoId, unidadeId])
   @@map("medalhas")
 }
 
 model Certificado {
   id                  String    @id @default(cuid())
   alunoId             String
-  materialId          String?
+  metodoId            String?
+  jornadaId           String?
   trilha              String
   fases               Json
   emitidoEm           DateTime  @default(now())
@@ -965,18 +1193,142 @@ model Certificado {
   revogadoMotivo      String?
 
   aluno               Usuario   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  material            Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  metodo              Metodo?         @relation(fields: [metodoId], references: [id], onDelete: SetNull)
+  jornada             JornadaDoAluno? @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
   arquivo             Arquivo?  @relation(fields: [arquivoId], references: [id], onDelete: SetNull)
 
   @@index([alunoId])
   @@map("certificados")
 }
 
+// ================================================ jornadas e turmas
+
+enum SituacaoDaJornada {
+  ATIVA
+  CONCLUIDA
+  INTERROMPIDA
+  AGUARDANDO_LIBERACAO
+}
+
+/// A jornada do aluno em UM método de UM instrumento. Um mesmo aluno pode ter
+/// várias jornadas ao mesmo tempo — MSA na fase 4, violino na fase 2,
+/// saxofone na fase 1 — cada uma com progresso próprio.
+model JornadaDoAluno {
+  id             String            @id @default(cuid())
+  alunoId        String
+  instrumentoId  String?
+  metodoId       String
+  curriculoId    String
+  unidadeAtualId String?
+  progresso      Int               @default(0)
+  status         SituacaoDaJornada @default(ATIVA)
+  inicioEm       DateTime          @default(now())
+  conclusaoEm    DateTime?
+  observacao     String?
+  atualizadoEm   DateTime          @updatedAt
+
+  aluno          Usuario            @relation("alunoDaJornada", fields: [alunoId], references: [id], onDelete: Cascade)
+  instrumento    Instrumento?       @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  metodo         Metodo             @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  curriculo      Curriculo          @relation(fields: [curriculoId], references: [id], onDelete: Cascade)
+  unidadeAtual   UnidadeCurricular? @relation(fields: [unidadeAtualId], references: [id], onDelete: SetNull)
+
+  progressoUnidades ProgressoUnidade[]
+  progressoLicoes   ProgressoLicao[]
+  matriculas        MatriculaEmTurma[]
+  medalhas          Medalha[]
+  certificados      Certificado[]
+
+  @@unique([alunoId, metodoId, instrumentoId])
+  @@index([status])
+  @@map("jornadas_do_aluno")
+}
+
+/// Turma: instrumento + método + fase (unidade) + instrutor + localidade.
+model Turma {
+  id            String   @id @default(cuid())
+  nome          String
+  comumId       String
+  instrumentoId String?
+  metodoId      String
+  unidadeId     String?
+  instrutorId   String?
+  status        Situacao @default(ATIVO)
+  inicioEm      DateTime?
+  encerradaEm   DateTime?
+  observacao    String?
+  criadoEm      DateTime @default(now())
+
+  comum         Comum              @relation(fields: [comumId], references: [id], onDelete: Restrict)
+  instrumento   Instrumento?       @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  metodo        Metodo             @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  unidade       UnidadeCurricular? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+  instrutor     Usuario?           @relation("instrutorDaTurma", fields: [instrutorId], references: [id], onDelete: SetNull)
+  matriculas    MatriculaEmTurma[]
+
+  @@index([comumId, status])
+  @@index([instrutorId])
+  @@map("turmas")
+}
+
+model MatriculaEmTurma {
+  id         String   @id @default(cuid())
+  turmaId    String
+  alunoId    String
+  jornadaId  String?
+  entradaEm  DateTime @default(now())
+  saidaEm    DateTime?
+
+  turma      Turma           @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  aluno      Usuario         @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  jornada    JornadaDoAluno? @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
+
+  @@unique([turmaId, alunoId])
+  @@map("matriculas_em_turma")
+}
+
+// ======================================== análise de método (importação)
+
+enum StatusDaAnalise {
+  SUGERIDA
+  EM_REVISAO
+  CONFIRMADA
+  EDITADA
+  REJEITADA
+}
+
+/// "Analisar método": a leitura dos documentos propõe uma estrutura, que
+/// SEMPRE passa por revisão humana antes de virar currículo. Confirmar,
+/// editar ou rejeitar é ato de gente, registrado com nome e data.
+model AnaliseDeMetodo {
+  id                String          @id @default(cuid())
+  metodoId          String
+  documentoId       String?
+  origem            String          @default("importador")
+  estruturaSugerida Json
+  resumo            Json?
+  avisos            Json?
+  status            StatusDaAnalise @default(SUGERIDA)
+  revisadoPorId     String?
+  revisadoEm        DateTime?
+  parecer           String?
+  curriculoId       String?
+  criadoEm          DateTime        @default(now())
+
+  metodo            Metodo           @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+  documento         DocumentoMetodo? @relation(fields: [documentoId], references: [id], onDelete: SetNull)
+  revisadoPor       Usuario?         @relation(fields: [revisadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([metodoId, status])
+  @@map("analises_de_metodo")
+}
+
 // ================================================== importação e fila
 
 enum TipoImportacao {
-  MSA_PLANILHA
-  MSA_PDF
+  METODO_PLANILHA
+  METODO_PDF
+  METODO_DOCUMENTO
   COMUNS_CSV
   REGIOES_CSV
   ALUNOS_CSV

@@ -14,7 +14,8 @@ pg_dump --format=custom --no-owner --file="estudos-$(date +%F-%H%M).dump" "$DATA
 pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL_MIGRACAO" estudos-2026-01-01-0300.dump
 
 # Depois de restaurar, reprovisione o papel da aplicação (ele não vem no dump):
-psql "$DATABASE_URL_MIGRACAO" -v senha=a-senha-de-producao -f prisma/infra/papel-aplicacao.sql
+psql "$DATABASE_URL_ADMIN" -v senha=a-senha-de-producao -f prisma/infra/papel-aplicacao.sql
+psql "$DATABASE_URL_MIGRACAO" -f prisma/infra/permissoes-aplicacao.sql
 ```
 
 Conferência mínima depois de restaurar:

@@ -41,14 +41,29 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
     });
     const progresso = await banco.progressoLicao.findMany({
       where: { alunoId: id },
-      select: { licaoId: true, estado: true, peso: true },
+      select: { licaoId: true, jornadaId: true, estado: true, peso: true },
+    });
+    // Uma linha por jornada: o aluno pode estar em vários métodos ao mesmo tempo.
+    const jornadas = await banco.jornadaDoAluno.findMany({
+      where: { alunoId: id },
+      orderBy: [{ status: 'asc' }, { inicioEm: 'asc' }],
+      include: {
+        metodo: { select: { nome: true, codigo: true } },
+        instrumento: { select: { nome: true } },
+        curriculo: { select: { rotulo: true, versao: true } },
+        unidadeAtual: { select: { tipo: true, codigo: true, nome: true } },
+      },
+    });
+    const turmas = await banco.matriculaEmTurma.findMany({
+      where: { alunoId: id, saidaEm: null },
+      include: { turma: { select: { nome: true, metodo: { select: { codigo: true } } } } },
     });
     const tempos = await banco.tempoDiario.findMany({ where: { usuarioId: id }, orderBy: { dia: 'desc' }, take: 30 });
     const envios = await banco.envio.findMany({
       where: { alunoId: id }, orderBy: { atualizadoEm: 'desc' }, take: 10,
       include: { atividade: { select: { titulo: true } } },
     });
-    return { perfil, progresso, tempos, envios };
+    return { perfil, progresso, jornadas, turmas, tempos, envios };
   });
 
   if (!dados.perfil) {
@@ -60,9 +75,15 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
     );
   }
 
-  const aproveitamento = calcularAproveitamento(
-    dados.progresso.map((p) => ({ licaoId: p.licaoId, peso: p.peso, estado: p.estado as EstadoProgresso })), 40,
+  // O aproveitamento é POR JORNADA: somar métodos diferentes num número só
+  // misturaria critérios que não se comparam.
+  const aproveitamentoDe = (jornadaId: string) => calcularAproveitamento(
+    dados.progresso
+      .filter((p) => p.jornadaId === jornadaId)
+      .map((p) => ({ licaoId: p.licaoId, peso: p.peso, estado: p.estado as EstadoProgresso })),
+    100,
   );
+  const aprovadasNoTotal = dados.progresso.filter((p) => p.estado === 'APROVADO').length;
   const tempoTotal = dados.tempos.reduce((soma, t) => soma + t.segundosDedicacao, 0);
 
   return (
@@ -74,13 +95,58 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
       />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Indicador rotulo="Aproveitamento" valor={`${aproveitamento.percentual}%`}
-          detalhe={`${aproveitamento.unidadesAprovadas} de ${aproveitamento.unidadesElegiveis} aprovadas`} />
+        <Indicador rotulo="Jornadas" valor={dados.jornadas.length}
+          detalhe={`${aprovadasNoTotal} lição(ões) aprovada(s) no total`} />
         <Indicador rotulo="Dedicação (30 dias)" valor={formatarTempo(tempoTotal)} />
         <Indicador rotulo="Instrutor" valor={dados.perfil.instrutor?.nomeCompleto.split(' ')[0] ?? '—'} />
         <Indicador rotulo="Último acesso"
           valor={dados.perfil.usuario.ultimoAcessoEm?.toLocaleDateString('pt-BR') ?? '—'} />
       </section>
+
+      <section className="mt-6">
+        <h2 className="rotulo">Jornadas</h2>
+        {dados.jornadas.length ? (
+          <div className="mt-2 grid gap-2">
+            {dados.jornadas.map((jornada) => {
+              const aproveitamento = aproveitamentoDe(jornada.id);
+              return (
+                <Link key={jornada.id} href={`/jornada/${jornada.id}`} className="cartao block">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-semibold">{jornada.metodo.nome}</p>
+                    <span className="etiqueta bg-black/5">{jornada.status.toLowerCase()}</span>
+                  </div>
+                  <p className="text-xs text-tinta-fraca">
+                    {jornada.instrumento?.nome ?? 'sem instrumento'} · {jornada.curriculo.rotulo} (v{jornada.curriculo.versao})
+                    {jornada.unidadeAtual
+                      ? ` · em ${jornada.unidadeAtual.tipo.toLowerCase()} ${jornada.unidadeAtual.codigo}`
+                      : ''}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {aproveitamento.unidadesAprovadas} de {aproveitamento.unidadesElegiveis} lições registradas aprovadas
+                    {' '}({aproveitamento.percentual}%)
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-tinta-fraca">Este aluno ainda não foi matriculado em nenhum método.</p>
+        )}
+      </section>
+
+      {dados.turmas.length > 0 && (
+        <section className="mt-6">
+          <h2 className="rotulo">Turmas</h2>
+          <ul className="mt-2 grid gap-2">
+            {dados.turmas.map((matricula) => (
+              <li key={matricula.id} className="cartao flex items-center justify-between gap-3">
+                <span>{matricula.turma.nome}</span>
+                <span className="etiqueta bg-black/5">{matricula.turma.metodo.codigo}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mt-6">
         <h2 className="rotulo">Situação do cadastro</h2>

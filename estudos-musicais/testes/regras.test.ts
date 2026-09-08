@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  calcularAproveitamento, liberaHinario, podeAvancarDeFase, podeConcluirCurso, preRequisitoDeFases,
+  calcularAproveitamento, criteriosDoMetodo, liberaRepertorio, podeAvancarDeUnidade,
+  podeConcluirJornada, preRequisitoDeUnidades, CRITERIOS_PADRAO,
   type UnidadeElegivel,
 } from '../src/lib/regras.ts';
 
@@ -55,15 +56,46 @@ test('com pesos diferentes, é a soma dos pesos que manda', () => {
   assert.equal(r.percentual, 40);
 });
 
-test('o aluno enxerga quanto falta para liberar o Hinário', () => {
+test('o aluno enxerga quanto falta para liberar o repertório', () => {
   const unidades = Array.from({ length: 20 }, (_, i) => unidade(`l${i}`, i < 5 ? 'APROVADO' : 'NAO_INICIADO'));
-  const r = liberaHinario(unidades, 40);
+  const r = liberaRepertorio(unidades, 40);
   assert.equal(r.liberado, false);
   assert.equal(r.percentual, 25);
   assert.equal(r.faltamUnidades, 3, 'faltam 3 unidades para chegar aos 40%');
 
   const comOitoAprovadas = Array.from({ length: 20 }, (_, i) => unidade(`l${i}`, i < 8 ? 'APROVADO' : 'NAO_INICIADO'));
-  assert.equal(liberaHinario(comOitoAprovadas, 40).liberado, true);
+  assert.equal(liberaRepertorio(comOitoAprovadas, 40).liberado, true);
+});
+
+test('o percentual é do método: 40% libera num, 60% não libera no outro', () => {
+  const unidades = Array.from({ length: 20 }, (_, i) => unidade(`l${i}`, i < 8 ? 'APROVADO' : 'NAO_INICIADO'));
+  const deUmMetodo = criteriosDoMetodo([
+    { chave: 'PERCENTUAL_DE_APROVEITAMENTO', valor: { percentual: 40 } },
+  ]);
+  const doOutro = criteriosDoMetodo([
+    { chave: 'PERCENTUAL_DE_APROVEITAMENTO', valor: { percentual: 60 } },
+  ]);
+  assert.equal(liberaRepertorio(unidades, deUmMetodo.percentualDeAproveitamento).liberado, true);
+  assert.equal(liberaRepertorio(unidades, doOutro.percentualDeAproveitamento).liberado, false);
+});
+
+test('o que o método não declara cai no padrão da plataforma, não no critério de outro método', () => {
+  const criterios = criteriosDoMetodo([{ chave: 'NOTA_MINIMA', valor: { percentual: 55 } }]);
+  assert.equal(criterios.notaMinima, 55);
+  assert.equal(criterios.origem.notaMinima, 'metodo');
+  assert.equal(criterios.percentualDeAproveitamento, CRITERIOS_PADRAO.percentualDeAproveitamento);
+  assert.equal(criterios.origem.percentualDeAproveitamento, 'padrao');
+});
+
+test('exigência de instrutor e pesos de competência vêm do método', () => {
+  const criterios = criteriosDoMetodo([
+    { chave: 'EXIGE_APROVACAO_INSTRUTOR', valor: { exige: false } },
+    { chave: 'PESOS_DE_COMPETENCIA', valor: { POSTURA: 3, ARCO: 3, LEITURA: 1 } },
+    { chave: 'QUESTOES_POR_AVALIACAO', valor: { quantidade: 6 } },
+  ]);
+  assert.equal(criterios.exigeAprovacaoDoInstrutor, false);
+  assert.equal(criterios.questoesPorAvaliacao, 6);
+  assert.deepEqual(criterios.pesosDeCompetencia, { POSTURA: 3, ARCO: 3, LEITURA: 1 });
 });
 
 test('sem unidade elegível o percentual é zero, e não divisão por zero', () => {
@@ -72,35 +104,54 @@ test('sem unidade elegível o percentual é zero, e não divisão por zero', () 
   assert.equal(r.pesoElegivel, 0);
 });
 
-test('regra A: as fases 1 a 5 do MSA precisam estar aprovadas', () => {
-  const fases = [1, 2, 3, 4, 5].map((numero) => ({ numero, estado: 'APROVADO' as const }));
-  assert.equal(preRequisitoDeFases(fases, [1, 2, 3, 4, 5]).liberado, true);
+test('regra A: as unidades exigidas precisam estar aprovadas, não apenas vistas', () => {
+  const unidades = ['1', '2', '3', '4', '5'].map((codigo) => ({ codigo, estado: 'APROVADO' as const }));
+  assert.equal(preRequisitoDeUnidades(unidades, ['1', '2', '3', '4', '5']).liberado, true);
 
-  const comUmaConcluidaSemAprovacao = fases.map((f, i) => (i === 2 ? { ...f, estado: 'CONCLUIDO' as const } : f));
-  const r = preRequisitoDeFases(comUmaConcluidaSemAprovacao, [1, 2, 3, 4, 5]);
+  const comUmaConcluidaSemAprovacao = unidades.map((u, i) => (i === 2 ? { ...u, estado: 'CONCLUIDO' as const } : u));
+  const r = preRequisitoDeUnidades(comUmaConcluidaSemAprovacao, ['1', '2', '3', '4', '5']);
   assert.equal(r.liberado, false);
-  assert.deepEqual(r.faltando, [3]);
+  assert.deepEqual(r.faltando, ['3']);
 });
 
-test('regra C: avanço de fase exige aproveitamento e aprovação do instrutor', () => {
+test('o pré-requisito usa o código da unidade, seja "3", "1.4" ou "N2/F1"', () => {
+  const unidades = [
+    { codigo: 'N1', estado: 'APROVADO' as const },
+    { codigo: '1.4', estado: 'APROVADO' as const },
+    { codigo: 'N2', estado: 'EM_ANDAMENTO' as const },
+  ];
+  const r = preRequisitoDeUnidades(unidades, ['N1', '1.4', 'N2']);
+  assert.deepEqual(r.faltando, ['N2']);
+});
+
+test('regra C: avanço de unidade exige aproveitamento e aprovação do instrutor', () => {
   const licoes = Array.from({ length: 10 }, (_, i) => unidade(`f${i}`, i < 8 ? 'APROVADO' : 'NAO_INICIADO'));
-  const semInstrutor = podeAvancarDeFase({
-    licoesDaFase: licoes, percentualExigido: 70, aprovacaoDoInstrutor: false, preRequisitosCumpridos: true,
+  const semInstrutor = podeAvancarDeUnidade({
+    licoesDaUnidade: licoes, percentualExigido: 70, aprovacaoDoInstrutor: false, preRequisitosCumpridos: true,
   });
   assert.equal(semInstrutor.liberado, false);
   assert.match(semInstrutor.motivos.join(' '), /aprovação do instrutor/);
 
-  const completo = podeAvancarDeFase({
-    licoesDaFase: licoes, percentualExigido: 70, aprovacaoDoInstrutor: true, preRequisitosCumpridos: true,
+  const completo = podeAvancarDeUnidade({
+    licoesDaUnidade: licoes, percentualExigido: 70, aprovacaoDoInstrutor: true, preRequisitosCumpridos: true,
   });
   assert.equal(completo.liberado, true);
 });
 
-test('regra D: conclusão exige todas as fases, atividades e validação final', () => {
-  const fases = [1, 2, 3].map((numero) => ({ numero, estado: 'APROVADO' as const }));
-  assert.equal(podeConcluirCurso({ fasesObrigatorias: fases, atividadesObrigatoriasPendentes: 0, validacaoFinal: true }).liberado, true);
-  const semValidacao = podeConcluirCurso({ fasesObrigatorias: fases, atividadesObrigatoriasPendentes: 0, validacaoFinal: false });
+test('quando o método não exige instrutor, o avanço não fica preso nele', () => {
+  const licoes = Array.from({ length: 10 }, (_, i) => unidade(`f${i}`, i < 8 ? 'APROVADO' : 'NAO_INICIADO'));
+  const r = podeAvancarDeUnidade({
+    licoesDaUnidade: licoes, percentualExigido: 70, exigeAprovacaoDoInstrutor: false,
+    aprovacaoDoInstrutor: false, preRequisitosCumpridos: true,
+  });
+  assert.equal(r.liberado, true);
+});
+
+test('regra D: conclusão exige todas as unidades, atividades e validação final', () => {
+  const unidades = ['1', '2', '3'].map((codigo) => ({ codigo, estado: 'APROVADO' as const }));
+  assert.equal(podeConcluirJornada({ unidadesObrigatorias: unidades, atividadesObrigatoriasPendentes: 0, validacaoFinal: true }).liberado, true);
+  const semValidacao = podeConcluirJornada({ unidadesObrigatorias: unidades, atividadesObrigatoriasPendentes: 0, validacaoFinal: false });
   assert.equal(semValidacao.liberado, false);
-  const comPendencia = podeConcluirCurso({ fasesObrigatorias: fases, atividadesObrigatoriasPendentes: 2, validacaoFinal: true });
+  const comPendencia = podeConcluirJornada({ unidadesObrigatorias: unidades, atividadesObrigatoriasPendentes: 2, validacaoFinal: true });
   assert.match(comPendencia.motivos.join(' '), /2 atividade/);
 });

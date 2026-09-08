@@ -1,14 +1,13 @@
 -- Segurança em nível de linha (RLS).
 --
--- Princípio: a aplicação nunca confia em papel, região ou comum enviados pelo
--- navegador. A cada requisição a conexão declara APENAS quem é o usuário
--- (SET LOCAL app.usuario_id) e o banco resolve, por vínculo, o que ele pode
--- ver. Mesmo que uma consulta esqueça o filtro, o banco não devolve linha de
--- outra comum ou região.
+-- Duas cercas independentes: a aplicação resolve o escopo no servidor e o
+-- banco resolve de novo, por conta própria. A aplicação só declara QUEM é o
+-- usuário (SET LOCAL app.usuario_id); papel, comum, região e método são
+-- resolvidos aqui. Consulta que esqueça o filtro continua limitada ao vínculo.
 
 CREATE SCHEMA IF NOT EXISTS app;
 
--- ------------------------------------------------------------- helpers
+-- ------------------------------------------------------------- identidade
 
 CREATE OR REPLACE FUNCTION app.usuario_atual() RETURNS text
 LANGUAGE sql STABLE AS $$
@@ -25,33 +24,33 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, app AS $$
   )
 $$;
 
--- Administração técnica e pedagógica enxergam tudo dentro do seu escopo global.
 CREATE OR REPLACE FUNCTION app.eh_admin() RETURNS boolean
 LANGUAGE sql STABLE AS $$
   SELECT app.tem_papel(ARRAY['SUPERADMIN','ADMIN_PEDAGOGICO'])
 $$;
 
--- Comuns que o usuário atual pode enxergar, por qualquer vínculo ativo:
---   • vínculo de escopo COMUM  → aquela comum;
---   • vínculo de escopo REGIÃO → todas as comuns da região;
---   • vínculo de aluno         → a sua própria comum.
+-- Comuns que o usuário ACOMPANHA (vínculo de comum ou de região). A comum
+-- onde o aluno estuda não entra aqui: é lugar de estudo, não escopo de
+-- acompanhamento — sem isso, um aluno enxergaria os colegas.
 CREATE OR REPLACE FUNCTION app.comuns_visiveis() RETURNS TABLE (comum_id text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, app AS $$
   SELECT DISTINCT c.id
   FROM comuns c
   WHERE EXISTS (
-      SELECT 1 FROM vinculos v
-      WHERE v."usuarioId" = app.usuario_atual()
-        AND v.ativo AND v."revogadoEm" IS NULL
-        AND (
-          (v.escopo = 'COMUM'  AND v."comumId"  = c.id) OR
-          (v.escopo = 'REGIAO' AND v."regiaoId" = c."regiaoId")
-        )
-    )
-     OR EXISTS (
-      SELECT 1 FROM perfis_aluno p
-      WHERE p."usuarioId" = app.usuario_atual() AND p."comumId" = c.id
-    )
+    SELECT 1 FROM vinculos v
+    WHERE v."usuarioId" = app.usuario_atual()
+      AND v.ativo AND v."revogadoEm" IS NULL
+      AND v.papel <> 'ALUNO'
+      AND (
+        (v.escopo = 'COMUM'  AND v."comumId"  = c.id) OR
+        (v.escopo = 'REGIAO' AND v."regiaoId" = c."regiaoId")
+      )
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION app.minha_comum() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, app AS $$
+  SELECT p."comumId" FROM perfis_aluno p WHERE p."usuarioId" = app.usuario_atual() LIMIT 1
 $$;
 
 CREATE OR REPLACE FUNCTION app.ve_comum(alvo text) RETURNS boolean
@@ -59,8 +58,8 @@ LANGUAGE sql STABLE AS $$
   SELECT app.eh_admin() OR (alvo IS NOT NULL AND alvo IN (SELECT comum_id FROM app.comuns_visiveis()))
 $$;
 
--- Alunos que o usuário atual pode acompanhar: ele mesmo, os seus orientandos
--- e os das comuns/regiões em que tem vínculo.
+-- Alunos que o usuário acompanha: ele mesmo, os seus orientandos, os das suas
+-- comuns/regiões e os das turmas em que é instrutor.
 CREATE OR REPLACE FUNCTION app.ve_aluno(alvo text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, app AS $$
   SELECT alvo = app.usuario_atual()
@@ -68,34 +67,35 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, app AS $$
       OR EXISTS (
         SELECT 1 FROM perfis_aluno p
         WHERE p."usuarioId" = alvo
-          AND (
-            p."instrutorId" = app.usuario_atual()
-            OR p."comumId" IN (SELECT comum_id FROM app.comuns_visiveis())
-          )
+          AND (p."instrutorId" = app.usuario_atual()
+               OR p."comumId" IN (SELECT comum_id FROM app.comuns_visiveis()))
+      )
+      OR EXISTS (
+        SELECT 1 FROM matriculas_em_turma m
+        JOIN turmas t ON t.id = m."turmaId"
+        WHERE m."alunoId" = alvo AND t."instrutorId" = app.usuario_atual() AND m."saidaEm" IS NULL
       )
 $$;
 
--- ------------------------------------------------- território e cadastro
+-- --------------------------------------------------- território e cadastro
 
 ALTER TABLE regioes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY regioes_leitura ON regioes FOR SELECT USING (
   app.eh_admin()
   OR EXISTS (SELECT 1 FROM comuns c WHERE c."regiaoId" = regioes.id AND app.ve_comum(c.id))
+  OR EXISTS (SELECT 1 FROM comuns c WHERE c.id = app.minha_comum() AND c."regiaoId" = regioes.id)
 );
 CREATE POLICY regioes_escrita ON regioes FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
 ALTER TABLE comuns ENABLE ROW LEVEL SECURITY;
-CREATE POLICY comuns_leitura ON comuns FOR SELECT USING (app.ve_comum(id));
+CREATE POLICY comuns_leitura ON comuns FOR SELECT USING (app.ve_comum(id) OR id = app.minha_comum());
 CREATE POLICY comuns_escrita ON comuns FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
 ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
 CREATE POLICY usuarios_leitura ON usuarios FOR SELECT USING (
   id = app.usuario_atual() OR app.ve_aluno(id)
-  OR EXISTS (
-    SELECT 1 FROM vinculos v
-    WHERE v."usuarioId" = usuarios.id AND v.ativo
-      AND (app.eh_admin() OR app.ve_comum(v."comumId"))
-  )
+  OR EXISTS (SELECT 1 FROM vinculos v WHERE v."usuarioId" = usuarios.id AND v.ativo
+             AND (app.eh_admin() OR app.ve_comum(v."comumId")))
 );
 CREATE POLICY usuarios_atualiza_proprio ON usuarios FOR UPDATE
   USING (id = app.usuario_atual() OR app.eh_admin())
@@ -106,7 +106,6 @@ ALTER TABLE vinculos ENABLE ROW LEVEL SECURITY;
 CREATE POLICY vinculos_leitura ON vinculos FOR SELECT USING (
   "usuarioId" = app.usuario_atual() OR app.eh_admin() OR app.ve_comum("comumId")
 );
--- Conceder papel é ato administrativo: ninguém se promove.
 CREATE POLICY vinculos_escrita ON vinculos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
 ALTER TABLE perfis_aluno ENABLE ROW LEVEL SECURITY;
@@ -133,25 +132,55 @@ ALTER TABLE auditorias ENABLE ROW LEVEL SECURITY;
 CREATE POLICY auditorias_leitura ON auditorias FOR SELECT USING (app.eh_admin());
 CREATE POLICY auditorias_insere ON auditorias FOR INSERT WITH CHECK (true);
 
--- --------------------------------------- conteúdo: leitura ampla, escrita restrita
+-- ------------------------------- catálogo pedagógico: leitura ampla, escrita restrita
+-- Método, currículo e unidade são catálogo: quem estuda lê o que está
+-- publicado; quem edita conteúdo enxerga rascunho também.
 
-ALTER TABLE materiais ENABLE ROW LEVEL SECURITY;
-CREATE POLICY materiais_leitura ON materiais FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY materiais_escrita ON materiais FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+ALTER TABLE categorias_instrumento ENABLE ROW LEVEL SECURITY;
+CREATE POLICY categorias_leitura ON categorias_instrumento FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY categorias_escrita ON categorias_instrumento FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
-ALTER TABLE edicoes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY edicoes_leitura ON edicoes FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY edicoes_escrita ON edicoes FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+ALTER TABLE instrumentos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY instrumentos_leitura ON instrumentos FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY instrumentos_escrita ON instrumentos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
-ALTER TABLE fases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY fases_leitura ON fases FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY fases_escrita ON fases FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+ALTER TABLE metodos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY metodos_leitura ON metodos FOR SELECT USING (
+  status = 'ATIVO' OR app.eh_admin() OR app.tem_papel(ARRAY['INSTRUTOR'])
+);
+CREATE POLICY metodos_escrita ON metodos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
-ALTER TABLE topicos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY topicos_leitura ON topicos FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY topicos_escrita ON topicos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+ALTER TABLE metodos_instrumentos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY metodos_inst_leitura ON metodos_instrumentos FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY metodos_inst_escrita ON metodos_instrumentos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
--- O aluno só enxerga lição publicada; quem edita conteúdo vê rascunho também.
+ALTER TABLE documentos_metodo ENABLE ROW LEVEL SECURITY;
+-- Documento de origem é material de terceiros: só quem administra ou ensina.
+CREATE POLICY documentos_leitura ON documentos_metodo FOR SELECT USING (
+  app.eh_admin() OR app.tem_papel(ARRAY['INSTRUTOR'])
+);
+CREATE POLICY documentos_escrita ON documentos_metodo FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
+ALTER TABLE competencias ENABLE ROW LEVEL SECURITY;
+CREATE POLICY competencias_leitura ON competencias FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY competencias_escrita ON competencias FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
+ALTER TABLE configuracoes_metodo ENABLE ROW LEVEL SECURITY;
+CREATE POLICY config_metodo_leitura ON configuracoes_metodo FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY config_metodo_escrita ON configuracoes_metodo FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
+ALTER TABLE curriculos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY curriculos_leitura ON curriculos FOR SELECT USING (
+  status = 'PUBLICADO' OR app.eh_admin() OR app.tem_papel(ARRAY['INSTRUTOR'])
+);
+CREATE POLICY curriculos_escrita ON curriculos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
+ALTER TABLE unidades_curriculares ENABLE ROW LEVEL SECURITY;
+CREATE POLICY unidades_leitura ON unidades_curriculares FOR SELECT USING (
+  EXISTS (SELECT 1 FROM curriculos c WHERE c.id = unidades_curriculares."curriculoId")
+);
+CREATE POLICY unidades_escrita ON unidades_curriculares FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
 ALTER TABLE licoes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY licoes_leitura ON licoes FOR SELECT USING (
   "statusPublicacao" = 'PUBLICADO' OR app.eh_admin() OR app.tem_papel(ARRAY['INSTRUTOR'])
@@ -178,27 +207,16 @@ CREATE POLICY conteudos_leitura ON conteudos FOR SELECT USING (
 );
 CREATE POLICY conteudos_escrita ON conteudos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
-ALTER TABLE categorias_instrumento ENABLE ROW LEVEL SECURITY;
-CREATE POLICY categorias_leitura ON categorias_instrumento FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY categorias_escrita ON categorias_instrumento FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
-
-ALTER TABLE instrumentos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY instrumentos_leitura ON instrumentos FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY instrumentos_escrita ON instrumentos FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
-
-ALTER TABLE instrumentos_materiais ENABLE ROW LEVEL SECURITY;
-CREATE POLICY inst_mat_leitura ON instrumentos_materiais FOR SELECT USING (app.usuario_atual() IS NOT NULL);
-CREATE POLICY inst_mat_escrita ON instrumentos_materiais FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+ALTER TABLE analises_de_metodo ENABLE ROW LEVEL SECURITY;
+CREATE POLICY analises_admin ON analises_de_metodo FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
 -- ------------------------------------------- dados do aluno (o miolo sensível)
 
 ALTER TABLE arquivos ENABLE ROW LEVEL SECURITY;
 CREATE POLICY arquivos_leitura ON arquivos FOR SELECT USING (
   "enviadoPorId" = app.usuario_atual() OR app.eh_admin()
-  OR EXISTS (
-    SELECT 1 FROM envios_arquivos ea JOIN envios e ON e.id = ea."envioId"
-    WHERE ea."arquivoId" = arquivos.id AND app.ve_aluno(e."alunoId")
-  )
+  OR EXISTS (SELECT 1 FROM envios_arquivos ea JOIN envios e ON e.id = ea."envioId"
+             WHERE ea."arquivoId" = arquivos.id AND app.ve_aluno(e."alunoId"))
   OR EXISTS (SELECT 1 FROM conteudos c WHERE c."arquivoId" = arquivos.id AND c.publicado)
 );
 CREATE POLICY arquivos_insere ON arquivos FOR INSERT WITH CHECK ("enviadoPorId" = app.usuario_atual() OR app.eh_admin());
@@ -223,7 +241,6 @@ CREATE POLICY envios_arq_escrita ON envios_arquivos FOR ALL USING (
   EXISTS (SELECT 1 FROM envios e WHERE e.id = envios_arquivos."envioId" AND app.ve_aluno(e."alunoId"))
 );
 
--- Avaliar é ato de quem acompanha o aluno; o próprio aluno não se avalia.
 ALTER TABLE avaliacoes_envio ENABLE ROW LEVEL SECURITY;
 CREATE POLICY aval_envio_leitura ON avaliacoes_envio FOR SELECT USING (
   EXISTS (SELECT 1 FROM envios e WHERE e.id = avaliacoes_envio."envioId" AND app.ve_aluno(e."alunoId"))
@@ -239,6 +256,10 @@ ALTER TABLE avaliacoes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY avaliacoes_leitura ON avaliacoes FOR SELECT USING (app.usuario_atual() IS NOT NULL);
 CREATE POLICY avaliacoes_escrita ON avaliacoes FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
 
+ALTER TABLE criterios_avaliacao ENABLE ROW LEVEL SECURITY;
+CREATE POLICY criterios_leitura ON criterios_avaliacao FOR SELECT USING (app.usuario_atual() IS NOT NULL);
+CREATE POLICY criterios_escrita ON criterios_avaliacao FOR ALL USING (app.eh_admin()) WITH CHECK (app.eh_admin());
+
 ALTER TABLE tentativas_avaliacao ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tentativas_leitura ON tentativas_avaliacao FOR SELECT USING (app.ve_aluno("alunoId"));
 CREATE POLICY tentativas_insere ON tentativas_avaliacao FOR INSERT WITH CHECK ("alunoId" = app.usuario_atual());
@@ -246,7 +267,6 @@ CREATE POLICY tentativas_atualiza ON tentativas_avaliacao FOR UPDATE
   USING (app.ve_aluno("alunoId")) WITH CHECK (app.ve_aluno("alunoId"));
 
 ALTER TABLE questoes ENABLE ROW LEVEL SECURITY;
--- A questão aprovada é visível a quem estuda; rascunho, só a quem revisa.
 CREATE POLICY questoes_leitura ON questoes FOR SELECT USING (
   "statusRevisao" = 'APROVADA' OR app.eh_admin() OR app.tem_papel(ARRAY['INSTRUTOR'])
 );
@@ -281,14 +301,37 @@ CREATE POLICY tempos_leitura ON tempos_diarios FOR SELECT USING (app.ve_aluno("u
 CREATE POLICY tempos_escrita ON tempos_diarios FOR ALL
   USING ("usuarioId" = app.usuario_atual()) WITH CHECK ("usuarioId" = app.usuario_atual());
 
+-- ------------------------------------------------- jornadas, turmas, prêmios
+
+ALTER TABLE jornadas_do_aluno ENABLE ROW LEVEL SECURITY;
+CREATE POLICY jornadas_leitura ON jornadas_do_aluno FOR SELECT USING (app.ve_aluno("alunoId"));
+CREATE POLICY jornadas_escrita ON jornadas_do_aluno FOR ALL
+  USING (app.ve_aluno("alunoId")) WITH CHECK (app.ve_aluno("alunoId"));
+
+ALTER TABLE turmas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY turmas_leitura ON turmas FOR SELECT USING (
+  app.ve_comum("comumId") OR "instrutorId" = app.usuario_atual()
+  OR EXISTS (SELECT 1 FROM matriculas_em_turma m WHERE m."turmaId" = turmas.id AND m."alunoId" = app.usuario_atual())
+);
+CREATE POLICY turmas_escrita ON turmas FOR ALL
+  USING (app.ve_comum("comumId")) WITH CHECK (app.ve_comum("comumId"));
+
+ALTER TABLE matriculas_em_turma ENABLE ROW LEVEL SECURITY;
+CREATE POLICY matriculas_leitura ON matriculas_em_turma FOR SELECT USING (app.ve_aluno("alunoId"));
+CREATE POLICY matriculas_escrita ON matriculas_em_turma FOR ALL
+  USING (EXISTS (SELECT 1 FROM turmas t WHERE t.id = matriculas_em_turma."turmaId"
+                 AND (app.ve_comum(t."comumId") OR t."instrutorId" = app.usuario_atual())))
+  WITH CHECK (EXISTS (SELECT 1 FROM turmas t WHERE t.id = matriculas_em_turma."turmaId"
+                 AND (app.ve_comum(t."comumId") OR t."instrutorId" = app.usuario_atual())));
+
 ALTER TABLE progresso_licoes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY prog_licoes_leitura ON progresso_licoes FOR SELECT USING (app.ve_aluno("alunoId"));
 CREATE POLICY prog_licoes_escrita ON progresso_licoes FOR ALL
   USING (app.ve_aluno("alunoId")) WITH CHECK (app.ve_aluno("alunoId"));
 
-ALTER TABLE progresso_fases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY prog_fases_leitura ON progresso_fases FOR SELECT USING (app.ve_aluno("alunoId"));
-CREATE POLICY prog_fases_escrita ON progresso_fases FOR ALL
+ALTER TABLE progresso_unidades ENABLE ROW LEVEL SECURITY;
+CREATE POLICY prog_unidades_leitura ON progresso_unidades FOR SELECT USING (app.ve_aluno("alunoId"));
+CREATE POLICY prog_unidades_escrita ON progresso_unidades FOR ALL
   USING (app.ve_aluno("alunoId")) WITH CHECK (app.ve_aluno("alunoId"));
 
 ALTER TABLE regras_progressao ENABLE ROW LEVEL SECURITY;

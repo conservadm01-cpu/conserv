@@ -4,8 +4,12 @@
 
 ```bash
 createdb estudos_musicais
-psql "$DATABASE_URL_MIGRACAO" -v senha="$SENHA_DO_APP" -f prisma/infra/papel-aplicacao.sql
+# 1) criação do papel: superusuário (ou CREATEROLE), uma vez só
+psql "$DATABASE_URL_ADMIN" -v senha="$SENHA_DO_APP" -f prisma/infra/papel-aplicacao.sql
+# 2) migrações: dono do schema — as tabelas e as políticas de RLS vêm daqui
 npx prisma migrate deploy
+# 3) permissões: dono do schema, SEMPRE DEPOIS das migrações
+psql "$DATABASE_URL_MIGRACAO" -f prisma/infra/permissoes-aplicacao.sql
 ```
 
 O papel `estudos_app` é criado **sem BYPASSRLS** e sem DDL: é com ele que o servidor web
@@ -59,6 +63,7 @@ desenvolvimento — sem TLS, o navegador não guarda a sessão. Um proxy reverso
 ```bash
 git pull && npm ci
 npx prisma migrate deploy    # migrações são aditivas; políticas de RLS vêm nelas
+npm run db:permissoes        # tabela nova só chega ao papel da aplicação por aqui
 npm run build && npm run start
 ```
 

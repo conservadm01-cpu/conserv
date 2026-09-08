@@ -15,11 +15,12 @@
     "db:gerar": "prisma generate",
     "db:migrar": "prisma migrate dev",
     "db:aplicar": "prisma migrate deploy",
-    "db:politicas": "node scripts/aplicar-politicas.js",
+    "db:permissoes": "psql \"$DATABASE_URL_MIGRACAO\" -f prisma/infra/permissoes-aplicacao.sql",
     "db:semear": "node --experimental-strip-types scripts/semear.ts",
-    "dados:importar": "node --experimental-strip-types scripts/importar-msa.ts",
-    "preparar": "npm run db:gerar && npm run db:aplicar && npm run db:politicas && npm run db:semear",
+    "metodo:importar": "node --experimental-strip-types scripts/importar-metodo.ts",
+    "preparar": "npm run db:gerar && npm run db:aplicar && npm run db:permissoes && npm run db:semear",
     "teste": "node --experimental-strip-types --test testes/*.test.ts",
+    "teste:preparar": "node --experimental-strip-types scripts/preparar-testes.ts",
     "teste:integracao": "node --experimental-strip-types --test testes/integracao/*.test.ts"
   },
   "dependencies": {

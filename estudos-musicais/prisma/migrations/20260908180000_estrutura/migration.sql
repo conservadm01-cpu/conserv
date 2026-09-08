@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "StatusUsuario" AS ENUM ('PENDENTE', 'ATIVO', 'INATIVO', 'BLOQUEADO');
 
@@ -20,7 +23,22 @@ CREATE TYPE "StatusSolicitacao" AS ENUM ('ABERTA', 'DEFERIDA', 'INDEFERIDA', 'CA
 CREATE TYPE "Clave" AS ENUM ('SOL', 'DO', 'FA');
 
 -- CreateEnum
-CREATE TYPE "TipoMaterial" AS ENUM ('MSA', 'METODO_INSTRUMENTO', 'HINARIO', 'COMPLEMENTAR', 'APOIO', 'AVALIACAO_PRATICA');
+CREATE TYPE "Situacao" AS ENUM ('ATIVO', 'INATIVO', 'RASCUNHO', 'ARQUIVADO');
+
+-- CreateEnum
+CREATE TYPE "EscopoDoMetodo" AS ENUM ('INSTRUMENTO', 'TRANSVERSAL');
+
+-- CreateEnum
+CREATE TYPE "TipoDeDocumento" AS ENUM ('PDF', 'MSCZ', 'MUSICXML', 'MP3', 'WAV', 'PNG', 'JPG', 'MP4', 'TXT', 'DOCX', 'XLSX', 'CSV', 'OUTRO');
+
+-- CreateEnum
+CREATE TYPE "ChaveDeConfiguracao" AS ENUM ('NOTA_MINIMA', 'TENTATIVAS_MAXIMAS', 'QUESTOES_POR_AVALIACAO', 'PERCENTUAL_DE_APROVEITAMENTO', 'EXIGE_APROVACAO_INSTRUTOR', 'PRE_REQUISITO_DE_UNIDADES', 'PESOS_DE_COMPETENCIA', 'OUTRO');
+
+-- CreateEnum
+CREATE TYPE "StatusDoCurriculo" AS ENUM ('RASCUNHO', 'EM_REVISAO', 'PUBLICADO', 'ARQUIVADO');
+
+-- CreateEnum
+CREATE TYPE "TipoDeUnidade" AS ENUM ('NIVEL', 'FASE', 'MODULO', 'AULA', 'TOPICO');
 
 -- CreateEnum
 CREATE TYPE "TipoLicao" AS ENUM ('LEITURA_METRICA', 'LEITURA_RITMICA', 'CONSTRUCAO_ESCALA', 'HINO', 'PREPARATORIO_RITMICO', 'ATIVIDADE_APOIO', 'TEORIA');
@@ -47,7 +65,7 @@ CREATE TYPE "StatusRevisao" AS ENUM ('RASCUNHO', 'EM_REVISAO', 'APROVADA', 'ARQU
 CREATE TYPE "OrigemQuestao" AS ENUM ('MANUAL', 'IMPORTADA', 'GERADA');
 
 -- CreateEnum
-CREATE TYPE "EscopoAvaliacao" AS ENUM ('LICAO', 'TOPICO', 'FASE', 'MATERIAL');
+CREATE TYPE "EscopoAvaliacao" AS ENUM ('LICAO', 'UNIDADE', 'METODO');
 
 -- CreateEnum
 CREATE TYPE "EstadoEnvio" AS ENUM ('NAO_INICIADA', 'EM_ANDAMENTO', 'ENVIADA', 'EM_AVALIACAO', 'CORRECAO_SOLICITADA', 'APROVADA', 'REPROVADA', 'DISPENSADA');
@@ -62,7 +80,13 @@ CREATE TYPE "TipoRegra" AS ENUM ('PRE_REQUISITO_FASES', 'PERCENTUAL_APROVEITAMEN
 CREATE TYPE "EstadoProgresso" AS ENUM ('NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'APROVADO', 'REPROVADO');
 
 -- CreateEnum
-CREATE TYPE "TipoImportacao" AS ENUM ('MSA_PLANILHA', 'MSA_PDF', 'COMUNS_CSV', 'REGIOES_CSV', 'ALUNOS_CSV', 'QUESTOES_CSV');
+CREATE TYPE "SituacaoDaJornada" AS ENUM ('ATIVA', 'CONCLUIDA', 'INTERROMPIDA', 'AGUARDANDO_LIBERACAO');
+
+-- CreateEnum
+CREATE TYPE "StatusDaAnalise" AS ENUM ('SUGERIDA', 'EM_REVISAO', 'CONFIRMADA', 'EDITADA', 'REJEITADA');
+
+-- CreateEnum
+CREATE TYPE "TipoImportacao" AS ENUM ('METODO_PLANILHA', 'METODO_PDF', 'METODO_DOCUMENTO', 'COMUNS_CSV', 'REGIOES_CSV', 'ALUNOS_CSV', 'QUESTOES_CSV');
 
 -- CreateEnum
 CREATE TYPE "StatusImportacao" AS ENUM ('PREVIA', 'APLICADA', 'CANCELADA', 'ERRO');
@@ -209,8 +233,10 @@ CREATE TABLE "auditorias" (
 CREATE TABLE "categorias_instrumento" (
     "id" TEXT NOT NULL,
     "nome" TEXT NOT NULL,
+    "codigo" TEXT,
+    "descricao" TEXT,
     "ordem" INTEGER NOT NULL DEFAULT 0,
-    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
 
     CONSTRAINT "categorias_instrumento_pkey" PRIMARY KEY ("id")
 );
@@ -219,16 +245,18 @@ CREATE TABLE "categorias_instrumento" (
 CREATE TABLE "instrumentos" (
     "id" TEXT NOT NULL,
     "nome" TEXT NOT NULL,
+    "codigo" TEXT,
+    "descricao" TEXT,
     "categoriaId" TEXT NOT NULL,
     "afinacao" TEXT NOT NULL DEFAULT 'Dó',
     "transposicaoGrau" INTEGER NOT NULL DEFAULT 0,
     "transposicaoSemitons" INTEGER NOT NULL DEFAULT 0,
     "transposicaoDescricao" TEXT,
-    "clavePrincipal" "Clave" NOT NULL DEFAULT 'SOL',
+    "clavePrincipal" "Clave",
     "clavesAlternativas" "Clave"[] DEFAULT ARRAY[]::"Clave"[],
     "extensaoEscrita" TEXT,
     "observacoesTecnicas" TEXT,
-    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "atualizadoEm" TIMESTAMP(3) NOT NULL,
 
@@ -236,74 +264,143 @@ CREATE TABLE "instrumentos" (
 );
 
 -- CreateTable
-CREATE TABLE "instrumentos_materiais" (
-    "instrumentoId" TEXT NOT NULL,
-    "materialId" TEXT NOT NULL,
-    "observacao" TEXT,
-
-    CONSTRAINT "instrumentos_materiais_pkey" PRIMARY KEY ("instrumentoId","materialId")
-);
-
--- CreateTable
-CREATE TABLE "materiais" (
+CREATE TABLE "metodos" (
     "id" TEXT NOT NULL,
-    "tipo" "TipoMaterial" NOT NULL,
     "nome" TEXT NOT NULL,
+    "codigo" TEXT NOT NULL,
+    "escopo" "EscopoDoMetodo" NOT NULL DEFAULT 'INSTRUMENTO',
+    "instrumentoId" TEXT,
+    "autor" TEXT,
+    "organizacao" TEXT,
+    "versao" TEXT,
     "descricao" TEXT,
+    "nivel" TEXT,
+    "totalFases" INTEGER,
+    "conteudoCompartilhado" BOOLEAN NOT NULL DEFAULT false,
     "notaDireitos" TEXT,
-    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "status" "Situacao" NOT NULL DEFAULT 'RASCUNHO',
+    "documentoOrigemId" TEXT,
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizadoEm" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "materiais_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "metodos_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "edicoes" (
-    "id" TEXT NOT NULL,
-    "materialId" TEXT NOT NULL,
-    "rotulo" TEXT NOT NULL,
-    "ano" INTEGER,
-    "mes" INTEGER,
-    "paginasArquivo" INTEGER,
+CREATE TABLE "metodos_instrumentos" (
+    "metodoId" TEXT NOT NULL,
+    "instrumentoId" TEXT NOT NULL,
+    "autorizadoPorId" TEXT,
+    "autorizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "observacao" TEXT,
-    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "edicoes_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "metodos_instrumentos_pkey" PRIMARY KEY ("metodoId","instrumentoId")
 );
 
 -- CreateTable
-CREATE TABLE "fases" (
+CREATE TABLE "documentos_metodo" (
     "id" TEXT NOT NULL,
-    "edicaoId" TEXT NOT NULL,
-    "numero" INTEGER NOT NULL,
-    "nome" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
+    "nomeArquivo" TEXT NOT NULL,
+    "tipoArquivo" "TipoDeDocumento" NOT NULL,
+    "arquivoId" TEXT,
+    "caminho" TEXT,
+    "versao" TEXT,
     "descricao" TEXT,
-    "ordem" INTEGER NOT NULL DEFAULT 0,
+    "fonte" TEXT,
+    "enviadoPorId" TEXT,
+    "enviadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
 
-    CONSTRAINT "fases_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "documentos_metodo_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "topicos" (
+CREATE TABLE "competencias" (
     "id" TEXT NOT NULL,
-    "faseId" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
     "codigo" TEXT NOT NULL,
     "nome" TEXT NOT NULL,
+    "descricao" TEXT,
     "ordem" INTEGER NOT NULL DEFAULT 0,
+    "peso" INTEGER NOT NULL DEFAULT 1,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
 
-    CONSTRAINT "topicos_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "competencias_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "configuracoes_metodo" (
+    "id" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
+    "chave" "ChaveDeConfiguracao" NOT NULL,
+    "valor" JSONB NOT NULL,
+    "descricao" TEXT,
+    "versao" INTEGER NOT NULL DEFAULT 1,
+    "vigenteDe" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "vigenteAte" TIMESTAMP(3),
+
+    CONSTRAINT "configuracoes_metodo_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "curriculos" (
+    "id" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
+    "rotulo" TEXT NOT NULL,
+    "versao" INTEGER NOT NULL DEFAULT 1,
+    "descricao" TEXT,
+    "status" "StatusDoCurriculo" NOT NULL DEFAULT 'RASCUNHO',
+    "vigenteDe" TIMESTAMP(3),
+    "vigenteAte" TIMESTAMP(3),
+    "origemAnaliseId" TEXT,
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizadoEm" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "curriculos_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "unidades_curriculares" (
+    "id" TEXT NOT NULL,
+    "curriculoId" TEXT NOT NULL,
+    "paiId" TEXT,
+    "tipo" "TipoDeUnidade" NOT NULL,
+    "codigo" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "descricao" TEXT,
+    "ordem" INTEGER NOT NULL DEFAULT 0,
+    "profundidade" INTEGER NOT NULL DEFAULT 0,
+    "caminho" TEXT NOT NULL DEFAULT '',
+    "documentoOrigemId" TEXT,
+    "paginaOrigemInicio" INTEGER,
+    "paginaOrigemFim" INTEGER,
+    "referenciaOrigem" TEXT,
+    "statusConferencia" "StatusConferencia" NOT NULL DEFAULT 'PENDENTE_CONFERENCIA',
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "atualizadoEm" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "unidades_curriculares_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "licoes" (
     "id" TEXT NOT NULL,
-    "topicoId" TEXT NOT NULL,
+    "unidadeId" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
+    "instrumentoId" TEXT,
     "numeroOriginal" TEXT NOT NULL,
+    "variante" TEXT NOT NULL DEFAULT '',
     "titulo" TEXT NOT NULL,
     "tipo" "TipoLicao" NOT NULL,
     "ordemPedagogica" INTEGER NOT NULL DEFAULT 0,
     "objetivos" TEXT,
     "preRequisitos" TEXT,
+    "compartilhado" BOOLEAN NOT NULL DEFAULT false,
+    "documentoOrigemId" TEXT,
+    "paginaOrigemInicio" INTEGER,
+    "paginaOrigemFim" INTEGER,
+    "referenciaOrigem" TEXT,
     "fonte" TEXT,
     "observacoes" TEXT,
     "statusConferencia" "StatusConferencia" NOT NULL DEFAULT 'PENDENTE_CONFERENCIA',
@@ -387,12 +484,11 @@ CREATE TABLE "arquivos" (
 -- CreateTable
 CREATE TABLE "questoes" (
     "id" TEXT NOT NULL,
-    "materialId" TEXT,
-    "faseId" TEXT,
-    "topicoId" TEXT,
+    "metodoId" TEXT NOT NULL,
+    "unidadeId" TEXT,
     "licaoId" TEXT,
     "instrumentoId" TEXT,
-    "categoriaId" TEXT,
+    "competenciaId" TEXT,
     "tipo" "TipoQuestao" NOT NULL,
     "enunciado" TEXT NOT NULL,
     "alternativas" JSONB,
@@ -415,17 +511,29 @@ CREATE TABLE "questoes" (
 -- CreateTable
 CREATE TABLE "avaliacoes" (
     "id" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
     "escopo" "EscopoAvaliacao" NOT NULL,
-    "referenciaId" TEXT NOT NULL,
+    "referenciaId" TEXT,
     "nome" TEXT NOT NULL,
-    "quantidadeQuestoes" INTEGER NOT NULL DEFAULT 10,
-    "notaMinima" INTEGER NOT NULL DEFAULT 70,
+    "quantidadeQuestoes" INTEGER,
+    "notaMinima" INTEGER,
     "tentativasMax" INTEGER,
     "regras" JSONB,
-    "ativo" BOOLEAN NOT NULL DEFAULT true,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
     "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "avaliacoes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "criterios_avaliacao" (
+    "id" TEXT NOT NULL,
+    "avaliacaoId" TEXT NOT NULL,
+    "competenciaId" TEXT NOT NULL,
+    "peso" INTEGER NOT NULL DEFAULT 1,
+    "descricao" TEXT,
+
+    CONSTRAINT "criterios_avaliacao_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -588,6 +696,7 @@ CREATE TABLE "progresso_licoes" (
     "id" TEXT NOT NULL,
     "alunoId" TEXT NOT NULL,
     "licaoId" TEXT NOT NULL,
+    "jornadaId" TEXT,
     "estado" "EstadoProgresso" NOT NULL DEFAULT 'NAO_INICIADO',
     "peso" INTEGER NOT NULL DEFAULT 1,
     "iniciadoEm" TIMESTAMP(3),
@@ -600,10 +709,11 @@ CREATE TABLE "progresso_licoes" (
 );
 
 -- CreateTable
-CREATE TABLE "progresso_fases" (
+CREATE TABLE "progresso_unidades" (
     "id" TEXT NOT NULL,
     "alunoId" TEXT NOT NULL,
-    "faseId" TEXT NOT NULL,
+    "unidadeId" TEXT NOT NULL,
+    "jornadaId" TEXT,
     "estado" "EstadoProgresso" NOT NULL DEFAULT 'NAO_INICIADO',
     "percentual" INTEGER NOT NULL DEFAULT 0,
     "aprovadoEm" TIMESTAMP(3),
@@ -612,15 +722,16 @@ CREATE TABLE "progresso_fases" (
     "regraVersao" INTEGER,
     "atualizadoEm" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "progresso_fases_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "progresso_unidades_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "medalhas" (
     "id" TEXT NOT NULL,
     "alunoId" TEXT NOT NULL,
-    "materialId" TEXT NOT NULL,
-    "faseId" TEXT,
+    "metodoId" TEXT NOT NULL,
+    "unidadeId" TEXT,
+    "jornadaId" TEXT,
     "codigo" TEXT NOT NULL,
     "concedidaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "instrutorId" TEXT,
@@ -634,7 +745,8 @@ CREATE TABLE "medalhas" (
 CREATE TABLE "certificados" (
     "id" TEXT NOT NULL,
     "alunoId" TEXT NOT NULL,
-    "materialId" TEXT,
+    "metodoId" TEXT,
+    "jornadaId" TEXT,
     "trilha" TEXT NOT NULL,
     "fases" JSONB NOT NULL,
     "emitidoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -645,6 +757,73 @@ CREATE TABLE "certificados" (
     "revogadoMotivo" TEXT,
 
     CONSTRAINT "certificados_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "jornadas_do_aluno" (
+    "id" TEXT NOT NULL,
+    "alunoId" TEXT NOT NULL,
+    "instrumentoId" TEXT,
+    "metodoId" TEXT NOT NULL,
+    "curriculoId" TEXT NOT NULL,
+    "unidadeAtualId" TEXT,
+    "progresso" INTEGER NOT NULL DEFAULT 0,
+    "status" "SituacaoDaJornada" NOT NULL DEFAULT 'ATIVA',
+    "inicioEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "conclusaoEm" TIMESTAMP(3),
+    "observacao" TEXT,
+    "atualizadoEm" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "jornadas_do_aluno_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "turmas" (
+    "id" TEXT NOT NULL,
+    "nome" TEXT NOT NULL,
+    "comumId" TEXT NOT NULL,
+    "instrumentoId" TEXT,
+    "metodoId" TEXT NOT NULL,
+    "unidadeId" TEXT,
+    "instrutorId" TEXT,
+    "status" "Situacao" NOT NULL DEFAULT 'ATIVO',
+    "inicioEm" TIMESTAMP(3),
+    "encerradaEm" TIMESTAMP(3),
+    "observacao" TEXT,
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "turmas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "matriculas_em_turma" (
+    "id" TEXT NOT NULL,
+    "turmaId" TEXT NOT NULL,
+    "alunoId" TEXT NOT NULL,
+    "jornadaId" TEXT,
+    "entradaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "saidaEm" TIMESTAMP(3),
+
+    CONSTRAINT "matriculas_em_turma_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "analises_de_metodo" (
+    "id" TEXT NOT NULL,
+    "metodoId" TEXT NOT NULL,
+    "documentoId" TEXT,
+    "origem" TEXT NOT NULL DEFAULT 'importador',
+    "estruturaSugerida" JSONB NOT NULL,
+    "resumo" JSONB,
+    "avisos" JSONB,
+    "status" "StatusDaAnalise" NOT NULL DEFAULT 'SUGERIDA',
+    "revisadoPorId" TEXT,
+    "revisadoEm" TIMESTAMP(3),
+    "parecer" TEXT,
+    "curriculoId" TEXT,
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "analises_de_metodo_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -748,28 +927,55 @@ CREATE INDEX "auditorias_criadoEm_idx" ON "auditorias"("criadoEm");
 CREATE UNIQUE INDEX "categorias_instrumento_nome_key" ON "categorias_instrumento"("nome");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "categorias_instrumento_codigo_key" ON "categorias_instrumento"("codigo");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "instrumentos_nome_key" ON "instrumentos"("nome");
 
 -- CreateIndex
-CREATE INDEX "instrumentos_ativo_idx" ON "instrumentos"("ativo");
+CREATE UNIQUE INDEX "instrumentos_codigo_key" ON "instrumentos"("codigo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "materiais_tipo_nome_key" ON "materiais"("tipo", "nome");
+CREATE INDEX "instrumentos_status_idx" ON "instrumentos"("status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "edicoes_materialId_rotulo_key" ON "edicoes"("materialId", "rotulo");
+CREATE UNIQUE INDEX "metodos_codigo_key" ON "metodos"("codigo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "fases_edicaoId_numero_key" ON "fases"("edicaoId", "numero");
+CREATE INDEX "metodos_escopo_status_idx" ON "metodos"("escopo", "status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "topicos_faseId_codigo_key" ON "topicos"("faseId", "codigo");
+CREATE INDEX "documentos_metodo_metodoId_status_idx" ON "documentos_metodo"("metodoId", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "competencias_metodoId_codigo_key" ON "competencias"("metodoId", "codigo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "configuracoes_metodo_metodoId_chave_versao_key" ON "configuracoes_metodo"("metodoId", "chave", "versao");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "curriculos_metodoId_versao_key" ON "curriculos"("metodoId", "versao");
+
+-- CreateIndex
+CREATE INDEX "unidades_curriculares_curriculoId_tipo_ordem_idx" ON "unidades_curriculares"("curriculoId", "tipo", "ordem");
+
+-- CreateIndex
+CREATE INDEX "unidades_curriculares_paiId_ordem_idx" ON "unidades_curriculares"("paiId", "ordem");
+
+-- CreateIndex
+CREATE INDEX "unidades_curriculares_caminho_idx" ON "unidades_curriculares"("caminho");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "unidades_curriculares_curriculoId_codigo_key" ON "unidades_curriculares"("curriculoId", "codigo");
+
+-- CreateIndex
+CREATE INDEX "licoes_metodoId_statusPublicacao_idx" ON "licoes"("metodoId", "statusPublicacao");
 
 -- CreateIndex
 CREATE INDEX "licoes_tipo_statusPublicacao_idx" ON "licoes"("tipo", "statusPublicacao");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "licoes_topicoId_numeroOriginal_key" ON "licoes"("topicoId", "numeroOriginal");
+CREATE UNIQUE INDEX "licoes_unidadeId_numeroOriginal_variante_key" ON "licoes"("unidadeId", "numeroOriginal", "variante");
 
 -- CreateIndex
 CREATE INDEX "versoes_licao_escalaReferencia_clave_idx" ON "versoes_licao"("escalaReferencia", "clave");
@@ -787,13 +993,16 @@ CREATE INDEX "conteudos_licaoId_ordem_idx" ON "conteudos"("licaoId", "ordem");
 CREATE UNIQUE INDEX "arquivos_chave_key" ON "arquivos"("chave");
 
 -- CreateIndex
-CREATE INDEX "questoes_faseId_statusRevisao_idx" ON "questoes"("faseId", "statusRevisao");
+CREATE INDEX "questoes_metodoId_statusRevisao_idx" ON "questoes"("metodoId", "statusRevisao");
 
 -- CreateIndex
 CREATE INDEX "questoes_instrumentoId_statusRevisao_idx" ON "questoes"("instrumentoId", "statusRevisao");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "avaliacoes_escopo_referenciaId_nome_key" ON "avaliacoes"("escopo", "referenciaId", "nome");
+CREATE UNIQUE INDEX "avaliacoes_metodoId_escopo_referenciaId_nome_key" ON "avaliacoes"("metodoId", "escopo", "referenciaId", "nome");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "criterios_avaliacao_avaliacaoId_competenciaId_key" ON "criterios_avaliacao"("avaliacaoId", "competenciaId");
 
 -- CreateIndex
 CREATE INDEX "tentativas_avaliacao_alunoId_avaliacaoId_idx" ON "tentativas_avaliacao"("alunoId", "avaliacaoId");
@@ -847,19 +1056,40 @@ CREATE INDEX "progresso_licoes_alunoId_estado_idx" ON "progresso_licoes"("alunoI
 CREATE UNIQUE INDEX "progresso_licoes_alunoId_licaoId_key" ON "progresso_licoes"("alunoId", "licaoId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "progresso_fases_alunoId_faseId_key" ON "progresso_fases"("alunoId", "faseId");
+CREATE INDEX "progresso_unidades_jornadaId_idx" ON "progresso_unidades"("jornadaId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "progresso_unidades_alunoId_unidadeId_key" ON "progresso_unidades"("alunoId", "unidadeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "medalhas_codigo_key" ON "medalhas"("codigo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "medalhas_alunoId_materialId_faseId_key" ON "medalhas"("alunoId", "materialId", "faseId");
+CREATE UNIQUE INDEX "medalhas_alunoId_metodoId_unidadeId_key" ON "medalhas"("alunoId", "metodoId", "unidadeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "certificados_codigo_key" ON "certificados"("codigo");
 
 -- CreateIndex
 CREATE INDEX "certificados_alunoId_idx" ON "certificados"("alunoId");
+
+-- CreateIndex
+CREATE INDEX "jornadas_do_aluno_status_idx" ON "jornadas_do_aluno"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "jornadas_do_aluno_alunoId_metodoId_instrumentoId_key" ON "jornadas_do_aluno"("alunoId", "metodoId", "instrumentoId");
+
+-- CreateIndex
+CREATE INDEX "turmas_comumId_status_idx" ON "turmas"("comumId", "status");
+
+-- CreateIndex
+CREATE INDEX "turmas_instrutorId_idx" ON "turmas"("instrutorId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "matriculas_em_turma_turmaId_alunoId_key" ON "matriculas_em_turma"("turmaId", "alunoId");
+
+-- CreateIndex
+CREATE INDEX "analises_de_metodo_metodoId_status_idx" ON "analises_de_metodo"("metodoId", "status");
 
 -- CreateIndex
 CREATE INDEX "importacoes_linhas_importacaoId_status_idx" ON "importacoes_linhas"("importacaoId", "status");
@@ -910,22 +1140,55 @@ ALTER TABLE "auditorias" ADD CONSTRAINT "auditorias_usuarioId_fkey" FOREIGN KEY 
 ALTER TABLE "instrumentos" ADD CONSTRAINT "instrumentos_categoriaId_fkey" FOREIGN KEY ("categoriaId") REFERENCES "categorias_instrumento"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "instrumentos_materiais" ADD CONSTRAINT "instrumentos_materiais_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "metodos" ADD CONSTRAINT "metodos_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "instrumentos_materiais" ADD CONSTRAINT "instrumentos_materiais_materialId_fkey" FOREIGN KEY ("materialId") REFERENCES "materiais"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "metodos_instrumentos" ADD CONSTRAINT "metodos_instrumentos_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "edicoes" ADD CONSTRAINT "edicoes_materialId_fkey" FOREIGN KEY ("materialId") REFERENCES "materiais"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "metodos_instrumentos" ADD CONSTRAINT "metodos_instrumentos_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "fases" ADD CONSTRAINT "fases_edicaoId_fkey" FOREIGN KEY ("edicaoId") REFERENCES "edicoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "metodos_instrumentos" ADD CONSTRAINT "metodos_instrumentos_autorizadoPorId_fkey" FOREIGN KEY ("autorizadoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "topicos" ADD CONSTRAINT "topicos_faseId_fkey" FOREIGN KEY ("faseId") REFERENCES "fases"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "documentos_metodo" ADD CONSTRAINT "documentos_metodo_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "licoes" ADD CONSTRAINT "licoes_topicoId_fkey" FOREIGN KEY ("topicoId") REFERENCES "topicos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "documentos_metodo" ADD CONSTRAINT "documentos_metodo_arquivoId_fkey" FOREIGN KEY ("arquivoId") REFERENCES "arquivos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "documentos_metodo" ADD CONSTRAINT "documentos_metodo_enviadoPorId_fkey" FOREIGN KEY ("enviadoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "competencias" ADD CONSTRAINT "competencias_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "configuracoes_metodo" ADD CONSTRAINT "configuracoes_metodo_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "curriculos" ADD CONSTRAINT "curriculos_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "unidades_curriculares" ADD CONSTRAINT "unidades_curriculares_curriculoId_fkey" FOREIGN KEY ("curriculoId") REFERENCES "curriculos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "unidades_curriculares" ADD CONSTRAINT "unidades_curriculares_paiId_fkey" FOREIGN KEY ("paiId") REFERENCES "unidades_curriculares"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "unidades_curriculares" ADD CONSTRAINT "unidades_curriculares_documentoOrigemId_fkey" FOREIGN KEY ("documentoOrigemId") REFERENCES "documentos_metodo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "licoes" ADD CONSTRAINT "licoes_unidadeId_fkey" FOREIGN KEY ("unidadeId") REFERENCES "unidades_curriculares"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "licoes" ADD CONSTRAINT "licoes_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "licoes" ADD CONSTRAINT "licoes_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "licoes" ADD CONSTRAINT "licoes_documentoOrigemId_fkey" FOREIGN KEY ("documentoOrigemId") REFERENCES "documentos_metodo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "versoes_licao" ADD CONSTRAINT "versoes_licao_licaoId_fkey" FOREIGN KEY ("licaoId") REFERENCES "licoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -946,13 +1209,10 @@ ALTER TABLE "conteudos" ADD CONSTRAINT "conteudos_arquivoId_fkey" FOREIGN KEY ("
 ALTER TABLE "arquivos" ADD CONSTRAINT "arquivos_enviadoPorId_fkey" FOREIGN KEY ("enviadoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "questoes" ADD CONSTRAINT "questoes_materialId_fkey" FOREIGN KEY ("materialId") REFERENCES "materiais"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "questoes" ADD CONSTRAINT "questoes_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "questoes" ADD CONSTRAINT "questoes_faseId_fkey" FOREIGN KEY ("faseId") REFERENCES "fases"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "questoes" ADD CONSTRAINT "questoes_topicoId_fkey" FOREIGN KEY ("topicoId") REFERENCES "topicos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "questoes" ADD CONSTRAINT "questoes_unidadeId_fkey" FOREIGN KEY ("unidadeId") REFERENCES "unidades_curriculares"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "questoes" ADD CONSTRAINT "questoes_licaoId_fkey" FOREIGN KEY ("licaoId") REFERENCES "licoes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -965,6 +1225,15 @@ ALTER TABLE "questoes" ADD CONSTRAINT "questoes_autorId_fkey" FOREIGN KEY ("auto
 
 -- AddForeignKey
 ALTER TABLE "questoes" ADD CONSTRAINT "questoes_revisorId_fkey" FOREIGN KEY ("revisorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "avaliacoes" ADD CONSTRAINT "avaliacoes_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "criterios_avaliacao" ADD CONSTRAINT "criterios_avaliacao_avaliacaoId_fkey" FOREIGN KEY ("avaliacaoId") REFERENCES "avaliacoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "criterios_avaliacao" ADD CONSTRAINT "criterios_avaliacao_competenciaId_fkey" FOREIGN KEY ("competenciaId") REFERENCES "competencias"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "tentativas_avaliacao" ADD CONSTRAINT "tentativas_avaliacao_avaliacaoId_fkey" FOREIGN KEY ("avaliacaoId") REFERENCES "avaliacoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1036,19 +1305,28 @@ ALTER TABLE "progresso_licoes" ADD CONSTRAINT "progresso_licoes_alunoId_fkey" FO
 ALTER TABLE "progresso_licoes" ADD CONSTRAINT "progresso_licoes_licaoId_fkey" FOREIGN KEY ("licaoId") REFERENCES "licoes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "progresso_fases" ADD CONSTRAINT "progresso_fases_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "progresso_licoes" ADD CONSTRAINT "progresso_licoes_jornadaId_fkey" FOREIGN KEY ("jornadaId") REFERENCES "jornadas_do_aluno"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "progresso_fases" ADD CONSTRAINT "progresso_fases_faseId_fkey" FOREIGN KEY ("faseId") REFERENCES "fases"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "progresso_unidades" ADD CONSTRAINT "progresso_unidades_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "progresso_unidades" ADD CONSTRAINT "progresso_unidades_unidadeId_fkey" FOREIGN KEY ("unidadeId") REFERENCES "unidades_curriculares"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "progresso_unidades" ADD CONSTRAINT "progresso_unidades_jornadaId_fkey" FOREIGN KEY ("jornadaId") REFERENCES "jornadas_do_aluno"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_materialId_fkey" FOREIGN KEY ("materialId") REFERENCES "materiais"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_faseId_fkey" FOREIGN KEY ("faseId") REFERENCES "fases"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_unidadeId_fkey" FOREIGN KEY ("unidadeId") REFERENCES "unidades_curriculares"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_jornadaId_fkey" FOREIGN KEY ("jornadaId") REFERENCES "jornadas_do_aluno"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_instrutorId_fkey" FOREIGN KEY ("instrutorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1057,10 +1335,61 @@ ALTER TABLE "medalhas" ADD CONSTRAINT "medalhas_instrutorId_fkey" FOREIGN KEY ("
 ALTER TABLE "certificados" ADD CONSTRAINT "certificados_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "certificados" ADD CONSTRAINT "certificados_materialId_fkey" FOREIGN KEY ("materialId") REFERENCES "materiais"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "certificados" ADD CONSTRAINT "certificados_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "certificados" ADD CONSTRAINT "certificados_jornadaId_fkey" FOREIGN KEY ("jornadaId") REFERENCES "jornadas_do_aluno"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "certificados" ADD CONSTRAINT "certificados_arquivoId_fkey" FOREIGN KEY ("arquivoId") REFERENCES "arquivos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "jornadas_do_aluno" ADD CONSTRAINT "jornadas_do_aluno_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "jornadas_do_aluno" ADD CONSTRAINT "jornadas_do_aluno_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "jornadas_do_aluno" ADD CONSTRAINT "jornadas_do_aluno_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "jornadas_do_aluno" ADD CONSTRAINT "jornadas_do_aluno_curriculoId_fkey" FOREIGN KEY ("curriculoId") REFERENCES "curriculos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "jornadas_do_aluno" ADD CONSTRAINT "jornadas_do_aluno_unidadeAtualId_fkey" FOREIGN KEY ("unidadeAtualId") REFERENCES "unidades_curriculares"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_comumId_fkey" FOREIGN KEY ("comumId") REFERENCES "comuns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_instrumentoId_fkey" FOREIGN KEY ("instrumentoId") REFERENCES "instrumentos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_unidadeId_fkey" FOREIGN KEY ("unidadeId") REFERENCES "unidades_curriculares"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "turmas" ADD CONSTRAINT "turmas_instrutorId_fkey" FOREIGN KEY ("instrutorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas_em_turma" ADD CONSTRAINT "matriculas_em_turma_turmaId_fkey" FOREIGN KEY ("turmaId") REFERENCES "turmas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas_em_turma" ADD CONSTRAINT "matriculas_em_turma_alunoId_fkey" FOREIGN KEY ("alunoId") REFERENCES "usuarios"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "matriculas_em_turma" ADD CONSTRAINT "matriculas_em_turma_jornadaId_fkey" FOREIGN KEY ("jornadaId") REFERENCES "jornadas_do_aluno"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "analises_de_metodo" ADD CONSTRAINT "analises_de_metodo_metodoId_fkey" FOREIGN KEY ("metodoId") REFERENCES "metodos"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "analises_de_metodo" ADD CONSTRAINT "analises_de_metodo_documentoId_fkey" FOREIGN KEY ("documentoId") REFERENCES "documentos_metodo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "analises_de_metodo" ADD CONSTRAINT "analises_de_metodo_revisadoPorId_fkey" FOREIGN KEY ("revisadoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "importacoes" ADD CONSTRAINT "importacoes_executadaPorId_fkey" FOREIGN KEY ("executadaPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;

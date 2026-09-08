@@ -1,15 +1,21 @@
 # Estudos Musicais
 
-Plataforma de estudos musicais para alunos, instrutores, encarregados locais,
-encarregados regionais e anciães, com controle de acesso por **comum-congregação**,
-**região**, **instrumento** e **fase**, e com o índice do **MSA** navegável por assunto
-(escala → clave → compasso → fase → exercício → página).
+Plataforma **multimétodos e multi-instrumentos** de estudos musicais, para alunos,
+instrutores, encarregados locais, encarregados regionais e anciães, com controle de acesso
+por **comum-congregação**, **região**, **instrumento** e **unidade do método**.
 
-> **Estado desta entrega.** Esta é a primeira etapa, e ela é **funcional, não maquete**:
-> banco modelado e migrado, RLS ativa, autenticação, autorização por vínculo, importador
-> do MSA com conferência, regras pedagógicas calculadas e testadas, telas de aluno,
-> índice por assunto e painel de acompanhamento. O que **ainda não está pronto** está
-> listado, sem rodeio, na seção [O que falta](#o-que-falta).
+> **A decisão que orienta a arquitetura.** A plataforma **não é feita para um método**.
+> MSA, Melodia em Movimento e o método de cada instrumento são **linhas de tabela**, com
+> estrutura, competências e critérios próprios. Não existe `if metodo == "MSA"` no código —
+> e há teste que cobra isso. Cadastrar um método novo é cadastrar dados; um formato de
+> documento novo é escrever um analisador e acrescentá-lo a uma lista.
+
+> **Estado desta entrega.** É **funcional, não maquete**: banco modelado e migrado, RLS
+> ativa, autenticação, autorização por vínculo, análise de método com revisão humana
+> obrigatória, currículo em árvore de profundidade livre, jornadas simultâneas por aluno,
+> turmas, critérios por método, regras pedagógicas calculadas e testadas, telas de aluno,
+> jornada, assunto, lição, turmas e central administrativa. O que **ainda não está pronto**
+> está listado, sem rodeio, na seção [O que falta](#o-que-falta).
 
 ---
 
@@ -17,8 +23,9 @@ encarregados regionais e anciães, com controle de acesso por **comum-congregaç
 
 - [Como rodar](#como-rodar)
 - [Arquitetura](#arquitetura)
+- [Métodos, instrumentos e currículos](#métodos-instrumentos-e-currículos)
 - [Segurança e permissões](#segurança-e-permissões)
-- [Importação do MSA](#importação-do-msa)
+- [Analisar um método](#analisar-um-método)
 - [Regras pedagógicas](#regras-pedagógicas)
 - [Testes](#testes)
 - [Backup e restauração](#backup-e-restauração)
@@ -36,8 +43,7 @@ Com Docker:
 cp .env.example .env          # ajuste as senhas
 docker compose up -d banco
 npm install
-npm run preparar              # migrações + papel da aplicação + seeds
-npm run dados:importar -- dados/MSA_indice.xlsx --aplicar
+npm run preparar              # migrações + permissões do papel + seeds
 npm run dev                   # http://localhost:3000
 ```
 
@@ -45,9 +51,25 @@ Sem Docker, com PostgreSQL 16 local:
 
 ```bash
 createdb estudos_musicais && createdb estudos_musicais_sombra && createdb estudos_musicais_testes
-psql "$DATABASE_URL_MIGRACAO" -v senha=uma-senha-forte -f prisma/infra/papel-aplicacao.sql
+psql "$DATABASE_URL_ADMIN" -v senha=uma-senha-forte -f prisma/infra/papel-aplicacao.sql
 npm install && npm run preparar
 ```
+
+`papel-aplicacao.sql` cria o papel e pede superusuário; roda **uma vez**. As permissões
+ficam em `permissoes-aplicacao.sql`, rodam com o dono do schema e precisam rodar **depois de
+cada migração** (`npm run db:permissoes`), senão a tabela nova não chega ao papel da
+aplicação. `npm run preparar` já faz os dois na ordem certa.
+
+A semente monta três métodos, para a plataforma não parecer feita para um só:
+
+| Método | Escopo | Estrutura |
+|---|---|---|
+| MSA | transversal, compartilhado com todos os instrumentos | 16 fases → 33 módulos, se `dados/MSA_indice.xlsx` estiver presente |
+| Melodia em Movimento | transversal | **cadastrado e sem currículo**: o documento ainda não foi analisado, e é assim que fica |
+| Método de demonstração — cordas | do instrumento (violino) | 2 níveis → 3 fases → 6 módulos, de um sumário em texto |
+
+O método de cordas é **fictício e declarado como tal** (`dados/metodo-demonstracao.md`):
+existe para provar profundidade variável e critérios próprios, não para estudo.
 
 ### Acessos da demonstração
 
@@ -80,26 +102,74 @@ Todos com a senha `Estudos2026` (trocar antes de qualquer uso real):
 src/
   app/                 telas (App Router)
     entrar/            login
-    aluno/             trilha, liberações e dedicação do aluno
-    assunto/           navegação escala → clave → compasso → fase
-    licao/[id]/        a lição com as versões por clave e as páginas
+    aluno/             as jornadas do aluno (uma por método)
+    jornada/[id]/      currículo, liberações e critérios daquele método
+    assunto/           navegação método → escala → clave → compasso
+    licao/[id]/        a lição, com proveniência e versões por clave
     painel/            acompanhamento de quem tem vínculo
+    painel/turmas/     central do instrutor: instrumento → método → turma → unidade
     painel/aluno/[id]/ ficha do aluno (com checagem de escopo)
+    admin/metodos/     central administrativa: métodos, currículos, fila de análises
   lib/
     banco.ts           conexão; `comoUsuario()` fixa o contexto da RLS
     autorizacao.ts     escopo por vínculo, `podeVerAluno`, guardas
     sessao.ts          cookie, abertura e encerramento de sessão
     senha.ts           scrypt com parâmetros embutidos no resumo
-    regras.ts          cálculo das regras pedagógicas (A, B, C, D)
-    msa/importacao.ts  normalização e conferência do índice do MSA
+    regras.ts          cálculo das regras pedagógicas e critérios por método
+    metodos/
+      estrutura.ts     o contrato genérico: unidade, item, proveniência
+      analisadores/    um por FORMATO de documento, nunca por método
+      aplicar.ts       análise → revisão humana → currículo → publicação
+      isolamento.ts    o que cruza de um método para outro, e sob que condição
     planilha/leitor.ts leitor de .xlsx sem dependência externa
 prisma/
-  schema.prisma        42 tabelas
+  schema.prisma        48 tabelas
   migrations/          inclui as políticas de RLS
-  infra/               provisionamento do papel da aplicação
-scripts/               importar-msa, semear, preparar-testes
+  infra/               papel da aplicação e permissões
+scripts/               importar-metodo, semear, preparar-testes
 testes/                unitários e de integração (banco real)
 ```
+
+---
+
+## Métodos, instrumentos e currículos
+
+O núcleo é **method-agnostic**: nenhuma função pergunta qual método está processando.
+
+| Entidade | Papel |
+|---|---|
+| `instrumentos` | o instrumento e as suas claves, transposição e extensão |
+| `metodos` | método cadastrado; `escopo` diz se é de um instrumento ou transversal |
+| `metodos_instrumentos` | autorização explícita de um método para um instrumento |
+| `documentos_metodo` | o documento de origem — é a ele que a proveniência aponta |
+| `analises_de_metodo` | a estrutura **proposta**, que espera decisão humana |
+| `curriculos` | uma versão da estrutura de um método |
+| `unidades_curriculares` | a árvore: `NIVEL`, `FASE`, `MODULO`, `AULA` ou `TOPICO` |
+| `licoes` / `versoes_licao` | o item de estudo e as suas versões por clave |
+| `competencias` | as competências **daquele** método |
+| `configuracoes_metodo` | os critérios **daquele** método, versionados |
+| `jornadas_do_aluno` | um aluno em um método (e instrumento); várias ao mesmo tempo |
+| `turmas` / `matriculas_em_turma` | comum + instrumento + método + unidade + instrutor |
+
+### Profundidade é do método, não do código
+
+Não há tabela de "fase" nem de "tópico". A árvore de `unidades_curriculares` guarda o
+**caminho materializado** (`1/1.4/1.4.2`), e cada método escolhe quantos níveis usa: o MSA
+importado fica em duas camadas (fase → módulo); o método de cordas da semente fica em três
+(nível → fase → módulo). A mesma tela desenha os dois.
+
+### Isolamento pedagógico
+
+Conteúdo de um método **não** entra em outro. As duas exceções precisam existir juntas:
+a lição está marcada como `compartilhado` **e** o método de origem está autorizado para o
+instrumento daquela jornada (`metodos_instrumentos`). Sem as duas, o conteúdo não aparece —
+e a função diz **por quê**, para a tela poder explicar em vez de sumir com o item.
+
+Isso vale também para os critérios: `criteriosDoMetodo()` resolve percentual, nota mínima,
+número de questões, tentativas e exigência de instrutor a partir da configuração **daquele**
+método. O que o método não declara cai no **padrão da plataforma**, sinalizado na tela como
+tal — nunca no critério de outro método. Na semente, o MSA exige 40% e o método de cordas
+exige 60%; a central do instrutor mostra os dois lado a lado.
 
 ---
 
@@ -140,33 +210,68 @@ elevar o custo no futuro sem invalidar as senhas existentes. Nunca se guarda sen
 
 ---
 
-## Importação do MSA
+## Analisar um método
 
-> A planilha do índice e o PDF do método são **material de terceiros** e por isso **não
-> ficam no repositório** (`dados/*.xlsx` e `dados/*.pdf` estão no `.gitignore`). Quem for
-> operar coloca o arquivo em `dados/` antes de importar. Sem ele, os testes do índice são
-> pulados com aviso, e os demais continuam rodando.
+> Os documentos dos métodos são **material de terceiros** e por isso **não ficam no
+> repositório** (`dados/*.xlsx` e `dados/*.pdf` estão no `.gitignore`). Quem for operar
+> coloca o arquivo em `dados/` antes de importar. Sem ele, os testes que dependem do índice
+> são pulados com aviso, e os demais continuam rodando.
 
 ```bash
-npm run dados:importar -- dados/MSA_indice.xlsx            # prévia, não grava
-npm run dados:importar -- dados/MSA_indice.xlsx --aplicar  # grava
+# prévia: lê, confere e não grava nada
+npm run metodo:importar -- dados/UM_METODO.xlsx
+
+# grava a ANÁLISE (que ainda espera revisão humana)
+npm run metodo:importar -- dados/UM_METODO.xlsx --metodo=COD --nome="Nome do método" --registrar
+
+# confirma, com responsável registrado, e cria o currículo em rascunho
+npm run metodo:importar -- dados/UM_METODO.xlsx --metodo=COD --registrar \
+  --confirmar --revisor=ana.pedagogica@exemplo.org --parecer="conferido contra o índice"
 ```
 
-A fonte primária é a aba **Índice detalhado** (212 linhas), que é o superconjunto das
-demais; as outras abas entram como **conferência cruzada**. O importador não corrige nada
-sozinho: divergência vira registro.
+Nenhuma dessas linhas menciona um método específico dentro do código: o **analisador é
+escolhido pelo formato do arquivo**.
 
-O que o importador **respeita**, por decisão declarada:
+| Analisador | Lê | Propõe |
+|---|---|---|
+| `indice-em-planilha` | `.xlsx` com uma linha por item | duas camadas, com versões por clave |
+| `sumario-em-texto` | `.txt`/`.md` com `#` e `-` | a profundidade que o sumário tiver |
 
-- não cria exercício, página, tonalidade ou compasso que a fonte não traga;
+As colunas da planilha são reconhecidas **por sinônimo**: `Fase`/`Nível`/`Etapa`,
+`Tópico`/`Módulo`/`Unidade`, `Exercício`/`Lição`/`Item`. Uma planilha que chame a coluna de
+"Tópico do MSA" e outra que chame de "Módulo" são lidas pelo mesmo código.
+
+### A revisão humana é obrigatória
+
+Analisar é **propor**. A estrutura sugerida entra como `analises_de_metodo` com situação
+`SUGERIDA` e só vira currículo depois de uma pessoa **CONFIRMAR**, **EDITAR** ou
+**REJEITAR** — decisão gravada com nome, data e parecer (obrigatório ao editar ou rejeitar).
+Rejeitar não deixa rastro de currículo; a mesma análise não é decidida duas vezes. Há teste
+de integração para cada uma dessas três afirmações.
+
+Mesmo depois de confirmada, **nada é publicado**: o currículo nasce em rascunho e publicar
+é ato à parte do responsável pedagógico, que libera apenas o que está conferido.
+
+### Proveniência
+
+Toda unidade e toda lição guardam de onde vieram: método, instrumento, unidade,
+`documentoOrigemId`, página inicial e final e a referência textual. A tela da lição mostra
+isso em campo próprio, não em rodapé.
+
+### O que a análise respeita, por decisão declarada
+
+- não cria item, página, tonalidade ou compasso que a fonte não traga;
 - mantém separadas **página impressa**, **página do arquivo** e **número original**;
-- exercício sem altura definida **não recebe tonalidade**;
+- item sem altura definida **não recebe tonalidade**;
 - clave adotada para organização é preservada **como adotada**, não como escrita no método;
-- o que passa dos limites informados do arquivo (150 páginas, página impressa 151,
-  exercício 112) entra como **divergente**;
-- **nada é publicado pela importação** — publicar é ato do administrador pedagógico.
+- limites do documento são **parâmetro de quem importa**, não verdade universal: o que
+  passa deles vira **divergente**, nunca dado corrigido em silêncio;
+- as demais abas entram como **conferência cruzada**, escolhidas pelo formato que têm; o que
+  não puder ser conferido vira **aviso**, para ninguém achar que foi conferido.
 
-Resultado da importação atual (relatório completo em `docs/importacao-msa.md`):
+Resultado da análise do índice do MSA com os limites informados para aquela edição
+(150 páginas de arquivo, página impressa 151, exercício 112) — relatório completo em
+`docs/analise-de-metodo.md`:
 
 | Situação | Lições |
 |---|---|
@@ -187,12 +292,17 @@ a concedeu. O cálculo está em `src/lib/regras.ts`, com testes.
 
 | Código | O que faz |
 |---|---|
-| `A-PRE-REQUISITO-MSA` | Fases 1 a 5 do MSA **aprovadas** liberam os métodos do instrumento |
-| `B-APROVEITAMENTO-HINARIO` | 40% de aproveitamento aprovado no método do instrumento libera o Hinário |
-| `C-AVANCO-DE-FASE` | Avanço exige pré-requisitos, aproveitamento e **aprovação do instrutor** |
-| `D-CONCLUSAO` | Conclusão exige todas as etapas, avaliações e validação final |
+| `A-PRE-REQUISITO-BASE` | Unidades iniciais do método de base **aprovadas** liberam os métodos do instrumento |
+| `B-APROVEITAMENTO-REPERTORIO` | Aproveitamento aprovado no próprio método libera o repertório da etapa |
+| `C-AVANCO-DE-UNIDADE` | Avanço exige pré-requisitos, aproveitamento e, se o método exigir, **aprovação do instrutor** |
+| `D-CONCLUSAO` | Conclusão da jornada exige todas as unidades, avaliações e validação final |
 
-**Os 40% são regra desta plataforma, não determinação do MSA.** O cálculo é declarado:
+Nenhuma regra traz o nome de um método no código: qual é o método de base, quais unidades
+e qual percentual vêm dos **parâmetros da regra** e da **configuração do método**. Nas
+regras B e C o percentual é uma referência (`ConfiguracaoDoMetodo.…`) resolvida por jornada.
+
+**Os 40% são regra desta plataforma para o método de base, não determinação do método.**
+O cálculo é declarado:
 
 - soma dos **pesos aprovados** ÷ soma dos **pesos elegíveis**;
 - conta apenas unidade **aprovada** — página aberta, lição iniciada e tempo de tela **não** entram;
@@ -201,22 +311,40 @@ a concedeu. O cálculo está em `src/lib/regras.ts`, com testes.
 - o aluno vê o percentual e **quanto falta**.
 
 Exemplo do enunciado, coberto por teste: 20 unidades elegíveis de peso igual, 8 aprovadas = 40%.
+Outro teste cobra o isolamento: as mesmas 8 de 20 **liberam** num método que exige 40% e
+**não liberam** noutro que exige 60%.
 
 ---
 
 ## Testes
 
 ```bash
-npm run teste             # unitários (regras, leitor de planilha, importação)
-npm run teste:integracao  # autorização contra PostgreSQL real
+npm run teste             # unitários: regras, critérios por método, analisadores
+npm run teste:preparar    # prepara o banco de testes (migrações, permissões, seeds)
+npm run teste:integracao  # autorização e isolamento contra PostgreSQL real
 ```
 
-Os testes de integração **tentam atravessar o escopo** e exigem falha: ler aluno de outra
-comum, de outra região, trocar o id na URL, promover-se a instrutor, conceder medalha a si
-mesmo, alterar o material do método. Também conferem que o papel da aplicação não ignora RLS.
+39 testes unitários e 32 de integração.
 
-Dois deles já pegaram defeito real durante o desenvolvimento: um vazamento em que o aluno
-enxergava colegas da própria comum, e uma consulta de autorização que rodava sem contexto.
+Os de **autorização** tentam atravessar o escopo e exigem falha: ler aluno de outra comum,
+de outra região, trocar o id na URL, promover-se a instrutor, conceder medalha a si mesmo,
+matricular aluno em turma de outra comum, alterar o material do método. Também conferem que
+o papel da aplicação não ignora RLS.
+
+Os de **isolamento pedagógico** cobram a outra promessa: que os critérios de um método não
+caiam sobre outro, que as competências não se misturem, que o filtro de conteúdo só deixe
+passar o que é compartilhado **e** autorizado, que as jornadas do mesmo aluno sejam
+independentes, e que análise rejeitada não deixe currículo.
+
+Um teste vale por si: `nenhum analisador conhece o nome de um método` falha se alguém
+escrever o nome de um método na identidade de um analisador.
+
+Três defeitos reais foram pegos por estes testes durante o desenvolvimento: um vazamento em
+que o aluno enxergava colegas da própria comum; uma consulta de autorização que rodava sem
+contexto de RLS; e uma **recursão infinita** entre as políticas de `turmas` e
+`matriculas_em_turma` — a política de escrita, declarada `FOR ALL`, também valia para o
+`SELECT` e as duas tabelas se consultavam sem fim (corrigida em
+`20260908191000_corrige_recursao_de_turmas`).
 
 ---
 
@@ -251,9 +379,9 @@ Confira a cada atualização do Prisma e registre a conclusão em `docs/implanta
 
 ## Direitos autorais e privacidade
 
-- A plataforma guarda **referências** ao método (fase, tópico, exercício, página) e **não
-  distribui** o arquivo do MSA nem do Hinário. Publicar material protegido depende de
-  autorização de quem detém os direitos.
+- A plataforma guarda **referências** ao método (unidade, item, página) e **não distribui**
+  o arquivo de método nenhum. Cada método tem a sua nota de direitos, mostrada na tela da
+  lição. Publicar material protegido depende de autorização de quem detém os direitos.
 - Marcas e identidade visual oficiais não são usadas.
 - Dados pessoais (aluno, contato, responsável legal) ficam no banco da instituição, com
   acesso limitado por vínculo e registro de auditoria nos acessos administrativos.
@@ -264,28 +392,40 @@ Confira a cada atualização do Prisma e registre a conclusão em `docs/implanta
 
 ## O que falta
 
-Entregue nesta etapa: modelo de dados completo, RLS, autenticação, autorização, importador
-do MSA com conferência, regras pedagógicas, seeds, telas de aluno/assunto/lição/painel,
-testes e documentação.
+Entregue nesta etapa: modelo de dados completo e method-agnostic, RLS, autenticação,
+autorização, análise de método com revisão humana, currículo em árvore de profundidade
+livre, proveniência ponta a ponta, jornadas simultâneas, turmas, competências e critérios
+por método, isolamento pedagógico, regras pedagógicas, seeds, telas de aluno, jornada,
+assunto, lição, turmas e central de métodos, testes e documentação.
 
 Ainda **não** implementado — e é trabalho de verdade, não ajuste:
 
-1. **Envio de atividades** (foto, áudio, vídeo) com armazenamento privado, URLs temporárias
-   e o fluxo de correção do instrutor. O modelo de dados já existe (`atividades`, `envios`,
+1. **Revisão da análise pela interface.** O fluxo CONFIRMAR/EDITAR/REJEITAR existe em
+   `src/lib/metodos/aplicar.ts`, com testes, e roda por script; a central administrativa
+   hoje **mostra** a fila, mas os botões de decisão (e o editor da árvore proposta) ainda
+   não estão na tela.
+2. **Analisador de PDF.** O modelo prevê `METODO_PDF`; falta o analisador que leia o sumário
+   de um PDF e proponha a estrutura. Hoje o caminho é planilha ou sumário em texto.
+3. **Envio de atividades** (foto, áudio, vídeo) com armazenamento privado, URLs temporárias
+   e o fluxo de correção do instrutor. O modelo já existe (`atividades`, `envios`,
    `avaliacoes_envio`, `arquivos`).
-2. **Banco de questões e avaliações** na interface: o modelo existe (`questoes`,
-   `avaliacoes`, `tentativas_avaliacao`, `questoes_recebidas`, que já guarda a assinatura
-   para a pergunta não repetir), falta a tela e o motor de sorteio.
-3. **Tempo de estudo**: modelo pronto (`sessoes_estudo`, `batimentos`,
+4. **Banco de questões e avaliações** na interface: o modelo existe (`questoes`,
+   `avaliacoes`, `criterios_avaliacao` ligando a avaliação às competências **do método**,
+   `tentativas_avaliacao`, `questoes_recebidas`, que já guarda a assinatura para a pergunta
+   não repetir), falta a tela e o motor de sorteio.
+5. **Tempo de estudo**: modelo pronto (`sessoes_estudo`, `batimentos`,
    `visualizacoes_pagina`, `tempos_diarios`); falta o batimento no cliente e a validação
    no servidor.
-4. **Medalhas e certificados**: modelo pronto; falta a emissão e o PDF.
-5. **Importação em lote de comuns e regiões por CSV** com prévia e detecção de duplicidade.
-6. **CMS de conteúdo** (publicar, revisar, editar lição) — hoje a publicação é feita por
-   script/seed.
-7. **Relatórios exportáveis** (CSV/Excel/PDF) e os gráficos de evolução.
-8. **Fila em execução**: a tabela existe; falta o processo trabalhador.
-9. **O PDF do MSA não foi fornecido a esta sessão** — só as 10 páginas de amostra. O
-   importador de PDF (`MSA_PDF`) está previsto no modelo, mas a validação página a página
-   contra o documento **não pôde ser executada**. Quando o arquivo estiver disponível, é ele
-   que vai reduzir as 135 pendências.
+6. **Medalhas e certificados**: modelo pronto, já ligado a método e jornada; falta a emissão
+   e o PDF.
+7. **Cadastro de método pela interface** (criar método, autorizar instrumento, cadastrar
+   competência e critério) — hoje é seed e script.
+8. **Importação em lote de comuns e regiões por CSV** com prévia e detecção de duplicidade.
+9. **Relatórios exportáveis** (CSV/Excel/PDF) e os gráficos de evolução.
+10. **Fila em execução**: a tabela existe; falta o processo trabalhador.
+11. **O PDF do MSA não foi fornecido a esta sessão** — só as 10 páginas de amostra. A
+    validação página a página contra o documento **não pôde ser executada**. Quando o
+    arquivo estiver disponível, é ele que vai reduzir as 135 pendências.
+12. **O documento de Melodia em Movimento não foi fornecido.** O método está cadastrado e
+    **sem currículo**, com uma análise em aberto na fila — que é o comportamento correto, e
+    não um esquecimento.

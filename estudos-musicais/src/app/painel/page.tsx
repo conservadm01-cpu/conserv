@@ -106,7 +106,9 @@ export default async function PaginaDoPainel() {
         ninguém — quem avalia é o instrutor.
       </p>
 
-      <nav className="mt-6 flex gap-3">
+      <nav className="mt-6 flex flex-wrap gap-3">
+        <Link href="/painel/turmas" className="botao">Turmas</Link>
+        {escopo.ehAdministracao && <Link href="/admin/metodos" className="botao-secundario">Central de métodos</Link>}
         <Link href="/assunto" className="botao-secundario">Índice por assunto</Link>
         <Link href="/sair" className="botao-secundario">Sair</Link>
       </nav>
