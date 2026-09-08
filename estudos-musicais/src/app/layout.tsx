@@ -3,7 +3,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Estudos Musicais',
-  description: 'Plataforma de estudos musicais: MSA e métodos de instrumento, com acompanhamento por comum e região.',
+  description: 'Plataforma de estudos musicais para vários métodos e instrumentos, '
+    + 'com acompanhamento por comum e região.',
   manifest: '/manifest.webmanifest',
 };
 

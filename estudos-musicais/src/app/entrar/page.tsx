@@ -35,7 +35,7 @@ export default async function PaginaDeEntrada({ searchParams }: { searchParams: 
       <div className="text-center">
         <p className="text-5xl">🎼</p>
         <h1 className="mt-2 font-titulo text-3xl">Estudos Musicais</h1>
-        <p className="text-sm text-tinta-fraca">Teoria do MSA e método do instrumento</p>
+        <p className="text-sm text-tinta-fraca">Os seus métodos e o seu instrumento</p>
       </div>
 
       {erro === 'credenciais' && <Aviso tom="alerta">E-mail ou senha incorretos.</Aviso>}
