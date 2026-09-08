@@ -413,7 +413,7 @@ npm run teste:preparar    # prepara o banco de testes (migrações, permissões,
 npm run teste:integracao  # autorização e isolamento contra PostgreSQL real
 ```
 
-60 testes unitários e 46 de integração.
+61 testes unitários e 47 de integração.
 
 Os de **autorização** tentam atravessar o escopo e exigem falha: ler aluno de outra comum,
 de outra região, trocar o id na URL, promover-se a instrutor, conceder medalha a si mesmo,
@@ -438,6 +438,20 @@ independentes, e que análise rejeitada não deixe currículo.
 Um teste vale por si: `nenhum analisador conhece o nome de um método` falha se alguém
 escrever o nome de um método na identidade de um analisador.
 
+### Uma varredura por perfil
+
+`testes/` cobre a lógica; para o resto, a plataforma foi percorrida **tela a tela
+com cada um dos sete perfis**. Foi assim que apareceram três falhas que nenhum
+teste de unidade pegaria — todas corrigidas, e agora com regressão:
+
+| O que estava errado | Como se manifestava |
+|---|---|
+| As telas de painel não tinham guarda de perfil | Um aluno abria `/painel`, `/painel/pessoas` e `/painel/cadastrar`. A RLS esvaziava os dados, mas tela de acompanhamento aberta e vazia não é resposta |
+| Matrícula conferia só a turma | Quem acompanha a comum de uma turma podia matricular nela **qualquer** pessoa do sistema, inclusive aluno de outra região |
+| Redefinir senha na própria ficha | Pulava a conferência da senha atual que a tela de troca faz |
+
+### Escrita mais larga que leitura
+
 Um defeito que só apareceu ao exercitar o sistema como um instrutor, e não como
 administrador: no PostgreSQL, `INSERT ... RETURNING` — que o Prisma usa em toda
 gravação — exige que a linha nova passe **também** pela política de leitura.
@@ -447,6 +461,11 @@ administração, com uma mensagem enganosa (`new row violates row-level security
 policy`). Corrigido em `20260908220000_corrige_leitura_apos_gravar`, com teste
 que grava **com** `RETURNING` — o teste anterior não reproduzia o caminho da
 aplicação e por isso passava.
+
+O mesmo descuido tinha uma terceira vítima, achada na auditoria de todas as
+políticas: matrícula. Onde a política de escrita for mais larga que a de leitura,
+a gravação passa e a devolução falha — a regra é manter escrita ⊆ leitura, e as
+duas foram alinhadas.
 
 Outros três defeitos reais foram pegos por estes testes durante o desenvolvimento: um vazamento em
 que o aluno enxergava colegas da própria comum; uma consulta de autorização que rodava sem

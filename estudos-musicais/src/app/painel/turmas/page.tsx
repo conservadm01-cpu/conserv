@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
-import { filtroDeComuns } from '@/lib/autorizacao.ts';
+import { filtroDeComuns, ehAcompanhante } from '@/lib/autorizacao.ts';
 import { configuracoesDoMetodo } from '@/lib/metodos/isolamento.ts';
 import { criteriosDoMetodo } from '@/lib/regras.ts';
 import { Cabecalho, Indicador, Aviso } from '@/componentes/basicos.tsx';
@@ -20,6 +20,8 @@ export default async function CentralDoInstrutor({
   searchParams,
 }: { searchParams: Promise<{ instrumento?: string; metodo?: string }> }) {
   const usuario = await usuarioDaTela();
+  // Área de acompanhamento: quem só estuda volta para o estudo.
+  if (!ehAcompanhante(usuario.escopo)) redirect('/aluno');
   const filtros = await searchParams;
 
   const dados = await comoUsuario(usuario.id, async (banco) => {

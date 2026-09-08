@@ -102,6 +102,17 @@ export function filtroDeComuns(escopo: EscopoDoUsuario): { in: string[] } | unde
 }
 
 /**
+ * Acompanha alguém? É quem tem qualquer papel além do de aluno.
+ *
+ * Separa as duas metades do sistema: a de quem estuda e a de quem acompanha.
+ * As telas de painel pedem isto antes de qualquer consulta — a RLS já esconde
+ * os dados de quem não deve vê-los, mas uma tela de acompanhamento aberta e
+ * vazia não é resposta: é confusão.
+ */
+export const ehAcompanhante = (escopo: EscopoDoUsuario) =>
+  escopo.papeis.some((papel) => papel !== 'ALUNO');
+
+/**
  * Onde cada um cai depois de entrar: quem só estuda vai para as suas jornadas,
  * quem acompanha vai para o painel.
  *
@@ -111,8 +122,7 @@ export function filtroDeComuns(escopo: EscopoDoUsuario): { in: string[] } | unde
  * voltava à tela de entrada mesmo já autenticado.
  */
 export function destinoInicial(escopo: EscopoDoUsuario): string {
-  const soAluno = escopo.papeis.length === 1 && escopo.papeis[0] === 'ALUNO';
-  return soAluno ? '/aluno' : '/painel';
+  return ehAcompanhante(escopo) ? '/painel' : '/aluno';
 }
 
 export class SemPermissao extends Error {

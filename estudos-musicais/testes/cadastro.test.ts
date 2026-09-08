@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EscopoDoUsuario, Papel } from '../src/lib/autorizacao.ts';
-import { destinoInicial } from '../src/lib/autorizacao.ts';
+import { destinoInicial, ehAcompanhante } from '../src/lib/autorizacao.ts';
 import {
   escoposQuePodeUsar, motivoDaRecusa, motivoDaRecusaDeEdicao, motivoDaRecusaDeRevogacao,
   motivoDaRecusaDeSituacao, normalizarLogin, papeisQuePodeConceder, podeCadastrar,
@@ -128,6 +128,18 @@ test('a senha provisória é legível e não se repete', () => {
   const senhas = new Set(Array.from({ length: 200 }, () => senhaProvisoria()));
   assert.ok(senhas.size > 190, 'praticamente todas distintas');
   for (const senha of senhas) assert.match(senha, /^[a-z]{4}-[a-z]{4}-\d{4}$/);
+});
+
+test('a área de acompanhamento é de quem acompanha alguém', () => {
+  // Regressão: as telas de painel abriam para aluno. Os dados vinham vazios
+  // pela RLS, mas tela de acompanhamento aberta e vazia não é resposta.
+  assert.equal(ehAcompanhante(escopo(['ALUNO'])), false);
+  for (const papel of ['INSTRUTOR', 'ANCIAO', 'ENCARREGADO_LOCAL', 'ENCARREGADO_REGIONAL',
+    'ADMIN_PEDAGOGICO', 'SUPERADMIN'] as Papel[]) {
+    assert.equal(ehAcompanhante(escopo([papel])), true, `${papel} acompanha alguém`);
+  }
+  // Quem estuda E acompanha continua entrando: basta um papel além de aluno.
+  assert.equal(ehAcompanhante(escopo(['ALUNO', 'INSTRUTOR'])), true);
 });
 
 test('cada perfil cai no seu lugar depois de entrar', () => {

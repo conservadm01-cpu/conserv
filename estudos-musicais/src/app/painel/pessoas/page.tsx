@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
-import { filtroDeComuns } from '@/lib/autorizacao.ts';
+import { filtroDeComuns, ehAcompanhante } from '@/lib/autorizacao.ts';
 import type { Papel } from '@/lib/autorizacao.ts';
 import { podeCadastrar, podeEditarUsuario, rotuloDoPapel } from '@/lib/cadastro.ts';
 import { Cabecalho, Indicador, Aviso } from '@/componentes/basicos.tsx';
@@ -27,6 +28,8 @@ export default async function PaginaDePessoas({
   searchParams,
 }: { searchParams: Promise<{ busca?: string; situacao?: string }> }) {
   const usuario = await usuarioDaTela();
+  // Área de acompanhamento: quem só estuda volta para o estudo.
+  if (!ehAcompanhante(usuario.escopo)) redirect('/aluno');
   const filtros = await searchParams;
   const busca = (filtros.busca ?? '').trim();
 

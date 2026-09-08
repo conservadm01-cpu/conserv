@@ -4,6 +4,7 @@ import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
 import { gerarHashDeSenha } from '@/lib/senha.ts';
 import type { Papel } from '@/lib/autorizacao.ts';
+import { ehAcompanhante } from '@/lib/autorizacao.ts';
 import {
   escoposQuePodeUsar, motivoDaRecusa, normalizarLogin, papeisQuePodeConceder,
   podeCadastrar, rotuloDoPapel, senhaProvisoria, type EscopoDeVinculo,
@@ -98,6 +99,8 @@ export default async function PaginaDeCadastro({
   searchParams,
 }: { searchParams: Promise<{ erro?: string; criado?: string; senha?: string }> }) {
   const usuario = await usuarioDaTela();
+  // Área de acompanhamento: quem só estuda volta para o estudo.
+  if (!ehAcompanhante(usuario.escopo)) redirect('/aluno');
   const { erro, criado, senha } = await searchParams;
 
   if (!podeCadastrar(usuario.escopo)) {

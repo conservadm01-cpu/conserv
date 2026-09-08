@@ -346,6 +346,32 @@ test('a função de escopo enxerga os vínculos do alvo, não os de quem pergunt
   assert.equal(daAdmin.pode, false);
 });
 
+test('matricular alguém exige enxergar essa pessoa', async () => {
+  // Regressão: a política conferia só a TURMA, então quem acompanha a comum
+  // dela podia matricular qualquer pessoa do sistema — inclusive aluno de
+  // outra região.
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const lucas = pessoas['lucas.aluno@exemplo.org']; // Curitiba, fora do escopo
+  const maria = pessoas['maria.aluna@exemplo.org']; // mesma comum de Paulo
+  const [turma] = (await dono.query(
+    `SELECT t.id FROM turmas t JOIN comuns c ON c.id = t."comumId"
+     WHERE c.codigo = 'COM-01' AND t."instrumentoId" IS NULL LIMIT 1`)).rows;
+
+  await assert.rejects(
+    () => comoUsuario(paulo,
+      `INSERT INTO matriculas_em_turma (id, "turmaId", "alunoId", "entradaEm")
+       VALUES ('teste-matricula-fora', $1, $2, now())`, [turma.id, lucas]),
+    /row-level security|violates/i,
+  );
+
+  const legitima = await comoUsuarioEmSequencia(paulo, [
+    [`DELETE FROM matriculas_em_turma WHERE "turmaId" = $1 AND "alunoId" = $2`, [turma.id, maria]],
+    [`INSERT INTO matriculas_em_turma (id, "turmaId", "alunoId", "entradaEm")
+      VALUES ('teste-matricula-ok', $1, $2, now()) RETURNING id`, [turma.id, maria]],
+  ]);
+  assert.equal(legitima[1].rows.length, 1, 'a matrícula da própria comum passa, com RETURNING');
+});
+
 // ------------------------------------------------------------------ turmas
 
 test('turma e matrícula são legíveis sem que as políticas entrem em recursão', async () => {

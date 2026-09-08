@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
+import { ehAcompanhante } from '@/lib/autorizacao.ts';
 import { Cabecalho, Indicador, Aviso, SeloDeConferencia } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,8 @@ const SITUACAO_DA_ANALISE: Record<string, string> = {
  */
 export default async function CentralDeMetodos() {
   const usuario = await usuarioDaTela();
+  // Área de acompanhamento: quem só estuda volta para o estudo.
+  if (!ehAcompanhante(usuario.escopo)) redirect('/aluno');
   if (!usuario.escopo.ehAdministracao) {
     return (
       <main className="mx-auto max-w-2xl p-6">

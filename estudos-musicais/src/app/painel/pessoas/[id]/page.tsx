@@ -4,6 +4,7 @@ import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
 import { gerarHashDeSenha } from '@/lib/senha.ts';
 import type { EscopoDoUsuario, Papel } from '@/lib/autorizacao.ts';
+import { ehAcompanhante } from '@/lib/autorizacao.ts';
 import {
   escoposQuePodeUsar, motivoDaRecusa, motivoDaRecusaDeEdicao, motivoDaRecusaDeRevogacao,
   motivoDaRecusaDeSituacao, normalizarLogin, papeisQuePodeConceder, rotuloDoPapel,
@@ -151,6 +152,11 @@ async function redefinirSenha(dadosDoFormulario: FormData) {
 
   const recusa = motivoDaRecusaDeEdicao(quemEdita.escopo, paraEdicao(carregado.pessoa));
   if (recusa) voltarCom(id, 'erro', recusa);
+  // A própria senha se troca em /trocar-senha, que confere a atual. Redefinir
+  // aqui pularia essa conferência para quem já está com a sessão aberta.
+  if (id === quemEdita.id) {
+    voltarCom(id, 'erro', 'Para trocar a sua própria senha, use a tela de troca de senha.');
+  }
 
   const senha = senhaProvisoria();
   const senhaHash = await gerarHashDeSenha(senha);
@@ -267,6 +273,8 @@ export default async function PaginaDaPessoa({
 }) {
   const { id } = await params;
   const usuario = await usuarioDaTela();
+  // Área de acompanhamento: quem só estuda volta para o estudo.
+  if (!ehAcompanhante(usuario.escopo)) redirect('/aluno');
   const { erro, ok, senha } = await searchParams;
 
   const carregado = await carregar(usuario, id);
@@ -383,6 +391,16 @@ export default async function PaginaDaPessoa({
           )}
         </div>
 
+        {ehVoce ? (
+          <p className="mt-2 text-xs text-tinta-fraca">
+            Você não concede perfil a si mesmo — quem amplia o seu acesso é outra pessoa da
+            administração.
+          </p>
+        ) : concede.length === 0 ? (
+          <p className="mt-2 text-xs text-tinta-fraca">
+            O seu perfil não concede perfis.
+          </p>
+        ) : (
         <form action={concederVinculo} className="cartao mt-2 flex flex-col gap-4">
           <input type="hidden" name="id" value={pessoa.id} />
           <p className="rotulo">Conceder outro perfil</p>
@@ -430,6 +448,7 @@ export default async function PaginaDaPessoa({
           </div>
           <button type="submit" className="botao-secundario">Conceder perfil</button>
         </form>
+        )}
       </section>
 
       {/* ---------------------------------------------------------- acesso */}
@@ -449,15 +468,25 @@ export default async function PaginaDaPessoa({
             </button>
           </form>
 
-          <form action={redefinirSenha} className="cartao mt-2 flex flex-col gap-3">
-            <input type="hidden" name="id" value={pessoa.id} />
-            <p className="rotulo">Senha</p>
-            <p className="text-sm text-tinta-fraca">
-              Gera uma provisória para entregar em mãos, encerra as sessões abertas e obriga
-              a troca na entrada seguinte. Você não escolhe a senha de ninguém.
-            </p>
-            <button type="submit" className="botao-secundario">Redefinir senha</button>
-          </form>
+          {ehVoce ? (
+            <div className="cartao mt-2 flex flex-col gap-3">
+              <p className="rotulo">Senha</p>
+              <p className="text-sm text-tinta-fraca">
+                A sua própria senha se troca informando a atual — não se redefine por aqui.
+              </p>
+              <Link href="/trocar-senha" className="botao-secundario">Trocar a minha senha</Link>
+            </div>
+          ) : (
+            <form action={redefinirSenha} className="cartao mt-2 flex flex-col gap-3">
+              <input type="hidden" name="id" value={pessoa.id} />
+              <p className="rotulo">Senha</p>
+              <p className="text-sm text-tinta-fraca">
+                Gera uma provisória para entregar em mãos, encerra as sessões abertas e obriga
+                a troca na entrada seguinte. Você não escolhe a senha de ninguém.
+              </p>
+              <button type="submit" className="botao-secundario">Redefinir senha</button>
+            </form>
+          )}
         </div>
       </section>
 
