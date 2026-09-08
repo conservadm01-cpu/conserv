@@ -10,6 +10,7 @@ import { iniciarJogo, pararJogo } from './jogos.js';
 import { baixarCertificado, dataPorExtenso, imprimirCertificado, montarCertificado, svgDoCertificado } from './certificado.js';
 import { salvarArquivo } from './download.js';
 import { validarSenha } from './senha.js';
+import { CAMPOS_DA_FICHA, CAMPOS_DO_MINISTERIO, camposFaltando, fichaCompleta, formatarWhatsapp, primeiroErro, validarFicha } from './ficha.js';
 import { efeito } from './audio.js';
 
 const tela = () => document.getElementById('tela');
@@ -51,14 +52,66 @@ const trilhas = () => {
 
 const contextoDaFase = (fase) => (fase ? fase.contexto : null);
 
-function seletorDeInstrumento(selecionado = '') {
-  return `<select id="instrumento" class="campo">
+function seletorDeInstrumento(selecionado = '', id = 'campo-instrumento') {
+  return `<select id="${id}" class="campo">
     <option value="">— ainda não definido —</option>
     ${INSTRUMENTOS_POR_FAMILIA.map((g) => `<optgroup label="${escapar(g.nome)}">
       ${g.lista.map((i) => `<option value="${i.id}" ${i.id === selecionado ? 'selected' : ''}>${escapar(i.nome)}</option>`).join('')}
     </optgroup>`).join('')}
   </select>`;
 }
+
+// A mesma ficha aparece no primeiro acesso, na complementação, nos ajustes do
+// aluno e no cadastro feito pelo instrutor — por isso é montada num lugar só.
+const GRUPOS_DA_FICHA = [
+  { titulo: 'Dados do aluno', campos: ['nome', 'comum', 'instrumento'] },
+  { titulo: 'Ministério local', campos: CAMPOS_DO_MINISTERIO, ministerio: true },
+  { titulo: 'Contato', campos: ['email', 'whatsapp'] },
+];
+
+function campoDaFicha(campo, valores, erros) {
+  const valor = valores[campo.id] || '';
+  const erro = erros[campo.id];
+  const corpo = campo.tipo === 'instrumento'
+    ? seletorDeInstrumento(valor)
+    : `<input id="campo-${campo.id}" type="${campo.tipo}" class="campo${erro ? ' com-erro' : ''}"
+        value="${escapar(valor)}" maxlength="${campo.maximo || 80}"
+        ${campo.autocomplete ? `autocomplete="${campo.autocomplete}"` : ''}
+        ${campo.tipo === 'tel' ? 'inputmode="tel" data-mascara="whatsapp" placeholder="(11) 91234-5678"' : ''}>`;
+  return `<label for="campo-${campo.id}">${escapar(campo.rotulo)}</label>
+    ${corpo}
+    ${erro ? `<p class="erro-campo">${escapar(erro)}</p>`
+      : campo.dica ? `<p class="mini">${escapar(campo.dica)}</p>` : ''}`;
+}
+
+function camposDaFicha(valores = {}, erros = {}, { ministerioPendente = false } = {}) {
+  return GRUPOS_DA_FICHA.map((grupo) => `<h3 class="titulo-grupo">${grupo.titulo}</h3>
+    ${grupo.ministerio ? `<label class="opcao"><input type="checkbox" id="ministerio-pendente"
+        ${ministerioPendente ? 'checked' : ''}> Ainda não sei estes nomes — informo depois</label>` : ''}
+    <div ${grupo.ministerio ? 'id="area-ministerio"' : ''} ${grupo.ministerio && ministerioPendente ? 'hidden' : ''}>
+      ${grupo.campos.map((id) => campoDaFicha(CAMPOS_DA_FICHA.find((c) => c.id === id), valores, erros)).join('')}
+    </div>`).join('');
+}
+
+function camposDeSenha({ obrigatoria = true, jaTem = false, comConfirmacao = true } = {}) {
+  return `<h3 class="titulo-grupo">Acesso</h3>
+    ${obrigatoria ? '' : `<label class="opcao"><input type="checkbox" id="exige-senha" ${jaTem ? 'checked' : ''}>
+      Exigir senha para entrar</label>`}
+    <div id="area-senha" ${obrigatoria || jaTem ? '' : 'hidden'}>
+      <label for="senha">${jaTem ? 'Nova senha (em branco mantém a atual)' : 'Senha de acesso (mínimo 4 caracteres)'}</label>
+      <input id="senha" type="password" class="campo" autocomplete="new-password">
+      ${comConfirmacao ? `<label for="senha2">Repita a senha</label>
+        <input id="senha2" type="password" class="campo" autocomplete="new-password">` : ''}
+    </div>`;
+}
+
+const valoresDaFicha = () => {
+  const dados = {};
+  for (const campo of CAMPOS_DA_FICHA) dados[campo.id] = valor(`campo-${campo.id}`);
+  return dados;
+};
+
+let rascunho = null; // o que o aluno digitou, para não se perder quando dá erro
 
 // ================================================================= entrada
 function telaEntrada() {
@@ -129,20 +182,36 @@ function telaCadastro() {
     return `${cabecalho('Cadastro', '#/sair')}<p class="aviso">O instrutor desligou o autocadastro neste aparelho.
       Peça a ele para criar o seu acesso.</p>`;
   }
-  return `${cabecalho('Novo aluno', '#/sair')}
+  const dados = rascunho || {};
+  const erros = dados.erros || {};
+  return `${cabecalho('Primeiro acesso', '#/sair')}
     <section class="formulario">
       ${mostrarRecado()}
-      <label for="nome">Seu nome completo</label>
-      <input id="nome" type="text" class="campo" autocomplete="name" maxlength="60" placeholder="como deve sair no certificado">
-      <label for="instrumento">Instrumento que você toca</label>
-      ${seletorDeInstrumento()}
-      <label class="opcao"><input type="checkbox" id="exige-senha"> Proteger o meu acesso com senha</label>
-      <div id="area-senha" hidden>
-        <label for="senha">Senha (mínimo 4 caracteres)</label>
-        <input id="senha" type="password" class="campo" autocomplete="new-password">
-      </div>
+      <p>Preencha a sua ficha para começar. Estes dados ficam <b>só neste aparelho</b> e servem para o
+      instrutor organizar a turma.</p>
+      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+      ${camposDeSenha({ obrigatoria: true })}
       <button class="botao grande" data-acao="criar-aluno">Criar cadastro e começar</button>
       <a class="botao secundario" href="#/sair">Cancelar</a>
+    </section>`;
+}
+
+// Quem entrou antes de a ficha existir (ou cadastrado pelo instrutor sem todos
+// os campos) completa aqui antes de estudar.
+function telaFicha() {
+  const aluno = banco.alunoAtual();
+  if (!aluno) return telaEntrada();
+  const dados = rascunho || { ...aluno };
+  const erros = dados.erros || {};
+  const faltando = camposFaltando(aluno);
+  return `${cabecalho('Complete a sua ficha', '#/sair')}
+    <section class="formulario">
+      ${mostrarRecado()}
+      <p>Antes de começar a estudar, precisamos de ${faltando.length === 1 ? 'mais um dado' : `mais ${faltando.length} dados`}.
+      Fica tudo <b>só neste aparelho</b>.</p>
+      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+      <button class="botao grande" data-acao="salvar-ficha" data-id="${aluno.id}">Salvar e começar</button>
+      <a class="botao secundario" href="#/sair">Sair</a>
     </section>`;
 }
 
@@ -166,12 +235,14 @@ function telaAdmin() {
       ${alunos.length ? alunos.map((u) => {
         const r = banco.resumoDoAluno(u.id);
         const instrumento = instrumentoPorId(u.instrumento);
+        const incompleta = camposFaltando(u).length;
         return `<a class="cartao-aluno painel" href="#/instrutor/aluno/${u.id}">
           <span class="inicial">${escapar(u.nome.trim().charAt(0).toUpperCase())}</span>
           <span class="dados">
             <strong>${escapar(u.nome)}</strong>
-            <small>${instrumento ? escapar(instrumento.nome) : 'sem instrumento'} · ${u.exigeSenha ? 'com senha' : 'sem senha'}</small>
+            <small>${instrumento ? escapar(instrumento.nome) : 'sem instrumento'}${u.comum ? ` · ${escapar(u.comum)}` : ''} · ${u.exigeSenha ? 'com senha' : 'sem senha'}</small>
             <small>${r.aprovadas} fases · ${r.certificados} certificados · última atividade ${data(r.ultimaAtividade)}</small>
+            ${incompleta ? '<small class="pendente">ficha incompleta</small>' : ''}
           </span>
           <span class="cadeado">›</span></a>`;
       }).join('') : '<p class="aviso">Nenhum aluno cadastrado ainda.</p>'}
@@ -186,35 +257,40 @@ function telaAdmin() {
         ${banco.permiteAutocadastro() ? 'checked' : ''}> Permitir que o próprio aluno crie o seu cadastro</label>
       <p class="mini">Desligado, só o instrutor cadastra alunos neste aparelho.</p>
       <div class="acoes">
+        <button class="botao secundario" data-acao="exportar-fichas">Exportar a lista de alunos (planilha)</button>
         <button class="botao secundario" data-acao="exportar">Exportar tudo (cópia de segurança)</button>
         <button class="botao secundario" data-acao="importar">Importar cópia</button>
         <button class="botao perigo" data-acao="apagar">Apagar tudo deste aparelho</button>
       </div>
       <input type="file" id="arquivo-progresso" accept="application/json" hidden>
     </section>
-    <p class="rodape">Aviso: o app roda inteiro no aparelho, sem servidor. As senhas ficam guardadas em resumo
-    (hash), mas esta é uma portaria de organização, não uma proteção contra quem sabe abrir o código da página.</p>`;
+    <p class="rodape">Aviso: o app roda inteiro no aparelho, sem servidor. As fichas dos alunos — inclusive
+    e-mail e WhatsApp — ficam guardadas apenas aqui, e as senhas em resumo (hash). Esta é uma portaria de
+    organização, não uma proteção contra quem sabe abrir o código da página; a cópia de segurança exportada
+    contém dados pessoais e deve ser guardada com o mesmo cuidado de uma lista de presença.</p>`;
 }
 
 function telaAdminAluno(id) {
   const usuario = banco.usuarioPorId(id);
   if (!usuario) return telaAdmin();
+  const dados = rascunho && rascunho.id === id ? rascunho : { ...usuario };
+  const erros = dados.erros || {};
   const r = banco.resumoDoAluno(id);
   const certificados = banco.certificados(id);
+  const faltando = camposFaltando(usuario);
+  const zap = (usuario.whatsapp || '').replace(/\D/g, '');
   return `${cabecalho(usuario.nome, '#/instrutor')}
     ${mostrarRecado()}
+    ${faltando.length ? `<p class="recado alerta">Ficha incompleta: falta ${faltando.length === 1 ? 'informar' : 'informar'}
+      ${faltando.map((c) => CAMPOS_DA_FICHA.find((x) => x.id === c).rotulo.toLowerCase()).join(', ')}.</p>` : ''}
+    ${usuario.email || zap ? `<div class="contatos">
+      ${usuario.email ? `<a class="contato" href="mailto:${escapar(usuario.email)}">✉️ ${escapar(usuario.email)}</a>` : ''}
+      ${zap ? `<a class="contato" href="https://wa.me/55${zap}" target="_blank" rel="noopener">💬 ${escapar(usuario.whatsapp)}</a>` : ''}
+    </div>` : ''}
     <section class="formulario">
-      <label for="nome">Nome</label>
-      <input id="nome" type="text" class="campo" value="${escapar(usuario.nome)}" maxlength="60">
-      <label for="instrumento">Instrumento</label>
-      ${seletorDeInstrumento(usuario.instrumento)}
-      <label class="opcao"><input type="checkbox" id="exige-senha" ${usuario.exigeSenha ? 'checked' : ''}>
-        Exigir senha para este aluno entrar</label>
-      <div id="area-senha" ${usuario.exigeSenha ? '' : 'hidden'}>
-        <label for="senha">${usuario.exigeSenha ? 'Nova senha (deixe em branco para manter a atual)' : 'Senha (mínimo 4 caracteres)'}</label>
-        <input id="senha" type="password" class="campo" autocomplete="new-password">
-      </div>
-      <button class="botao grande" data-acao="salvar-aluno" data-id="${id}">Salvar</button>
+      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+      ${camposDeSenha({ obrigatoria: false, jaTem: usuario.exigeSenha, comConfirmacao: false })}
+      <button class="botao grande" data-acao="salvar-aluno" data-id="${id}">Salvar ficha</button>
     </section>
     <h3 class="titulo-secao">Progresso</h3>
     <section class="resumo-topo">
@@ -232,18 +308,13 @@ function telaAdminAluno(id) {
 }
 
 function telaAdminNovo() {
+  const dados = rascunho || {};
+  const erros = dados.erros || {};
   return `${cabecalho('Cadastrar aluno', '#/instrutor')}
     <section class="formulario">
       ${mostrarRecado()}
-      <label for="nome">Nome completo</label>
-      <input id="nome" type="text" class="campo" maxlength="60" placeholder="como deve sair no certificado">
-      <label for="instrumento">Instrumento</label>
-      ${seletorDeInstrumento()}
-      <label class="opcao"><input type="checkbox" id="exige-senha"> Exigir senha para este aluno entrar</label>
-      <div id="area-senha" hidden>
-        <label for="senha">Senha (mínimo 4 caracteres)</label>
-        <input id="senha" type="password" class="campo" autocomplete="new-password">
-      </div>
+      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+      ${camposDeSenha({ obrigatoria: false, comConfirmacao: false })}
       <button class="botao grande" data-acao="criar-aluno-admin">Cadastrar</button>
     </section>`;
 }
@@ -301,6 +372,9 @@ function telaInicial() {
     </section>
     ${banco.emModoTeste() ? `<p class="faixa-teste">Modo de demonstração: todas as fases já estão abertas,
       é só entrar e experimentar.</p>` : ''}
+    ${banco.fichaDoAlunoFaltando().length ? `<p class="recado alerta">A sua ficha está incompleta —
+      falta informar ${banco.fichaDoAlunoFaltando().map((c) => CAMPOS_DA_FICHA.find((x) => x.id === c).rotulo.toLowerCase()).join(', ')}.
+      <a href="#/ficha">Completar agora</a>.</p>` : ''}
     <nav class="atalhos">
       <a href="#/certificados" class="atalho">🏅 Certificados</a>
       <a href="#/sobre" class="atalho">ℹ️ Ajustes</a>
@@ -558,21 +632,15 @@ function telaCertificado(faseId) {
 function telaSobre() {
   const aluno = banco.alunoAtual();
   if (!aluno) return telaEntrada();
+  const dados = rascunho && rascunho.id === aluno.id ? rascunho : { ...aluno };
+  const erros = dados.erros || {};
   const t = trilhas();
   const total = t.todas.reduce((soma, f) => soma + totalDeVariantes(f.id, f.contexto), 0);
-  return `${cabecalho('Ajustes')}
+  return `${cabecalho('Minha ficha e ajustes')}
     ${mostrarRecado()}
     <section class="formulario">
-      <label for="nome">Nome no certificado</label>
-      <input id="nome" type="text" class="campo" value="${escapar(aluno.nome)}" maxlength="60">
-      <label for="instrumento">Meu instrumento</label>
-      ${seletorDeInstrumento(aluno.instrumento)}
-      <label class="opcao"><input type="checkbox" id="exige-senha" ${aluno.exigeSenha ? 'checked' : ''}>
-        Pedir senha para entrar no meu cadastro</label>
-      <div id="area-senha" ${aluno.exigeSenha ? '' : 'hidden'}>
-        <label for="senha">${aluno.exigeSenha ? 'Nova senha (em branco mantém a atual)' : 'Senha (mínimo 4 caracteres)'}</label>
-        <input id="senha" type="password" class="campo" autocomplete="new-password">
-      </div>
+      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+      ${camposDeSenha({ obrigatoria: false, jaTem: aluno.exigeSenha, comConfirmacao: false })}
       <button class="botao grande" data-acao="salvar-perfil" data-id="${aluno.id}">Salvar</button>
     </section>
     <section class="sobre">
@@ -587,9 +655,9 @@ function telaSobre() {
       Cada pergunta recebe uma assinatura; as que você já respondeu ficam guardadas neste aparelho e saem
       do sorteio seguinte.</p>
       <h3>Seus dados</h3>
-      <p>Nome, progresso e certificados ficam apenas neste aparelho. Não há servidor nem cadastro na internet.
-      A senha é guardada em resumo (hash), mas o app roda todo no navegador: serve para organizar o acesso,
-      não para proteger dados sigilosos.</p>
+      <p>A sua ficha, o progresso e os certificados ficam apenas neste aparelho. Não há servidor nem cadastro
+      na internet. A senha é guardada em resumo (hash), mas o app roda todo no navegador: serve para organizar
+      o acesso, não para proteger dados sigilosos.</p>
       <div class="acoes">
         <button class="botao secundario" data-acao="exportar">Exportar cópia de segurança</button>
         <a class="botao secundario" href="#/sair">Sair desta conta</a>
@@ -622,6 +690,8 @@ function desenhar() {
     else html = telaAdmin();
   } else if (!logado) html = telaEntrada();
   else if (banco.ehAdmin()) { ir('#/instrutor'); return; }
+  else if (!banco.fichaDoAlunoLiberada() && partes[0] !== 'ficha') { ir('#/ficha'); return; }
+  else if (partes[0] === 'ficha') html = telaFicha();
   else if (!partes.length) html = telaInicial();
   else if (partes[0] === 'sobre') html = telaSobre();
   else if (partes[0] === 'certificados') html = telaCertificados();
@@ -638,6 +708,7 @@ function desenhar() {
     tela().innerHTML = html;
     tela().scrollTop = 0;
     window.scrollTo(0, 0);
+    rascunho = null;
   }
   if (depois) depois();
 }
@@ -663,33 +734,59 @@ function acoes(evento) {
       if (banco.entrarComoAdmin(valor('usuario'), valor('senha'))) { ir('#/instrutor'); }
       else { avisar('Usuário ou senha incorretos.', 'erro'); desenhar(); }
     } else if (acao === 'criar-aluno' || acao === 'criar-aluno-admin') {
-      const exige = marcado('exige-senha');
+      const peloAluno = acao === 'criar-aluno';
+      const ficha = valoresDaFicha();
+      const ministerioPendente = marcado('ministerio-pendente');
+      const exige = peloAluno ? true : marcado('exige-senha');
       const senha = valor('senha');
-      if (exige) {
-        const erro = validarSenha(senha);
-        if (erro) { avisar(erro, 'erro'); desenhar(); return; }
+      const erros = validarFicha(ficha, { ministerioPendente });
+      if (peloAluno) {
+        const erroSenha = validarSenha(senha);
+        if (erroSenha) erros.senha = erroSenha;
+        else if (senha !== valor('senha2')) erros.senha = 'As duas senhas não conferem.';
+      } else if (exige) {
+        const erroSenha = validarSenha(senha);
+        if (erroSenha) erros.senha = erroSenha;
       }
-      const novo = banco.criarUsuario({ nome: valor('nome'), instrumento: valor('instrumento'), exigeSenha: exige, senha });
-      if (acao === 'criar-aluno') {
-        banco.entrarComoAluno(novo.id, senha);
-        avisar(`Bem-vindo, ${escapar(novo.nome.split(' ')[0])}! Comece pela Fase 1.`);
+      if (Object.keys(erros).length) {
+        rascunho = { ...ficha, ministerioPendente, erros };
+        avisar(primeiroErro(erros), 'erro');
+        desenhar();
+        return;
+      }
+      const criado = banco.criarUsuario({ ...ficha, exigeSenha: exige, senha });
+      rascunho = null;
+      if (peloAluno) {
+        banco.entrarComoAluno(criado.id, senha);
+        avisar(`Bem-vindo, ${escapar(criado.nome.split(' ')[0])}! Comece pela Fase 1.`);
         ir('#/');
       } else {
-        avisar(`Aluno ${escapar(novo.nome)} cadastrado.`);
+        avisar(`Aluno ${escapar(criado.nome)} cadastrado.`);
         ir('#/instrutor');
       }
-    } else if (acao === 'salvar-aluno' || acao === 'salvar-perfil') {
-      const exige = marcado('exige-senha');
-      const senha = valor('senha');
+    } else if (acao === 'salvar-aluno' || acao === 'salvar-perfil' || acao === 'salvar-ficha') {
+      const ficha = valoresDaFicha();
+      const ministerioPendente = marcado('ministerio-pendente');
       const usuario = banco.usuarioPorId(id);
-      if (exige && !senha && !usuario.senhaHash) { avisar('Defina uma senha para exigir senha na entrada.', 'erro'); desenhar(); return; }
+      const senha = valor('senha');
+      const exige = acao === 'salvar-ficha' ? usuario.exigeSenha : marcado('exige-senha');
+      const erros = validarFicha(ficha, { ministerioPendente });
+      if (exige && !senha && !usuario.senhaHash) erros.senha = 'Defina uma senha para exigir senha na entrada.';
       if (senha) {
-        const erro = validarSenha(senha);
-        if (erro) { avisar(erro, 'erro'); desenhar(); return; }
+        const erroSenha = validarSenha(senha);
+        if (erroSenha) erros.senha = erroSenha;
       }
-      banco.atualizarUsuario(id, { nome: valor('nome'), instrumento: valor('instrumento'), exigeSenha: exige, senha });
-      avisar('Cadastro salvo.');
-      desenhar();
+      if (Object.keys(erros).length) {
+        rascunho = { ...ficha, id, ministerioPendente, erros };
+        avisar(primeiroErro(erros), 'erro');
+        desenhar();
+        return;
+      }
+      banco.atualizarUsuario(id, { ...ficha, exigeSenha: exige, senha });
+      rascunho = null;
+      avisar('Ficha salva.');
+      if (acao === 'salvar-ficha') ir('#/');
+      else desenhar();
     } else if (acao === 'remover-aluno') {
       const usuario = banco.usuarioPorId(id);
       if (window.confirm(`Remover ${usuario.nome} e todo o progresso dele? Isto não tem volta.`)) {
@@ -724,6 +821,18 @@ function acoes(evento) {
       imprimirCertificado(banco.certificados().find((c) => String(c.faseId) === botao.dataset.fase));
     } else if (acao === 'baixar') {
       baixarCertificado(banco.certificados().find((c) => String(c.faseId) === botao.dataset.fase));
+    } else if (acao === 'exportar-fichas') {
+      const cabecalhos = ['Nome', 'Comum-congregação', 'Instrumento', 'Encarregado local', 'Encarregado regional',
+        'Ancião', 'E-mail', 'WhatsApp', 'Fases vencidas', 'Certificados', 'Última atividade'];
+      const celula = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const linhas = banco.usuarios().map((u) => {
+        const r = banco.resumoDoAluno(u.id);
+        const instrumento = instrumentoPorId(u.instrumento);
+        return [u.nome, u.comum, instrumento ? instrumento.nome : '', u.encarregadoLocal, u.encarregadoRegional,
+          u.anciao, u.email, u.whatsapp, r.aprovadas, r.certificados, data(r.ultimaAtividade)].map(celula).join(';');
+      });
+      const csv = `\ufeff${cabecalhos.map(celula).join(';')}\n${linhas.join('\n')}\n`;
+      salvarArquivo('alunos-estudo-musical.csv', new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     } else if (acao === 'exportar') {
       salvarArquivo('backup-estudo-musical.json', new Blob([banco.exportar()], { type: 'application/json' }));
     } else if (acao === 'importar') {
@@ -741,6 +850,11 @@ function acoes(evento) {
 }
 
 function mudancas(evento) {
+  if (evento.target.id === 'ministerio-pendente') {
+    const area = document.getElementById('area-ministerio');
+    if (area) area.hidden = evento.target.checked;
+    return;
+  }
   if (evento.target.id === 'exige-senha') {
     const area = document.getElementById('area-senha');
     if (area) area.hidden = !evento.target.checked;
@@ -770,6 +884,15 @@ function teclas(evento) {
   const principal = dentro.querySelector('[data-acao]');
   if (principal) { evento.preventDefault(); principal.click(); }
 }
+
+// Vai formatando o WhatsApp enquanto o aluno digita.
+document.addEventListener('input', (evento) => {
+  if (evento.target.dataset && evento.target.dataset.mascara === 'whatsapp') {
+    const posicaoNoFim = evento.target.selectionStart === evento.target.value.length;
+    evento.target.value = formatarWhatsapp(evento.target.value);
+    if (posicaoNoFim) evento.target.setSelectionRange(evento.target.value.length, evento.target.value.length);
+  }
+});
 
 document.addEventListener('click', acoes);
 document.addEventListener('change', mudancas);

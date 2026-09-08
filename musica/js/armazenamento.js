@@ -4,6 +4,7 @@
 // Nada sai do celular: não há servidor nem envio de dados.
 
 import { conferirSenha, criarHash } from './senha.js';
+import { CAMPOS_DA_FICHA, camposFaltando, fichaCompleta, fichaMinimaCompleta } from './ficha.js';
 
 const CHAVE = 'msa.escola.v1';
 const CHAVE_ANTIGA = 'msa.progresso.v1';
@@ -140,45 +141,67 @@ export const usuarios = () => ler().usuarios.slice().sort((a, b) => a.nome.local
 
 export const usuarioPorId = (id) => ler().usuarios.find((u) => u.id === id) || null;
 
-export function criarUsuario({ nome, instrumento = '', exigeSenha = false, senha = '' }) {
+const CAMPOS = CAMPOS_DA_FICHA.map((c) => c.id);
+
+const conferirNome = (nome, idAtual = null) => {
   const limpo = String(nome || '').trim();
   if (!limpo) throw new Error('O nome do aluno é obrigatório.');
-  const p = ler();
-  if (p.usuarios.some((u) => u.nome.toLowerCase() === limpo.toLowerCase())) {
+  if (ler().usuarios.some((u) => u.id !== idAtual && u.nome.toLowerCase() === limpo.toLowerCase())) {
     throw new Error('Já existe um aluno com esse nome.');
   }
+  return limpo;
+};
+
+export function criarUsuario(dados = {}) {
+  const nome = conferirNome(dados.nome);
+  const p = ler();
   const id = novoId();
-  const usuario = {
-    id, nome: limpo, instrumento, exigeSenha: Boolean(exigeSenha && senha), sal: id,
-    senhaHash: exigeSenha && senha ? criarHash(senha, id) : null,
-    criadoEm: new Date().toISOString(),
-  };
+  const usuario = { id, criadoEm: new Date().toISOString(), sal: id };
+  for (const campo of CAMPOS) usuario[campo] = String(dados[campo] || '').trim();
+  usuario.nome = nome;
+  usuario.senhaHash = dados.senha ? criarHash(dados.senha, id) : null;
+  usuario.exigeSenha = Boolean(dados.exigeSenha && usuario.senhaHash);
   p.usuarios.push(usuario);
   p.progressos[id] = progressoVazio();
   gravar();
   return usuario;
 }
 
-export function atualizarUsuario(id, { nome, instrumento, exigeSenha, senha }) {
+export function atualizarUsuario(id, dados = {}) {
   const usuario = usuarioPorId(id);
   if (!usuario) throw new Error('Aluno não encontrado.');
-  if (nome !== undefined) {
-    const limpo = String(nome).trim();
-    if (!limpo) throw new Error('O nome do aluno é obrigatório.');
-    if (ler().usuarios.some((u) => u.id !== id && u.nome.toLowerCase() === limpo.toLowerCase())) {
-      throw new Error('Já existe um aluno com esse nome.');
-    }
-    usuario.nome = limpo;
+  if (dados.nome !== undefined) usuario.nome = conferirNome(dados.nome, id);
+  for (const campo of CAMPOS) {
+    if (campo === 'nome' || dados[campo] === undefined) continue;
+    usuario[campo] = String(dados[campo] || '').trim();
   }
-  if (instrumento !== undefined) usuario.instrumento = instrumento;
-  if (senha) usuario.senhaHash = criarHash(senha, usuario.sal);
-  if (exigeSenha !== undefined) {
-    usuario.exigeSenha = Boolean(exigeSenha && usuario.senhaHash);
-    if (!exigeSenha) usuario.senhaHash = null;
+  if (dados.senha) usuario.senhaHash = criarHash(dados.senha, usuario.sal);
+  if (dados.exigeSenha !== undefined) {
+    usuario.exigeSenha = Boolean(dados.exigeSenha && usuario.senhaHash);
+    if (!dados.exigeSenha) usuario.senhaHash = null;
   }
   gravar();
   return usuario;
 }
+
+// A ficha do aluno está completa? É o que decide se o app pede o cadastro
+// antes de liberar o estudo.
+export const fichaDoAlunoCompleta = (id = null) => {
+  const usuario = id ? usuarioPorId(id) : alunoAtual();
+  return fichaCompleta(usuario);
+};
+
+export const fichaDoAlunoFaltando = (id = null) => {
+  const usuario = id ? usuarioPorId(id) : alunoAtual();
+  return camposFaltando(usuario);
+};
+
+// O estudo só é liberado com os dados essenciais; os nomes do ministério
+// podem ser informados depois.
+export const fichaDoAlunoLiberada = (id = null) => {
+  const usuario = id ? usuarioPorId(id) : alunoAtual();
+  return fichaMinimaCompleta(usuario);
+};
 
 export function removerUsuario(id) {
   const p = ler();
@@ -267,7 +290,15 @@ export function ativarModoTeste() {
   const p = ler();
   if (p.sessao) return;
   let demo = p.usuarios.find((u) => u.nome === 'Aluno de teste');
-  if (!demo) demo = criarUsuario({ nome: 'Aluno de teste', instrumento: 'violino' });
+  // A ficha da demonstração já vem preenchida (com dados de exemplo) para o
+  // visitante cair direto nas trilhas.
+  if (!demo) {
+    demo = criarUsuario({
+      nome: 'Aluno de teste', comum: 'Comum de demonstração', instrumento: 'violino',
+      encarregadoLocal: 'Encarregado local (exemplo)', encarregadoRegional: 'Encarregado regional (exemplo)',
+      anciao: 'Ancião (exemplo)', email: 'demonstracao@exemplo.com', whatsapp: '(11) 90000-0000',
+    });
+  }
   p.sessao = { tipo: 'aluno', id: demo.id };
   gravar();
 }

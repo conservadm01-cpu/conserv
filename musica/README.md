@@ -76,18 +76,43 @@ passar o app adiante por mensagem.
 | Perfil | Entra com | O que faz |
 |--------|-----------|-----------|
 | **Instrutor** | usuário `RENATO`, senha `CCB123` (de fábrica) | cadastra alunos, define instrumento e senha de cada um, acompanha o progresso, exporta cópia de segurança |
-| **Aluno** | o seu nome na lista, com senha se o cadastro exigir | estuda as duas trilhas, joga, faz avaliação e tira certificado |
+| **Aluno** | o seu nome na lista + a senha que criou no cadastro | estuda as duas trilhas, joga, faz avaliação e tira certificado |
+
+### A ficha do primeiro acesso
+
+No primeiro acesso o aluno preenche a ficha completa, e o app só libera o estudo depois disso:
+
+| Grupo | Campos |
+|-------|--------|
+| Dados do aluno | nome completo, **comum-congregação**, instrumento |
+| Ministério local | encarregado local, encarregado regional, ancião da localidade |
+| Contato | e-mail, WhatsApp (com DDD, formatado enquanto se digita) |
+| Acesso | senha de acesso + confirmação |
+
+O app confere cada campo: nome completo (com sobrenome), e-mail válido, WhatsApp com 10 ou 11
+dígitos, senha repetida igual. O que já foi digitado não se perde quando um campo é recusado.
+
+Se o aluno ainda não souber os nomes do **ministério local**, há a opção *"Ainda não sei estes
+nomes — informo depois"*: ele estuda normalmente, mas o app mostra um lembrete na tela inicial e
+o painel marca a ficha como **incompleta** até que sejam informados. Os demais campos são
+obrigatórios para entrar.
+
+O instrutor cadastra alunos pela mesma ficha, vê e-mail e WhatsApp como links (abre o e-mail ou a
+conversa no WhatsApp) e pode **exportar a lista da turma em planilha (CSV)** — nome, comum,
+instrumento, encarregados, ancião, contatos, fases vencidas e certificados.
 
 O app avisa enquanto a senha do instrutor for a de fábrica e oferece a troca no painel.
 Cada aluno tem **progresso, histórico de perguntas e certificados próprios** — o que um estuda
 não aparece no do outro. O painel tem uma chave para **ligar ou desligar o autocadastro**
 (o aluno criar o próprio acesso); desligado, só o instrutor cadastra.
 
-> **Sobre a senha, sem enfeite:** este app roda inteiro no aparelho, sem servidor. As senhas são
-> guardadas em **resumo SHA-256 com sal por usuário** (nunca em texto), mas a verificação acontece
-> no próprio navegador — é uma **portaria de organização**, boa para separar alunos e proteger o
-> painel do uso casual, e **não** uma proteção contra quem sabe abrir o código da página.
-> Segurança de verdade exige servidor.
+> **Sobre a senha e os dados, sem enfeite:** este app roda inteiro no aparelho, sem servidor. As
+> senhas são guardadas em **resumo SHA-256 com sal por usuário** (nunca em texto), mas a
+> verificação acontece no próprio navegador — é uma **portaria de organização**, boa para separar
+> alunos e proteger o painel do uso casual, e **não** uma proteção contra quem sabe abrir o código
+> da página. As fichas (inclusive e-mail e WhatsApp) ficam no armazenamento do navegador daquele
+> aparelho e saem dele apenas quando alguém exporta a cópia ou a planilha — que devem ser tratadas
+> com o mesmo cuidado de uma lista de presença. Segurança de verdade exige servidor.
 
 ## As dez fases da teoria (MSA)
 
@@ -194,12 +219,13 @@ musica/
     certificado.js      certificado em SVG, impressão e PNG
     armazenamento.js    progresso no localStorage
     senha.js            SHA-256 puro e conferência de senha
+    ficha.js            campos da ficha do aluno, validação e máscara
     conteudo/fases.js              as 10 fases do MSA e as suas lições
     conteudo/geradores.js          os 69 geradores de pergunta do MSA
     conteudo/instrumentos.js       os 21 instrumentos e a conta de transposição
     conteudo/fases-instrumento.js  as 4 fases e os 15 geradores do instrumento
     conteudo/trilhas.js            junta as duas trilhas do aluno
-  teste/                36 testes (node --test): teoria, acesso e instrumento
+  teste/                46 testes (node --test): teoria, acesso, ficha e instrumento
   ferramentas/gerar-unico.js  empacota tudo em um arquivo
   servidor.js           servidor estático mínimo, só com o Node
   sw.js                 service worker (funciona offline)
