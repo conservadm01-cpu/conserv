@@ -215,7 +215,7 @@ prisma/
 public/
   estudar/             o app de estudo (cópia de ../musica), servido em /estudar
 scripts/               iniciar, permissoes, publicar-banco, importar-metodo,
-                       semear, preparar-testes
+                       semear, preparar-testes, exportar-demonstracao
 testes/                unitários e de integração (banco real)
 ```
 

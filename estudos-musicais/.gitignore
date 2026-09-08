@@ -13,3 +13,5 @@ tsconfig.tsbuildinfo
 # público. Quem opera coloca o arquivo em dados/ conforme docs/importacao-msa.md.
 dados/*.xlsx
 dados/*.pdf
+# amostra gerada por scripts/exportar-demonstracao.ts
+dados/demonstracao.json

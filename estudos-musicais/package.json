@@ -25,7 +25,8 @@
     "teste:integracao": "node --experimental-strip-types --test testes/integracao/*.test.ts",
     "db:publicar": "node --experimental-strip-types scripts/publicar-banco.ts",
     "vercel-build": "npm run db:gerar && npm run db:publicar && next build",
-    "app:sincronizar": "rm -rf public/estudar && mkdir -p public/estudar && cp -r ../musica/js ../musica/css ../musica/icones public/estudar/"
+    "app:sincronizar": "rm -rf public/estudar && mkdir -p public/estudar && cp -r ../musica/js ../musica/css ../musica/icones public/estudar/",
+    "demonstracao:exportar": "node --experimental-strip-types scripts/exportar-demonstracao.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
