@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+src/gerado/
+armazenamento/
+.env
+.env.local
+*.dump
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Material de terceiros: o índice e o PDF do método ficam fora do repositório
+# público. Quem opera coloca o arquivo em dados/ conforme docs/importacao-msa.md.
+dados/*.xlsx
+dados/*.pdf

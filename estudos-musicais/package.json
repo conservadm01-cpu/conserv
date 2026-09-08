@@ -1,0 +1,46 @@
+{
+  "name": "estudos-musicais",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de estudos musicais — MSA e métodos de instrumento, com trilha pedagógica, avaliação e acompanhamento por comum e região",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:gerar": "prisma generate",
+    "db:migrar": "prisma migrate dev",
+    "db:aplicar": "prisma migrate deploy",
+    "db:politicas": "node scripts/aplicar-politicas.js",
+    "db:semear": "node --experimental-strip-types scripts/semear.ts",
+    "dados:importar": "node --experimental-strip-types scripts/importar-msa.ts",
+    "preparar": "npm run db:gerar && npm run db:aplicar && npm run db:politicas && npm run db:semear",
+    "teste": "node --experimental-strip-types --test testes/*.test.ts",
+    "teste:integracao": "node --experimental-strip-types --test testes/integracao/*.test.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "dotenv": "^17.4.2",
+    "next": "^16.3.4",
+    "pg": "^8.23.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "exceljs": "^4.4.0",
+    "postcss": "^8.4.49",
+    "prisma": "^7.10.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}

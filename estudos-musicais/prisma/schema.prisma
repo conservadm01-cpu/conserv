@@ -1,0 +1,1055 @@
+// Plataforma Estudos Musicais — modelo de dados.
+// Convenções: nomes em português; toda leitura de dados de aluno passa por
+// vínculo territorial (comum/região) resolvido no servidor, nunca pelo cliente.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/gerado/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================ território
+
+model Regiao {
+  id            String   @id @default(cuid())
+  nome          String
+  codigo        String?  @unique
+  cidadeUf      String?
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  comuns        Comum[]
+  vinculos      Vinculo[]
+
+  @@index([ativo])
+  @@map("regioes")
+}
+
+model Comum {
+  id            String   @id @default(cuid())
+  nome          String
+  codigo        String?  @unique
+  regiaoId      String
+  cidade        String
+  estado        String   @db.VarChar(2)
+  endereco      String?
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  regiao        Regiao   @relation(fields: [regiaoId], references: [id], onDelete: Restrict)
+  vinculos      Vinculo[]
+  alunos        PerfilAluno[]
+
+  @@unique([regiaoId, nome])
+  @@index([ativo])
+  @@map("comuns")
+}
+
+// ======================================================== pessoas e acesso
+
+enum StatusUsuario {
+  PENDENTE
+  ATIVO
+  INATIVO
+  BLOQUEADO
+}
+
+model Usuario {
+  id                  String        @id @default(cuid())
+  nomeCompleto        String
+  email               String        @unique
+  telefone            String?
+  nascimento          DateTime?     @db.Date
+  senhaHash           String
+  status              StatusUsuario @default(PENDENTE)
+  aceiteTermosEm      DateTime?
+  versaoPrivacidade   String?
+  ultimoAcessoEm      DateTime?
+  criadoEm            DateTime      @default(now())
+  atualizadoEm        DateTime      @updatedAt
+
+  vinculos            Vinculo[]      @relation("vinculosDoUsuario")
+  vinculosConcedidos  Vinculo[]      @relation("vinculosConcedidos")
+  perfilAluno         PerfilAluno?   @relation("perfilDoAluno")
+  alunosComoInstrutor PerfilAluno[]  @relation("instrutorDoAluno")
+  sessoes             Sessao[]
+  solicitacoes        Solicitacao[]  @relation("solicitante")
+  decisoes            Solicitacao[]  @relation("decisor")
+  auditorias          Auditoria[]
+  sessoesEstudo       SessaoEstudo[]
+  visualizacoes       VisualizacaoPagina[]
+  tempos              TempoDiario[]
+  progressoLicoes     ProgressoLicao[]
+  progressoFases      ProgressoFase[]
+  tentativas          TentativaAvaliacao[]  @relation("alunoDaTentativa")
+  correcoes           TentativaAvaliacao[]  @relation("corretorDaTentativa")
+  questoesRecebidas   QuestaoRecebida[]
+  envios              Envio[]        @relation("alunoDoEnvio")
+  avaliacoesFeitas    AvaliacaoEnvio[]
+  medalhas            Medalha[]      @relation("alunoDaMedalha")
+  medalhasConcedidas  Medalha[]      @relation("instrutorDaMedalha")
+  certificados        Certificado[]
+  importacoes         Importacao[]
+  questoesEscritas    Questao[]      @relation("autorDaQuestao")
+  questoesRevisadas   Questao[]      @relation("revisorDaQuestao")
+  arquivos            Arquivo[]
+
+  @@index([status])
+  @@map("usuarios")
+}
+
+enum Papel {
+  SUPERADMIN
+  ADMIN_PEDAGOGICO
+  INSTRUTOR
+  ENCARREGADO_LOCAL
+  ENCARREGADO_REGIONAL
+  ANCIAO
+  ALUNO
+}
+
+enum EscopoVinculo {
+  GLOBAL
+  REGIAO
+  COMUM
+}
+
+/// Um usuário pode ter vários vínculos; cada um carrega papel + escopo
+/// territorial. É a fonte única de autorização — nada vem do navegador.
+model Vinculo {
+  id            String        @id @default(cuid())
+  usuarioId     String
+  papel         Papel
+  escopo        EscopoVinculo
+  regiaoId      String?
+  comumId       String?
+  ativo         Boolean       @default(true)
+  concedidoPorId String?
+  concedidoEm   DateTime      @default(now())
+  revogadoEm    DateTime?
+  observacao    String?
+
+  usuario       Usuario  @relation("vinculosDoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  concedidoPor  Usuario? @relation("vinculosConcedidos", fields: [concedidoPorId], references: [id], onDelete: SetNull)
+  regiao        Regiao?  @relation(fields: [regiaoId], references: [id], onDelete: Cascade)
+  comum         Comum?   @relation(fields: [comumId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, papel, escopo, regiaoId, comumId])
+  @@index([usuarioId, ativo])
+  @@index([papel, ativo])
+  @@map("vinculos")
+}
+
+model Sessao {
+  id          String    @id @default(cuid())
+  usuarioId   String
+  tokenHash   String    @unique
+  criadaEm    DateTime  @default(now())
+  expiraEm    DateTime
+  encerradaEm DateTime?
+  ipHash      String?
+  navegador   String?
+
+  usuario     Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, expiraEm])
+  @@map("sessoes")
+}
+
+enum SituacaoAluno {
+  AGUARDANDO_APROVACAO
+  APROVADO
+  RECUSADO
+  DESATIVADO
+}
+
+model PerfilAluno {
+  id                     String        @id @default(cuid())
+  usuarioId              String        @unique
+  comumId                String
+  instrumentoId          String?
+  instrutorId            String?
+  encarregadoLocalNome   String?
+  encarregadoRegionalNome String?
+  anciaoNome             String?
+  situacao               SituacaoAluno @default(AGUARDANDO_APROVACAO)
+  aprovadoPorId          String?
+  aprovadoEm             DateTime?
+  responsavelNome        String?
+  responsavelParentesco  String?
+  responsavelTelefone    String?
+  responsavelEmail       String?
+  criadoEm               DateTime      @default(now())
+  atualizadoEm           DateTime      @updatedAt
+
+  usuario      Usuario      @relation("perfilDoAluno", fields: [usuarioId], references: [id], onDelete: Cascade)
+  comum        Comum        @relation(fields: [comumId], references: [id], onDelete: Restrict)
+  instrumento  Instrumento? @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  instrutor    Usuario?     @relation("instrutorDoAluno", fields: [instrutorId], references: [id], onDelete: SetNull)
+
+  @@index([comumId, situacao])
+  @@index([instrutorId])
+  @@map("perfis_aluno")
+}
+
+enum TipoSolicitacao {
+  TROCA_INSTRUMENTO
+  TRANSFERENCIA_COMUM
+  INCLUSAO_RESPONSAVEL
+  AVANCO_FASE
+  ACESSO
+}
+
+enum StatusSolicitacao {
+  ABERTA
+  DEFERIDA
+  INDEFERIDA
+  CANCELADA
+}
+
+model Solicitacao {
+  id           String            @id @default(cuid())
+  tipo         TipoSolicitacao
+  usuarioId    String
+  dados        Json
+  justificativa String?
+  status       StatusSolicitacao @default(ABERTA)
+  decididoPorId String?
+  decididoEm   DateTime?
+  parecer      String?
+  criadoEm     DateTime          @default(now())
+
+  usuario      Usuario  @relation("solicitante", fields: [usuarioId], references: [id], onDelete: Cascade)
+  decididoPor  Usuario? @relation("decisor", fields: [decididoPorId], references: [id], onDelete: SetNull)
+
+  @@index([status, tipo])
+  @@map("solicitacoes")
+}
+
+model Auditoria {
+  id          String   @id @default(cuid())
+  usuarioId   String?
+  acao        String
+  entidade    String
+  entidadeId  String?
+  antes       Json?
+  depois      Json?
+  ipHash      String?
+  criadoEm    DateTime @default(now())
+
+  usuario     Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidade, entidadeId])
+  @@index([criadoEm])
+  @@map("auditorias")
+}
+
+// ============================================================ instrumentos
+
+model CategoriaInstrumento {
+  id          String        @id @default(cuid())
+  nome        String        @unique
+  ordem       Int           @default(0)
+  ativo       Boolean       @default(true)
+  instrumentos Instrumento[]
+
+  @@map("categorias_instrumento")
+}
+
+enum Clave {
+  SOL
+  DO
+  FA
+}
+
+model Instrumento {
+  id                    String   @id @default(cuid())
+  nome                  String   @unique
+  categoriaId           String
+  afinacao              String   @default("Dó")
+  transposicaoGrau      Int      @default(0)
+  transposicaoSemitons  Int      @default(0)
+  transposicaoDescricao String?
+  clavePrincipal        Clave    @default(SOL)
+  clavesAlternativas    Clave[]  @default([])
+  extensaoEscrita       String?
+  observacoesTecnicas   String?
+  ativo                 Boolean  @default(true)
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  categoria             CategoriaInstrumento @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  alunos                PerfilAluno[]
+  metodos               InstrumentoMaterial[]
+  questoes              Questao[]
+
+  @@index([ativo])
+  @@map("instrumentos")
+}
+
+/// Métodos autorizados para cada instrumento, com os pré-requisitos de estudo.
+model InstrumentoMaterial {
+  instrumentoId String
+  materialId    String
+  observacao    String?
+
+  instrumento   Instrumento @relation(fields: [instrumentoId], references: [id], onDelete: Cascade)
+  material      Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@id([instrumentoId, materialId])
+  @@map("instrumentos_materiais")
+}
+
+// ================================================================ conteúdo
+
+enum TipoMaterial {
+  MSA
+  METODO_INSTRUMENTO
+  HINARIO
+  COMPLEMENTAR
+  APOIO
+  AVALIACAO_PRATICA
+}
+
+model Material {
+  id           String       @id @default(cuid())
+  tipo         TipoMaterial
+  nome         String
+  descricao    String?
+  notaDireitos String?
+  ativo        Boolean      @default(true)
+  criadoEm     DateTime     @default(now())
+
+  edicoes      Edicao[]
+  instrumentos InstrumentoMaterial[]
+  questoes     Questao[]
+  medalhas     Medalha[]
+  certificados Certificado[]
+
+  @@unique([tipo, nome])
+  @@map("materiais")
+}
+
+model Edicao {
+  id             String   @id @default(cuid())
+  materialId     String
+  rotulo         String
+  ano            Int?
+  mes            Int?
+  paginasArquivo Int?
+  observacao     String?
+  criadoEm       DateTime @default(now())
+
+  material       Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  fases          Fase[]
+
+  @@unique([materialId, rotulo])
+  @@map("edicoes")
+}
+
+model Fase {
+  id        String  @id @default(cuid())
+  edicaoId  String
+  numero    Int
+  nome      String
+  descricao String?
+  ordem     Int     @default(0)
+
+  edicao    Edicao  @relation(fields: [edicaoId], references: [id], onDelete: Cascade)
+  topicos   Topico[]
+  questoes  Questao[]
+  progresso ProgressoFase[]
+  medalhas  Medalha[]
+
+  @@unique([edicaoId, numero])
+  @@map("fases")
+}
+
+model Topico {
+  id      String @id @default(cuid())
+  faseId  String
+  codigo  String
+  nome    String
+  ordem   Int    @default(0)
+
+  fase    Fase   @relation(fields: [faseId], references: [id], onDelete: Cascade)
+  licoes  Licao[]
+  questoes Questao[]
+
+  @@unique([faseId, codigo])
+  @@map("topicos")
+}
+
+enum TipoLicao {
+  LEITURA_METRICA
+  LEITURA_RITMICA
+  CONSTRUCAO_ESCALA
+  HINO
+  PREPARATORIO_RITMICO
+  ATIVIDADE_APOIO
+  TEORIA
+}
+
+enum StatusConferencia {
+  CONFERIDO
+  PENDENTE_CONFERENCIA
+  DIVERGENTE
+}
+
+enum StatusPublicacao {
+  RASCUNHO
+  PUBLICADO
+  ARQUIVADO
+}
+
+/// A lição guarda a numeração ORIGINAL do exercício. As páginas e a clave
+/// ficam nas versões, porque o mesmo exercício aparece em Sol, Dó e Fá.
+model Licao {
+  id                String            @id @default(cuid())
+  topicoId          String
+  numeroOriginal    String
+  /// Distingue lições que dividem o mesmo rótulo no índice — por exemplo,
+  /// "Exemplo de construção" aparece uma vez para cada escala do tópico.
+  /// Vazio (não nulo) quando não há variante: em índice único, NULL não
+  /// impediria duplicatas.
+  variante          String            @default("")
+  titulo            String
+  tipo              TipoLicao
+  ordemPedagogica   Int               @default(0)
+  objetivos         String?
+  preRequisitos     String?
+  fonte             String?
+  observacoes       String?
+  statusConferencia StatusConferencia @default(PENDENTE_CONFERENCIA)
+  statusPublicacao  StatusPublicacao  @default(RASCUNHO)
+  versao            Int               @default(1)
+  criadoEm          DateTime          @default(now())
+  atualizadoEm      DateTime          @updatedAt
+
+  topico            Topico            @relation(fields: [topicoId], references: [id], onDelete: Cascade)
+  versoes           VersaoLicao[]
+  conteudos         Conteudo[]
+  atividades        Atividade[]
+  questoes          Questao[]
+  agrupamentos      LicaoAgrupamento[]
+  progresso         ProgressoLicao[]
+  visualizacoes     VisualizacaoPagina[]
+  batimentos        Batimento[]
+
+  @@unique([topicoId, numeroOriginal, variante])
+  @@index([tipo, statusPublicacao])
+  @@map("licoes")
+}
+
+model VersaoLicao {
+  id                   String            @id @default(cuid())
+  licaoId              String
+  clave                Clave
+  criterioClave        String?
+  paginaImpressaInicio Int?
+  paginaImpressaFim    Int?
+  paginaArquivoInicio  Int?
+  paginaArquivoFim     Int?
+  armadura             String?
+  escalaReferencia     String?
+  compassos            String[]          @default([])
+  tipoLeitura          String?
+  observacoes          String?
+  fonte                String?
+  statusConferencia    StatusConferencia @default(PENDENTE_CONFERENCIA)
+
+  licao                Licao             @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  visualizacoes        VisualizacaoPagina[]
+
+  @@unique([licaoId, clave])
+  @@index([escalaReferencia, clave])
+  @@map("versoes_licao")
+}
+
+enum TipoAgrupamento {
+  ESCALA
+  CLAVE
+  COMPASSO
+  TIPO_LEITURA
+  ASSUNTO
+}
+
+/// Navegação por assunto (escala → clave → compasso). É complementar à
+/// ordem oficial do método: agrupa sem duplicar a lição nem o histórico.
+model Agrupamento {
+  id      String          @id @default(cuid())
+  tipo    TipoAgrupamento
+  valor   String
+  rotulo  String
+  ordem   Int             @default(0)
+
+  licoes  LicaoAgrupamento[]
+
+  @@unique([tipo, valor])
+  @@map("agrupamentos")
+}
+
+model LicaoAgrupamento {
+  licaoId       String
+  agrupamentoId String
+
+  licao         Licao       @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  agrupamento   Agrupamento @relation(fields: [agrupamentoId], references: [id], onDelete: Cascade)
+
+  @@id([licaoId, agrupamentoId])
+  @@map("licoes_agrupamentos")
+}
+
+enum TipoConteudo {
+  TEXTO
+  PDF
+  IMAGEM
+  AUDIO
+  VIDEO
+  PARTITURA
+  EXERCICIO_INTERATIVO
+  QUESTIONARIO
+  TAREFA_PRATICA
+  SOLFEJO
+  EXECUCAO_INSTRUMENTAL
+}
+
+model Conteudo {
+  id        String       @id @default(cuid())
+  licaoId   String
+  tipo      TipoConteudo
+  titulo    String
+  corpo     String?
+  arquivoId String?
+  ordem     Int          @default(0)
+  publicado Boolean      @default(false)
+
+  licao     Licao        @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  arquivo   Arquivo?     @relation(fields: [arquivoId], references: [id], onDelete: SetNull)
+  batimentos Batimento[]
+
+  @@index([licaoId, ordem])
+  @@map("conteudos")
+}
+
+/// Todo arquivo é privado: o acesso passa por rota autenticada que confere
+/// o vínculo de quem pede e devolve URL temporária.
+model Arquivo {
+  id           String   @id @default(cuid())
+  chave        String   @unique
+  nomeOriginal String
+  mime         String
+  tamanho      Int
+  hashSha256   String?
+  enviadoPorId String?
+  criadoEm     DateTime @default(now())
+  retencaoAte  DateTime?
+
+  enviadoPor   Usuario? @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+  conteudos    Conteudo[]
+  enviosArquivo EnvioArquivo[]
+  certificados Certificado[]
+
+  @@map("arquivos")
+}
+
+// ============================================================== avaliações
+
+enum TipoQuestao {
+  MULTIPLA_ESCOLHA
+  VERDADEIRO_FALSO
+  ASSOCIACAO
+  ORDENACAO
+  RESPOSTA_CURTA
+  DISCURSIVA
+  IDENTIFICACAO_NOTAS
+  FIGURAS_E_PAUSAS
+  FORMULA_DE_COMPASSO
+  ARMADURA_E_ESCALA
+  LEITURA_RITMICA
+  AUDITIVA
+  PRATICA
+}
+
+enum StatusRevisao {
+  RASCUNHO
+  EM_REVISAO
+  APROVADA
+  ARQUIVADA
+}
+
+enum OrigemQuestao {
+  MANUAL
+  IMPORTADA
+  GERADA
+}
+
+model Questao {
+  id             String        @id @default(cuid())
+  materialId     String?
+  faseId         String?
+  topicoId       String?
+  licaoId        String?
+  instrumentoId  String?
+  categoriaId    String?
+  tipo           TipoQuestao
+  enunciado      String
+  alternativas   Json?
+  resposta       Json
+  explicacao     String?
+  paginaReferencia Int?
+  dificuldade    Int           @default(1)
+  tags           String[]      @default([])
+  statusRevisao  StatusRevisao @default(RASCUNHO)
+  origem         OrigemQuestao @default(MANUAL)
+  autorId        String?
+  revisorId      String?
+  versao         Int           @default(1)
+  criadoEm       DateTime      @default(now())
+  atualizadoEm   DateTime      @updatedAt
+
+  material       Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  fase           Fase?         @relation(fields: [faseId], references: [id], onDelete: SetNull)
+  topico         Topico?       @relation(fields: [topicoId], references: [id], onDelete: SetNull)
+  licao          Licao?        @relation(fields: [licaoId], references: [id], onDelete: SetNull)
+  instrumento    Instrumento?  @relation(fields: [instrumentoId], references: [id], onDelete: SetNull)
+  autor          Usuario?      @relation("autorDaQuestao", fields: [autorId], references: [id], onDelete: SetNull)
+  revisor        Usuario?      @relation("revisorDaQuestao", fields: [revisorId], references: [id], onDelete: SetNull)
+  recebidas      QuestaoRecebida[]
+
+  @@index([faseId, statusRevisao])
+  @@index([instrumentoId, statusRevisao])
+  @@map("questoes")
+}
+
+enum EscopoAvaliacao {
+  LICAO
+  TOPICO
+  FASE
+  MATERIAL
+}
+
+model Avaliacao {
+  id                String          @id @default(cuid())
+  escopo            EscopoAvaliacao
+  referenciaId      String
+  nome              String
+  quantidadeQuestoes Int            @default(10)
+  notaMinima        Int             @default(70)
+  tentativasMax     Int?
+  regras            Json?
+  ativo             Boolean         @default(true)
+  criadoEm          DateTime        @default(now())
+
+  tentativas        TentativaAvaliacao[]
+
+  @@unique([escopo, referenciaId, nome])
+  @@map("avaliacoes")
+}
+
+model TentativaAvaliacao {
+  id            String    @id @default(cuid())
+  avaliacaoId   String
+  alunoId       String
+  iniciadaEm    DateTime  @default(now())
+  finalizadaEm  DateTime?
+  nota          Int?
+  aprovado      Boolean?
+  questoes      Json
+  respostas     Json?
+  corrigidaPorId String?
+  observacao    String?
+
+  avaliacao     Avaliacao @relation(fields: [avaliacaoId], references: [id], onDelete: Cascade)
+  aluno         Usuario   @relation("alunoDaTentativa", fields: [alunoId], references: [id], onDelete: Cascade)
+  corrigidaPor  Usuario?  @relation("corretorDaTentativa", fields: [corrigidaPorId], references: [id], onDelete: SetNull)
+  recebidas     QuestaoRecebida[]
+
+  @@index([alunoId, avaliacaoId])
+  @@map("tentativas_avaliacao")
+}
+
+/// Guarda o que cada aluno já recebeu, para a mesma pergunta nunca repetir.
+model QuestaoRecebida {
+  id          String   @id @default(cuid())
+  alunoId     String
+  questaoId   String?
+  assinatura  String
+  tentativaId String?
+  recebidaEm  DateTime @default(now())
+
+  aluno       Usuario  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  questao     Questao? @relation(fields: [questaoId], references: [id], onDelete: SetNull)
+  tentativa   TentativaAvaliacao? @relation(fields: [tentativaId], references: [id], onDelete: SetNull)
+
+  @@unique([alunoId, assinatura])
+  @@index([alunoId])
+  @@map("questoes_recebidas")
+}
+
+// ================================================== atividades práticas
+
+model Atividade {
+  id          String       @id @default(cuid())
+  licaoId     String
+  tipo        TipoConteudo
+  titulo      String
+  instrucoes  String?
+  criterios   Json?
+  obrigatoria Boolean      @default(true)
+  peso        Int          @default(1)
+  ativo       Boolean      @default(true)
+
+  licao       Licao        @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  envios      Envio[]
+
+  @@index([licaoId])
+  @@map("atividades")
+}
+
+enum EstadoEnvio {
+  NAO_INICIADA
+  EM_ANDAMENTO
+  ENVIADA
+  EM_AVALIACAO
+  CORRECAO_SOLICITADA
+  APROVADA
+  REPROVADA
+  DISPENSADA
+}
+
+model Envio {
+  id            String      @id @default(cuid())
+  atividadeId   String
+  alunoId       String
+  estado        EstadoEnvio @default(NAO_INICIADA)
+  tentativa     Int         @default(1)
+  comentario    String?
+  enviadoEm     DateTime?
+  atualizadoEm  DateTime    @updatedAt
+  criadoEm      DateTime    @default(now())
+
+  atividade     Atividade   @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  aluno         Usuario     @relation("alunoDoEnvio", fields: [alunoId], references: [id], onDelete: Cascade)
+  arquivos      EnvioArquivo[]
+  avaliacoes    AvaliacaoEnvio[]
+
+  @@unique([atividadeId, alunoId, tentativa])
+  @@index([estado])
+  @@map("envios")
+}
+
+model EnvioArquivo {
+  envioId   String
+  arquivoId String
+
+  envio     Envio   @relation(fields: [envioId], references: [id], onDelete: Cascade)
+  arquivo   Arquivo @relation(fields: [arquivoId], references: [id], onDelete: Cascade)
+
+  @@id([envioId, arquivoId])
+  @@map("envios_arquivos")
+}
+
+enum DecisaoAvaliacao {
+  APROVADO
+  CORRECAO_SOLICITADA
+  REPROVADO
+  DISPENSADO
+}
+
+model AvaliacaoEnvio {
+  id          String           @id @default(cuid())
+  envioId     String
+  avaliadorId String
+  decisao     DecisaoAvaliacao
+  nota        Int?
+  criterios   Json?
+  comentarios String?
+  criadoEm    DateTime         @default(now())
+
+  envio       Envio            @relation(fields: [envioId], references: [id], onDelete: Cascade)
+  avaliador   Usuario          @relation(fields: [avaliadorId], references: [id], onDelete: Restrict)
+
+  @@index([envioId])
+  @@map("avaliacoes_envio")
+}
+
+// ========================================================= tempo de estudo
+
+model SessaoEstudo {
+  id           String    @id @default(cuid())
+  usuarioId    String
+  inicio       DateTime  @default(now())
+  fim          DateTime?
+  ipHash       String?
+  dispositivo  String?
+  segundosAtivos Int     @default(0)
+
+  usuario      Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  batimentos   Batimento[]
+
+  @@index([usuarioId, inicio])
+  @@map("sessoes_estudo")
+}
+
+/// Batimento validado no servidor: o cliente diz onde está, o servidor decide
+/// quantos segundos valem, com teto por intervalo e sem contagem duplicada.
+model Batimento {
+  id             String   @id @default(cuid())
+  sessaoEstudoId String
+  licaoId        String?
+  conteudoId     String?
+  navegacaoId    String
+  recebidoEm     DateTime @default(now())
+  segundosValidos Int
+  visivel        Boolean  @default(true)
+
+  sessaoEstudo   SessaoEstudo @relation(fields: [sessaoEstudoId], references: [id], onDelete: Cascade)
+  licao          Licao?       @relation(fields: [licaoId], references: [id], onDelete: SetNull)
+  conteudo       Conteudo?    @relation(fields: [conteudoId], references: [id], onDelete: SetNull)
+
+  @@index([sessaoEstudoId, recebidoEm])
+  @@index([navegacaoId])
+  @@map("batimentos")
+}
+
+model VisualizacaoPagina {
+  id             String   @id @default(cuid())
+  usuarioId      String
+  licaoId        String
+  versaoLicaoId  String?
+  paginaImpressa Int?
+  navegacaoId    String
+  primeiraEm     DateTime @default(now())
+  ultimaEm       DateTime @default(now())
+  segundos       Int      @default(0)
+  acessos        Int      @default(1)
+
+  usuario        Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  licao          Licao        @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+  versaoLicao    VersaoLicao? @relation(fields: [versaoLicaoId], references: [id], onDelete: SetNull)
+
+  @@unique([navegacaoId])
+  @@index([usuarioId, licaoId])
+  @@map("visualizacoes_pagina")
+}
+
+model TempoDiario {
+  id                 String   @id @default(cuid())
+  usuarioId          String
+  dia                DateTime @db.Date
+  segundosSessao     Int      @default(0)
+  segundosAtivos     Int      @default(0)
+  segundosDedicacao  Int      @default(0)
+  paginasDistintas   Int      @default(0)
+  licoesIniciadas    Int      @default(0)
+  licoesConcluidas   Int      @default(0)
+
+  usuario            Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, dia])
+  @@index([dia])
+  @@map("tempos_diarios")
+}
+
+// ================================================ progresso, regras e prêmios
+
+enum TipoRegra {
+  PRE_REQUISITO_FASES
+  PERCENTUAL_APROVEITAMENTO
+  APROVACAO_INSTRUTOR
+  CONCLUSAO_CURSO
+}
+
+/// As regras pedagógicas ficam em tabela, com versão — nunca espalhadas
+/// pelo código. Cada progresso guarda a versão da regra que o liberou.
+model RegraProgressao {
+  id          String    @id @default(cuid())
+  codigo      String
+  versao      Int       @default(1)
+  tipo        TipoRegra
+  descricao   String
+  parametros  Json
+  ativo       Boolean   @default(true)
+  vigenteDe   DateTime  @default(now())
+  vigenteAte  DateTime?
+  criadoEm    DateTime  @default(now())
+
+  @@unique([codigo, versao])
+  @@map("regras_progressao")
+}
+
+enum EstadoProgresso {
+  NAO_INICIADO
+  EM_ANDAMENTO
+  CONCLUIDO
+  APROVADO
+  REPROVADO
+}
+
+model ProgressoLicao {
+  id           String          @id @default(cuid())
+  alunoId      String
+  licaoId      String
+  estado       EstadoProgresso @default(NAO_INICIADO)
+  peso         Int             @default(1)
+  iniciadoEm   DateTime?
+  concluidoEm  DateTime?
+  aprovadoEm   DateTime?
+  aprovadoPorId String?
+  atualizadoEm DateTime        @updatedAt
+
+  aluno        Usuario         @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  licao        Licao           @relation(fields: [licaoId], references: [id], onDelete: Cascade)
+
+  @@unique([alunoId, licaoId])
+  @@index([alunoId, estado])
+  @@map("progresso_licoes")
+}
+
+model ProgressoFase {
+  id            String          @id @default(cuid())
+  alunoId       String
+  faseId        String
+  estado        EstadoProgresso @default(NAO_INICIADO)
+  percentual    Int             @default(0)
+  aprovadoEm    DateTime?
+  aprovadoPorId String?
+  regraCodigo   String?
+  regraVersao   Int?
+  atualizadoEm  DateTime        @updatedAt
+
+  aluno         Usuario         @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  fase          Fase            @relation(fields: [faseId], references: [id], onDelete: Cascade)
+
+  @@unique([alunoId, faseId])
+  @@map("progresso_fases")
+}
+
+model Medalha {
+  id          String   @id @default(cuid())
+  alunoId     String
+  materialId  String
+  faseId      String?
+  codigo      String   @unique
+  concedidaEm DateTime @default(now())
+  instrutorId String?
+  regraCodigo String?
+  regraVersao Int?
+
+  aluno       Usuario  @relation("alunoDaMedalha", fields: [alunoId], references: [id], onDelete: Cascade)
+  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  fase        Fase?    @relation(fields: [faseId], references: [id], onDelete: SetNull)
+  instrutor   Usuario? @relation("instrutorDaMedalha", fields: [instrutorId], references: [id], onDelete: SetNull)
+
+  @@unique([alunoId, materialId, faseId])
+  @@map("medalhas")
+}
+
+model Certificado {
+  id                  String    @id @default(cuid())
+  alunoId             String
+  materialId          String?
+  trilha              String
+  fases               Json
+  emitidoEm           DateTime  @default(now())
+  cargaHorariaSegundos Int      @default(0)
+  codigo              String    @unique
+  arquivoId           String?
+  revogadoEm          DateTime?
+  revogadoMotivo      String?
+
+  aluno               Usuario   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  material            Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  arquivo             Arquivo?  @relation(fields: [arquivoId], references: [id], onDelete: SetNull)
+
+  @@index([alunoId])
+  @@map("certificados")
+}
+
+// ================================================== importação e fila
+
+enum TipoImportacao {
+  MSA_PLANILHA
+  MSA_PDF
+  COMUNS_CSV
+  REGIOES_CSV
+  ALUNOS_CSV
+  QUESTOES_CSV
+}
+
+enum StatusImportacao {
+  PREVIA
+  APLICADA
+  CANCELADA
+  ERRO
+}
+
+model Importacao {
+  id            String           @id @default(cuid())
+  tipo          TipoImportacao
+  nomeArquivo   String
+  hashArquivo   String?
+  executadaPorId String?
+  status        StatusImportacao @default(PREVIA)
+  resumo        Json?
+  iniciadaEm    DateTime         @default(now())
+  concluidaEm   DateTime?
+
+  executadaPor  Usuario?         @relation(fields: [executadaPorId], references: [id], onDelete: SetNull)
+  linhas        ImportacaoLinha[]
+
+  @@map("importacoes")
+}
+
+enum StatusLinha {
+  NOVO
+  ATUALIZADO
+  DUPLICADO
+  ERRO
+  PENDENTE_CONFERENCIA
+}
+
+model ImportacaoLinha {
+  id            String      @id @default(cuid())
+  importacaoId  String
+  numeroLinha   Int
+  dados         Json
+  status        StatusLinha
+  mensagem      String?
+
+  importacao    Importacao  @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+
+  @@index([importacaoId, status])
+  @@map("importacoes_linhas")
+}
+
+enum EstadoTarefa {
+  PENDENTE
+  PROCESSANDO
+  CONCLUIDA
+  FALHOU
+}
+
+/// Fila no próprio banco: sem depender de serviço externo pago. O driver é
+/// substituível (Redis/SQS) mantendo esta tabela como registro.
+model Tarefa {
+  id           String       @id @default(cuid())
+  tipo         String
+  carga        Json
+  estado       EstadoTarefa @default(PENDENTE)
+  tentativas   Int          @default(0)
+  rodarEm      DateTime     @default(now())
+  iniciadaEm   DateTime?
+  concluidaEm  DateTime?
+  erro         String?
+  criadoEm     DateTime     @default(now())
+
+  @@index([estado, rodarEm])
+  @@map("tarefas")
+}

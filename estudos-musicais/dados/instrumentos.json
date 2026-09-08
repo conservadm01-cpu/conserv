@@ -1,0 +1,290 @@
+[
+ {
+  "id": "violino",
+  "nome": "Violino",
+  "categoria": "Cordas",
+  "afinacao": "Dó",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Sol3 a Lá6",
+  "observacoesTecnicas": "afrouxar a crina do arco depois de tocar e limpar o breu do tampo com flanela seca"
+ },
+ {
+  "id": "viola",
+  "nome": "Viola",
+  "categoria": "Cordas",
+  "afinacao": "Dó",
+  "clavePrincipal": "DO",
+  "clavesAlternativas": [
+   "SOL"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Dó3 a Mi6",
+  "observacoesTecnicas": "afrouxar a crina do arco depois de tocar e limpar o breu do tampo com flanela seca"
+ },
+ {
+  "id": "violoncelo",
+  "nome": "Violoncelo",
+  "categoria": "Cordas",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [
+   "DO",
+   "SOL"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Dó2 a Lá5",
+  "observacoesTecnicas": "recolher o espigão antes de guardar e limpar o breu do tampo com flanela seca"
+ },
+ {
+  "id": "contrabaixo",
+  "nome": "Contrabaixo",
+  "categoria": "Cordas",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": -12,
+  "transposicaoDescricao": "soa uma oitava abaixo do escrito",
+  "extensaoEscrita": "Mi1 a Sol4 (soando)",
+  "observacoesTecnicas": "recolher o espigão, afrouxar a crina do arco e guardar em pé, apoiado com segurança"
+ },
+ {
+  "id": "flauta",
+  "nome": "Flauta transversal",
+  "categoria": "Madeiras",
+  "afinacao": "Dó",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Dó4 a Dó7",
+  "observacoesTecnicas": "passar a vareta com a flanela por dentro depois de tocar, para não deixar umidade nas sapatilhas"
+ },
+ {
+  "id": "oboe",
+  "nome": "Oboé",
+  "categoria": "Madeiras",
+  "afinacao": "Dó",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Si♭3 a Sol6",
+  "observacoesTecnicas": "guardar a palheta no estojo próprio, úmida mas nunca amassada, e secar o corpo por dentro"
+ },
+ {
+  "id": "corne",
+  "nome": "Corne inglês",
+  "categoria": "Madeiras",
+  "afinacao": "Fá",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -4,
+  "transposicaoSemitons": -7,
+  "transposicaoDescricao": "soa uma 5ª justa abaixo do escrito",
+  "extensaoEscrita": "Mi3 a Dó6 (escritos)",
+  "observacoesTecnicas": "guardar a palheta no estojo próprio e secar o tudel e o corpo por dentro"
+ },
+ {
+  "id": "clarinete",
+  "nome": "Clarinete",
+  "categoria": "Madeiras",
+  "afinacao": "Si♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -1,
+  "transposicaoSemitons": -2,
+  "transposicaoDescricao": "soa um tom (2ª maior) abaixo do escrito",
+  "extensaoEscrita": "Mi3 a Dó7 (escritos)",
+  "observacoesTecnicas": "tirar a palheta e guardá-la no porta-palheta, e passar a escovinha por dentro do corpo"
+ },
+ {
+  "id": "clarone",
+  "nome": "Clarone (clarinete baixo)",
+  "categoria": "Madeiras",
+  "afinacao": "Si♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -1,
+  "transposicaoSemitons": -14,
+  "transposicaoDescricao": "soa uma 9ª maior abaixo do escrito (um tom e uma oitava)",
+  "extensaoEscrita": "Mi3 a Sol6 (escritos)",
+  "observacoesTecnicas": "guardar a palheta no porta-palheta e secar o tudel, onde a umidade se acumula"
+ },
+ {
+  "id": "fagote",
+  "nome": "Fagote",
+  "categoria": "Madeiras",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [
+   "DO"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Si♭1 a Mi5",
+  "observacoesTecnicas": "esvaziar a água da culatra e guardar a palheta no estojo, sem amassar"
+ },
+ {
+  "id": "sax-soprano",
+  "nome": "Saxofone soprano",
+  "categoria": "Madeiras",
+  "afinacao": "Si♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -1,
+  "transposicaoSemitons": -2,
+  "transposicaoDescricao": "soa um tom (2ª maior) abaixo do escrito",
+  "extensaoEscrita": "Si♭3 a Fá6 (escritos)",
+  "observacoesTecnicas": "passar o pano de limpeza por dentro depois de tocar e guardar a palheta seca"
+ },
+ {
+  "id": "sax-alto",
+  "nome": "Saxofone alto",
+  "categoria": "Madeiras",
+  "afinacao": "Mi♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -5,
+  "transposicaoSemitons": -9,
+  "transposicaoDescricao": "soa uma 6ª maior abaixo do escrito",
+  "extensaoEscrita": "Si♭3 a Fá6 (escritos)",
+  "observacoesTecnicas": "passar o pano de limpeza por dentro depois de tocar e guardar a palheta seca"
+ },
+ {
+  "id": "sax-tenor",
+  "nome": "Saxofone tenor",
+  "categoria": "Madeiras",
+  "afinacao": "Si♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -1,
+  "transposicaoSemitons": -14,
+  "transposicaoDescricao": "soa uma 9ª maior abaixo do escrito (um tom e uma oitava)",
+  "extensaoEscrita": "Si♭3 a Fá6 (escritos)",
+  "observacoesTecnicas": "passar o pano de limpeza por dentro depois de tocar e guardar a palheta seca"
+ },
+ {
+  "id": "sax-baritono",
+  "nome": "Saxofone barítono",
+  "categoria": "Madeiras",
+  "afinacao": "Mi♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -5,
+  "transposicaoSemitons": -21,
+  "transposicaoDescricao": "soa uma 6ª maior mais uma oitava abaixo do escrito",
+  "extensaoEscrita": "Lá3 a Fá6 (escritos)",
+  "observacoesTecnicas": "passar o pano de limpeza por dentro depois de tocar e guardar a palheta seca"
+ },
+ {
+  "id": "trompete",
+  "nome": "Trompete",
+  "categoria": "Metais",
+  "afinacao": "Si♭",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [],
+  "transposicaoGrau": -1,
+  "transposicaoSemitons": -2,
+  "transposicaoDescricao": "soa um tom (2ª maior) abaixo do escrito",
+  "extensaoEscrita": "Fá♯3 a Dó6 (escritos)",
+  "observacoesTecnicas": "esvaziar a água pela chave, lavar o bocal e lubrificar os pistos com óleo próprio"
+ },
+ {
+  "id": "trompa",
+  "nome": "Trompa",
+  "categoria": "Metais",
+  "afinacao": "Fá",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [
+   "FA"
+  ],
+  "transposicaoGrau": -4,
+  "transposicaoSemitons": -7,
+  "transposicaoDescricao": "soa uma 5ª justa abaixo do escrito",
+  "extensaoEscrita": "Sol2 a Dó6 (escritos)",
+  "observacoesTecnicas": "esvaziar a água, lubrificar os rotores com óleo próprio e nunca forçar as bombas secas"
+ },
+ {
+  "id": "trombone",
+  "nome": "Trombone",
+  "categoria": "Metais",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [
+   "DO"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Mi2 a Si♭4",
+  "observacoesTecnicas": "manter a vara limpa e lubrificada com creme próprio e água, e nunca apoiar o instrumento pela vara"
+ },
+ {
+  "id": "bombardino",
+  "nome": "Bombardino",
+  "categoria": "Metais",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Mi2 a Si♭4",
+  "observacoesTecnicas": "esvaziar a água pela chave, lavar o bocal e lubrificar os pistos com óleo próprio"
+ },
+ {
+  "id": "tuba",
+  "nome": "Tuba",
+  "categoria": "Metais",
+  "afinacao": "Dó",
+  "clavePrincipal": "FA",
+  "clavesAlternativas": [],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Mi1 a Fá4",
+  "observacoesTecnicas": "esvaziar a água pela chave, lavar o bocal e guardar o instrumento apoiado, nunca deitado sobre a campana"
+ },
+ {
+  "id": "orgao",
+  "nome": "Órgão",
+  "categoria": "Teclados",
+  "afinacao": "Dó",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [
+   "FA"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "toda a extensão do teclado",
+  "observacoesTecnicas": "desligar e cobrir o instrumento após o culto, e nunca deixar copos ou objetos sobre o teclado"
+ },
+ {
+  "id": "acordeon",
+  "nome": "Acordeon",
+  "categoria": "Teclados",
+  "afinacao": "Dó",
+  "clavePrincipal": "SOL",
+  "clavesAlternativas": [
+   "FA"
+  ],
+  "transposicaoGrau": 0,
+  "transposicaoSemitons": 0,
+  "transposicaoDescricao": "soa exatamente como está escrito",
+  "extensaoEscrita": "Fá3 a Lá6 (mão direita)",
+  "observacoesTecnicas": "fechar o fole com o fecho antes de guardar e manter o instrumento em pé, longe da umidade"
+ }
+]
