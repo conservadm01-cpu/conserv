@@ -22,6 +22,7 @@ por **comum-congregação**, **região**, **instrumento** e **unidade do método
 ## Sumário
 
 - [Como rodar](#como-rodar)
+- [Acesso: cadastro fechado](#acesso-cadastro-fechado)
 - [Arquitetura](#arquitetura)
 - [Métodos, instrumentos e currículos](#métodos-instrumentos-e-currículos)
 - [Segurança e permissões](#segurança-e-permissões)
@@ -56,9 +57,10 @@ npm install && npm run preparar
 ```
 
 `papel-aplicacao.sql` cria o papel e pede superusuário; roda **uma vez**. As permissões
-ficam em `permissoes-aplicacao.sql`, rodam com o dono do schema e precisam rodar **depois de
-cada migração** (`npm run db:permissoes`), senão a tabela nova não chega ao papel da
-aplicação. `npm run preparar` já faz os dois na ordem certa.
+ficam em `scripts/permissoes.ts` e precisam rodar **depois de cada migração**
+(`npm run db:permissoes`): migração pode criar tabela que o papel da aplicação ainda não
+enxerga e recriar função que perde o `GRANT`. É script de Node, e não psql, para rodar
+igual aqui e no processo de publicação. `npm run preparar` já faz tudo na ordem certa.
 
 A semente monta três métodos, para a plataforma não parecer feita para um só:
 
@@ -71,7 +73,27 @@ A semente monta três métodos, para a plataforma não parecer feita para um só
 O método de cordas é **fictício e declarado como tal** (`dados/metodo-demonstracao.md`):
 existe para provar profundidade variável e critérios próprios, não para estudo.
 
+### Primeiro acesso de um sistema novo
+
+Banco vazio, sem nenhuma pessoa cadastrada:
+
+```bash
+npm run db:iniciar     # cria o PRIMEIRO administrador e mais ninguém
+```
+
+Ele entra com o nome (`Renato Monteiro`, sem diferenciar maiúsculas nem
+espaços a mais) ou com o e-mail, usando a senha inicial — e o sistema **exige a
+troca da senha antes de abrir qualquer outra tela**. A partir daí, todo cadastro
+é feito por quem já tem acesso.
+
+O script tem trava: se já existir qualquer usuário, ele não faz nada. Nome,
+login, e-mail e senha iniciais saem de `ADMIN_INICIAL_*` (ver `.env.example`).
+
 ### Acessos da demonstração
+
+`npm run db:semear` popula um cenário de demonstração — território, pessoas de
+cada perfil, três métodos e turmas. É o oposto de `db:iniciar`: serve para
+conhecer o sistema, não para começar um de verdade.
 
 Todos com a senha `Estudos2026` (trocar antes de qualquer uso real):
 
@@ -88,6 +110,45 @@ Todos com a senha `Estudos2026` (trocar antes de qualquer uso real):
 
 ---
 
+## Acesso: cadastro fechado
+
+**Não existe autocadastro.** Toda conta é criada por alguém que já tem acesso, e
+fica registrado quem a criou (`usuarios.criadoPorId`). A única conta sem
+responsável é a do primeiro administrador, que nasce com o sistema.
+
+### Quem cadastra quem
+
+| Quem cadastra | Pode conceder | Onde |
+|---|---|---|
+| Superadministrador | qualquer perfil | qualquer abrangência |
+| Administração pedagógica | todos, menos superadministrador | qualquer abrangência |
+| Encarregado regional | encarregado local, ancião, instrutor, aluno | comuns da sua região |
+| Encarregado local · ancião | instrutor, aluno | a sua comum |
+| Instrutor | aluno | a sua comum |
+| Aluno | ninguém | — |
+
+Um perfil **nunca concede acima de si**, e há teste que percorre a matriz
+inteira para garantir. A regra vive em `src/lib/cadastro.ts` (primeira cerca) e
+as políticas de RLS repetem o piso no banco (segunda cerca): quem não é
+administração só concede papel de campo, com escopo de comum, e apenas em comum
+que já acompanha — mesmo que a tela deixe passar.
+
+### A senha provisória
+
+Quem cadastra não escolhe a senha do outro: o sistema gera uma legível
+(`rimi-vuce-5849`), mostra **uma vez** para ser entregue em mãos, e marca a
+conta com `deveTrocarSenha`. Enquanto o dono não trocar, `usuarioDaTela()` traz
+qualquer rota de volta para a troca — a conta existe, mas não abre nada com uma
+senha que outra pessoa conhece. Ao trocar, as sessões abertas são encerradas.
+
+### Entrada por nome ou e-mail
+
+O login aceita os dois, com a mesma normalização de um lado e do outro
+(`app.normalizar_login` no banco, `normalizarLogin` na aplicação):
+`RENATO MONTEIRO`, `Renato Monteiro` e `renato  monteiro` caem no mesmo cadastro.
+
+---
+
 ## Arquitetura
 
 | Camada | Escolha | Por quê |
@@ -101,13 +162,16 @@ Todos com a senha `Estudos2026` (trocar antes de qualquer uso real):
 ```
 src/
   app/                 telas (App Router)
-    entrar/            login
+    entrar/            login por nome de acesso ou e-mail
+    trocar-senha/      troca obrigatória da senha provisória
+    estudar/           o app de estudo, servido dentro da plataforma
     aluno/             as jornadas do aluno (uma por método)
     jornada/[id]/      currículo, liberações e critérios daquele método
     assunto/           navegação método → escala → clave → compasso
     licao/[id]/        a lição, com proveniência e versões por clave
     painel/            acompanhamento de quem tem vínculo
     painel/turmas/     central do instrutor: instrumento → método → turma → unidade
+    painel/cadastrar/  cadastro de pessoas (única porta de entrada de uma conta)
     painel/aluno/[id]/ ficha do aluno (com checagem de escopo)
     admin/metodos/     central administrativa: métodos, currículos, fila de análises
   lib/
@@ -116,6 +180,7 @@ src/
     sessao.ts          cookie, abertura e encerramento de sessão
     senha.ts           scrypt com parâmetros embutidos no resumo
     regras.ts          cálculo das regras pedagógicas e critérios por método
+    cadastro.ts        quem pode cadastrar quem, com qual papel e onde
     metodos/
       estrutura.ts     o contrato genérico: unidade, item, proveniência
       analisadores/    um por FORMATO de documento, nunca por método
@@ -126,7 +191,10 @@ prisma/
   schema.prisma        48 tabelas
   migrations/          inclui as políticas de RLS
   infra/               papel da aplicação e permissões
-scripts/               importar-metodo, semear, preparar-testes
+public/
+  estudar/             o app de estudo (cópia de ../musica), servido em /estudar
+scripts/               iniciar, permissoes, publicar-banco, importar-metodo,
+                       semear, preparar-testes
 testes/                unitários e de integração (banco real)
 ```
 
@@ -319,17 +387,22 @@ Outro teste cobra o isolamento: as mesmas 8 de 20 **liberam** num método que ex
 ## Testes
 
 ```bash
-npm run teste             # unitários: regras, critérios por método, analisadores
+npm run teste             # unitários: regras, critérios, analisadores, cadastro
 npm run teste:preparar    # prepara o banco de testes (migrações, permissões, seeds)
 npm run teste:integracao  # autorização e isolamento contra PostgreSQL real
 ```
 
-39 testes unitários e 32 de integração.
+50 testes unitários e 38 de integração.
 
 Os de **autorização** tentam atravessar o escopo e exigem falha: ler aluno de outra comum,
 de outra região, trocar o id na URL, promover-se a instrutor, conceder medalha a si mesmo,
 matricular aluno em turma de outra comum, alterar o material do método. Também conferem que
 o papel da aplicação não ignora RLS.
+
+Os de **cadastro fechado** cobram que aluno não crie conta para ninguém, que
+quem cadastra não possa se esconder atrás de outro responsável, que instrutor não
+conceda papel de administração nem cadastre em comum de outra região — e que o
+cadastro legítimo, na própria comum, passe.
 
 Os de **isolamento pedagógico** cobram a outra promessa: que os critérios de um método não
 caiam sobre outro, que as competências não se misturem, que o filtro de conteúdo só deixe
@@ -362,9 +435,31 @@ de cópia própria. Os dois devem ser restaurados juntos, sob pena de ficarem en
 
 ---
 
+## Um sistema só
+
+O app de estudo (fases, exercícios lúdicos, avaliação sem pergunta repetida,
+certificado) roda **dentro** da plataforma, em `/estudar`. É o mesmo aplicativo
+que funciona sozinho no celular, com uma diferença que importa: ali dentro ele
+**não tem cadastro próprio nem tela de entrada**. A identidade chega pronta do
+servidor, já autenticada, e as rotas de acesso do app ficam desligadas
+(`public/estudar/js/plataforma.js`).
+
+Sem isso haveria dois cadastros e duas portas — e a regra da casa é que só se
+entra com cadastro feito por quem tem permissão.
+
+O código-fonte do app continua em `../musica`; `npm run app:sincronizar` copia a
+versão atual para `public/estudar`.
+
+---
+
 ## Publicação em produção
 
-Ver `docs/implantacao.md`. Em resumo: `npm ci && npm run build`, `prisma migrate deploy`,
+**Vercel:** ver `docs/vercel.md` — banco gerenciado com dois endereços (pooler
+para a aplicação, direto para as migrações), papel da aplicação sem `BYPASSRLS`,
+e `npm run vercel-build`, que migra, aplica as permissões, cria o primeiro
+administrador e compila, nesta ordem.
+
+**Servidor próprio:** ver `docs/implantacao.md`. Em resumo: `npm ci && npm run build`, `prisma migrate deploy`,
 papel da aplicação provisionado com senha própria, `SEGREDO_SESSAO` de 32 bytes,
 HTTPS obrigatório (o cookie de sessão é `secure` fora de desenvolvimento) e backup agendado.
 

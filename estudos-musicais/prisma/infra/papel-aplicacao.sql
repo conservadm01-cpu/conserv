@@ -7,8 +7,10 @@
 -- O servidor web conecta com este papel: sem BYPASSRLS e sem DDL, para que as
 -- políticas de RLS valham inclusive se uma consulta esquecer o filtro.
 --
--- As PERMISSÕES ficam em permissoes-aplicacao.sql, que roda com o dono do
--- schema a cada migração.
+-- As PERMISSÕES ficam em scripts/permissoes.ts, que roda com o dono do schema
+-- DEPOIS DE CADA MIGRAÇÃO (`npm run db:permissoes`). É script de Node, e não
+-- psql, para rodar igual na máquina de quem desenvolve e no processo de
+-- publicação, onde o cliente de linha de comando não existe.
 
 -- Cria o papel apenas se ainda não existir (idempotente).
 SELECT format('CREATE ROLE estudos_app LOGIN PASSWORD %L NOBYPASSRLS', :'senha')
@@ -18,5 +20,3 @@ SELECT format('CREATE ROLE estudos_app LOGIN PASSWORD %L NOBYPASSRLS', :'senha')
 -- Atualiza a senha em toda execução, para rotação de credencial.
 SELECT format('ALTER ROLE estudos_app PASSWORD %L', :'senha')
 \gexec
-
-\i prisma/infra/permissoes-aplicacao.sql

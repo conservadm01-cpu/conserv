@@ -14,8 +14,18 @@ if (!urlAplicacao) throw new Error('Defina DATABASE_URL (papel da aplicação, s
 
 const global_ = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma =
-  global_.prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: urlAplicacao }) });
+/**
+ * Tamanho do pool. Em servidor próprio, um pool por processo; em ambiente sem
+ * servidor (Vercel), cada invocação é um processo curto e o pooler do banco é
+ * quem multiplexa — abrir mais de uma conexão por invocação só esgota o
+ * limite do pooler mais rápido.
+ */
+const SEM_SERVIDOR = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const CONEXOES = Number(process.env.BANCO_MAX_CONEXOES ?? (SEM_SERVIDOR ? 1 : 10));
+
+export const prisma = global_.prisma ?? new PrismaClient({
+  adapter: new PrismaPg({ connectionString: urlAplicacao, max: CONEXOES }),
+});
 
 if (process.env.NODE_ENV !== 'production') global_.prisma = prisma;
 

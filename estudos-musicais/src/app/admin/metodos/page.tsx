@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { Cabecalho, Indicador, Aviso, SeloDeConferencia } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +22,7 @@ const SITUACAO_DA_ANALISE: Record<string, string> = {
  * alguém confirme, edite ou rejeite a estrutura proposta.
  */
 export default async function CentralDeMetodos() {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   if (!usuario.escopo.ehAdministracao) {
     return (
       <main className="mx-auto max-w-2xl p-6">

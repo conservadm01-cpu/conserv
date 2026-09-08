@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { Cabecalho, SeloDeConferencia, Aviso } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -19,8 +19,7 @@ const NOME_DA_CLAVE: Record<string, string> = { SOL: 'Clave de Sol', DO: 'Clave 
 export default async function PaginaPorAssunto({
   searchParams,
 }: { searchParams: Promise<{ escala?: string; clave?: string; compasso?: string; unidade?: string; metodo?: string }> }) {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   const filtros = await searchParams;
 
   const dados = await comoUsuario(usuario.id, async (banco) => {

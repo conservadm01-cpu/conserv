@@ -9,7 +9,9 @@ psql "$DATABASE_URL_ADMIN" -v senha="$SENHA_DO_APP" -f prisma/infra/papel-aplica
 # 2) migrações: dono do schema — as tabelas e as políticas de RLS vêm daqui
 npx prisma migrate deploy
 # 3) permissões: dono do schema, SEMPRE DEPOIS das migrações
-psql "$DATABASE_URL_MIGRACAO" -f prisma/infra/permissoes-aplicacao.sql
+npm run db:permissoes
+# 4) primeiro administrador (só age quando não há nenhum usuário)
+npm run db:iniciar
 ```
 
 O papel `estudos_app` é criado **sem BYPASSRLS** e sem DDL: é com ele que o servidor web
@@ -62,8 +64,7 @@ desenvolvimento — sem TLS, o navegador não guarda a sessão. Um proxy reverso
 
 ```bash
 git pull && npm ci
-npx prisma migrate deploy    # migrações são aditivas; políticas de RLS vêm nelas
-npm run db:permissoes        # tabela nova só chega ao papel da aplicação por aqui
+npm run db:publicar          # migrar + permissões + primeiro administrador, na ordem
 npm run build && npm run start
 ```
 

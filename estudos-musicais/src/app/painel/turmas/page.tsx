@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { filtroDeComuns } from '@/lib/autorizacao.ts';
 import { configuracoesDoMetodo } from '@/lib/metodos/isolamento.ts';
 import { criteriosDoMetodo } from '@/lib/regras.ts';
@@ -19,8 +19,7 @@ export const dynamic = 'force-dynamic';
 export default async function CentralDoInstrutor({
   searchParams,
 }: { searchParams: Promise<{ instrumento?: string; metodo?: string }> }) {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   const filtros = await searchParams;
 
   const dados = await comoUsuario(usuario.id, async (banco) => {

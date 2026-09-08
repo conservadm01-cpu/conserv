@@ -15,7 +15,7 @@ pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL_MIGRACAO" estu
 
 # Depois de restaurar, reprovisione o papel da aplicação (ele não vem no dump):
 psql "$DATABASE_URL_ADMIN" -v senha=a-senha-de-producao -f prisma/infra/papel-aplicacao.sql
-psql "$DATABASE_URL_MIGRACAO" -f prisma/infra/permissoes-aplicacao.sql
+npm run db:permissoes
 ```
 
 Conferência mínima depois de restaurar:

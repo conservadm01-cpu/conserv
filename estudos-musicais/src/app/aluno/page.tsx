@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { Cabecalho, Indicador, Aviso, formatarTempo } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,7 @@ export const dynamic = 'force-dynamic';
  * progresso e critérios próprios — e nenhuma delas é "a principal".
  */
 export default async function PaginaDoAluno() {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
 
   const dados = await comoUsuario(usuario.id, async (banco) => {
     const perfil = await banco.perfilAluno.findUnique({
@@ -168,8 +167,9 @@ export default async function PaginaDoAluno() {
         </section>
       )}
 
-      <nav className="mt-6 flex gap-3">
-        <Link href="/assunto" className="botao">Estudar por assunto</Link>
+      <nav className="mt-6 flex flex-wrap gap-3">
+        <Link href="/estudar" className="botao">Abrir o app de estudo</Link>
+        <Link href="/assunto" className="botao-secundario">Estudar por assunto</Link>
         <Link href="/sair" className="botao-secundario">Sair</Link>
       </nav>
     </main>

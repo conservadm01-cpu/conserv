@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { filtroDeComuns } from '@/lib/autorizacao.ts';
+import { podeCadastrar } from '@/lib/cadastro.ts';
 import { Cabecalho, Indicador, Aviso, formatarTempo } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +14,7 @@ export const dynamic = 'force-dynamic';
  * a lista continuaria limitada às comuns do vínculo.
  */
 export default async function PaginaDoPainel() {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   const escopo = usuario.escopo;
 
   const dados = await comoUsuario(usuario.id, async (banco) => {
@@ -107,7 +107,8 @@ export default async function PaginaDoPainel() {
       </p>
 
       <nav className="mt-6 flex flex-wrap gap-3">
-        <Link href="/painel/turmas" className="botao">Turmas</Link>
+        {podeCadastrar(escopo) && <Link href="/painel/cadastrar" className="botao">Cadastrar pessoa</Link>}
+        <Link href="/painel/turmas" className="botao-secundario">Turmas</Link>
         {escopo.ehAdministracao && <Link href="/admin/metodos" className="botao-secundario">Central de métodos</Link>}
         <Link href="/assunto" className="botao-secundario">Índice por assunto</Link>
         <Link href="/sair" className="botao-secundario">Sair</Link>

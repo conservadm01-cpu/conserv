@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { podeVerAluno } from '@/lib/autorizacao.ts';
 import { calcularAproveitamento, type EstadoProgresso } from '@/lib/regras.ts';
 import { Cabecalho, Indicador, Aviso, formatarTempo } from '@/componentes/basicos.tsx';
@@ -16,8 +16,7 @@ export const dynamic = 'force-dynamic';
  * "não existe" e "não é seu", para a URL não servir de sonda.
  */
 export default async function FichaDoAluno({ params }: { params: Promise<{ id: string }> }) {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   const { id } = await params;
 
   if (!(await podeVerAluno(usuario.escopo, id))) {

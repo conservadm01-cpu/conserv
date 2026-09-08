@@ -6,6 +6,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { comoUsuario, prisma } from './banco.ts';
 import { escopoDoUsuario, type EscopoDoUsuario } from './autorizacao.ts';
 
@@ -59,8 +60,9 @@ export async function encerrarSessao() {
  * justamente ele que estabelece o contexto.
  */
 async function donoDaSessao(tokenHash: string) {
-  const linhas = await prisma.$queryRaw<{ usuario_id: string; nome_completo: string; email: string }[]>`
-    SELECT * FROM app.usuario_da_sessao(${tokenHash})`;
+  const linhas = await prisma.$queryRaw<{
+    usuario_id: string; nome_completo: string; email: string; deve_trocar_senha: boolean;
+  }[]>`SELECT * FROM app.usuario_da_sessao(${tokenHash})`;
   return linhas[0] ?? null;
 }
 
@@ -68,6 +70,8 @@ export interface UsuarioAutenticado {
   id: string;
   nomeCompleto: string;
   email: string;
+  /** Senha ainda é a provisória de quem cadastrou. Nenhuma tela abre até trocar. */
+  deveTrocarSenha: boolean;
   escopo: EscopoDoUsuario;
 }
 
@@ -84,8 +88,23 @@ export async function usuarioDaRequisicao(): Promise<UsuarioAutenticado | null> 
     id: dono.usuario_id,
     nomeCompleto: dono.nome_completo,
     email: dono.email,
+    deveTrocarSenha: dono.deve_trocar_senha,
     escopo: await escopoDoUsuario(dono.usuario_id),
   };
+}
+
+/**
+ * O usuário da requisição para uma tela comum.
+ *
+ * Manda para a entrada quem não tem sessão e para a troca de senha quem ainda
+ * usa a provisória — antes de qualquer consulta. É o guarda único: uma tela
+ * nova que o chame já nasce protegida nos dois casos.
+ */
+export async function usuarioDaTela(): Promise<UsuarioAutenticado> {
+  const usuario = await usuarioDaRequisicao();
+  if (!usuario) redirect('/entrar');
+  if (usuario.deveTrocarSenha) redirect('/trocar-senha');
+  return usuario;
 }
 
 export async function exigirUsuario(): Promise<UsuarioAutenticado> {

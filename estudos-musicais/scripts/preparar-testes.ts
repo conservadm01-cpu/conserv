@@ -22,10 +22,9 @@ const rodar = (comando: string, argumentos: string[], ambiente: Record<string, s
 console.log('Preparando banco de testes…');
 rodar('npx', ['prisma', 'migrate', 'deploy']);
 rodar('npx', ['prisma', 'generate']);
-// Toda migração pode ter criado tabela nova; sem este passo o papel da
-// aplicação não a enxerga e os testes falham por permissão, não por política.
-// O psql não entende o parâmetro `schema=` que o Prisma usa na URL.
-const urlDoPsql = url.replace(/[?&]schema=[^&]*/, '');
-rodar('psql', [urlDoPsql, '-v', 'ON_ERROR_STOP=1', '-q', '-f', 'prisma/infra/permissoes-aplicacao.sql']);
+// Toda migração pode ter criado tabela nova (que o papel da aplicação ainda
+// não enxerga) e recriado função (que perde o GRANT). Sem este passo os testes
+// falham por permissão, não por política.
+rodar('node', ['--experimental-strip-types', 'scripts/permissoes.ts']);
 rodar('node', ['--experimental-strip-types', 'scripts/semear.ts']);
 console.log('Banco de testes pronto.');

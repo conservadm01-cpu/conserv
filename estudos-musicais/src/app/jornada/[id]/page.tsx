@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { configuracoesDoMetodo } from '@/lib/metodos/isolamento.ts';
 import {
   calcularAproveitamento, criteriosDoMetodo, liberaRepertorio, preRequisitoDeUnidades,
@@ -18,8 +18,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function PaginaDaJornada({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
 
   const dados = await comoUsuario(usuario.id, async (banco) => {
     const jornada = await banco.jornadaDoAluno.findUnique({

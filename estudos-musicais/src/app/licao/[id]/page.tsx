@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { comoUsuario } from '@/lib/banco.ts';
-import { usuarioDaRequisicao } from '@/lib/sessao.ts';
+import { usuarioDaTela } from '@/lib/sessao.ts';
 import { Cabecalho, SeloDeConferencia, Aviso } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -9,8 +9,7 @@ export const dynamic = 'force-dynamic';
 const NOME_DA_CLAVE: Record<string, string> = { SOL: 'Clave de Sol', DO: 'Clave de Dó', FA: 'Clave de Fá' };
 
 export default async function PaginaDaLicao({ params }: { params: Promise<{ id: string }> }) {
-  const usuario = await usuarioDaRequisicao();
-  if (!usuario) redirect('/entrar');
+  const usuario = await usuarioDaTela();
   const { id } = await params;
 
   const licao = await comoUsuario(usuario.id, (banco) => banco.licao.findUnique({

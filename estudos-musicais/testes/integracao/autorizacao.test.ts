@@ -34,6 +34,19 @@ async function comoUsuario<T = Record<string, unknown>>(usuarioId: string | null
   }
 }
 
+/** Várias instruções na MESMA transação, como o servidor faz num cadastro. */
+async function comoUsuarioEmSequencia(usuarioId: string, passos: [string, unknown[]][]) {
+  await app.query('BEGIN');
+  try {
+    await app.query('SELECT set_config($1, $2, true)', ['app.usuario_id', usuarioId]);
+    const saidas = [];
+    for (const [sql, valores] of passos) saidas.push(await app.query(sql, valores as never[]));
+    return saidas;
+  } finally {
+    await app.query('ROLLBACK');
+  }
+}
+
 const pessoas: Record<string, string> = {};
 const comuns: Record<string, string> = {};
 
@@ -170,6 +183,84 @@ test('aluno não altera o conteúdo do método', async () => {
   const alteradas = await comoUsuario(maria,
     `UPDATE licoes SET titulo = 'alterado pelo aluno' WHERE "statusPublicacao" = 'PUBLICADO' RETURNING id`);
   assert.equal(alteradas.length, 0, 'a política de escrita não deixa o aluno mexer no material');
+});
+
+// ------------------------------------------------------- cadastro fechado
+
+test('aluno não cria conta para ninguém', async () => {
+  const maria = pessoas['maria.aluna@exemplo.org'];
+  await assert.rejects(
+    () => comoUsuario(maria,
+      `INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "atualizadoEm")
+       VALUES ('teste-conta', 'Conta Inventada', 'inventada@exemplo.org', 'x', 'ATIVO', $1, now())`,
+      [maria]),
+    /row-level security|violates/i,
+    'sem esta recusa existiria autocadastro por dentro',
+  );
+});
+
+test('quem cadastra não pode se esconder: o responsável tem de ser ele mesmo', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  const outro = pessoas['jose.local@exemplo.org'];
+  await assert.rejects(
+    () => comoUsuario(paulo,
+      `INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "atualizadoEm")
+       VALUES ('teste-responsavel', 'Fulano', 'fulano@exemplo.org', 'x', 'ATIVO', $1, now())`,
+      [outro]),
+    /row-level security|violates/i,
+  );
+});
+
+test('instrutor cadastra aluno na sua comum, e o banco aceita', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  // Duas instruções na mesma transação, como a tela de cadastro faz.
+  const saidas = await comoUsuarioEmSequencia(paulo, [
+    [`INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "deveTrocarSenha", "atualizadoEm")
+      VALUES ('teste-aluno-ok', 'Aluno de Teste', 'aluno.teste@exemplo.org', 'x', 'ATIVO', $1, true, now())`, [paulo]],
+    [`INSERT INTO vinculos (id, "usuarioId", papel, escopo, "comumId", ativo, "concedidoEm", "concedidoPorId")
+      VALUES ('teste-vinculo-ok', 'teste-aluno-ok', 'ALUNO', 'COMUM', $2, true, now(), $1)`, [paulo, comuns['COM-01']]],
+  ]);
+  assert.equal(saidas[0].rowCount, 1, 'a conta é criada');
+  assert.equal(saidas[1].rowCount, 1, 'o vínculo de aluno na própria comum é concedido');
+});
+
+test('instrutor não concede papel de administração', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org'];
+  await assert.rejects(
+    () => comoUsuarioEmSequencia(paulo, [
+      [`INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "atualizadoEm")
+        VALUES ('teste-admin', 'Admin Inventado', 'admin.inventado@exemplo.org', 'x', 'ATIVO', $1, now())`, [paulo]],
+      [`INSERT INTO vinculos (id, "usuarioId", papel, escopo, ativo, "concedidoEm", "concedidoPorId")
+        VALUES ('teste-vinculo-admin', 'teste-admin', 'SUPERADMIN', 'GLOBAL', true, now(), $1)`, [paulo]],
+    ]),
+    /row-level security|violates/i,
+    'administrador só é criado por administrador',
+  );
+});
+
+test('instrutor não cadastra em comum de outra região', async () => {
+  const paulo = pessoas['paulo.instrutor@exemplo.org']; // Jardim Aeroporto, região Norte
+  await assert.rejects(
+    () => comoUsuarioEmSequencia(paulo, [
+      [`INSERT INTO usuarios (id, "nomeCompleto", email, "senhaHash", status, "criadoPorId", "atualizadoEm")
+        VALUES ('teste-fora', 'Aluno de Fora', 'fora@exemplo.org', 'x', 'ATIVO', $1, now())`, [paulo]],
+      [`INSERT INTO vinculos (id, "usuarioId", papel, escopo, "comumId", ativo, "concedidoEm", "concedidoPorId")
+        VALUES ('teste-vinculo-fora', 'teste-fora', 'ALUNO', 'COMUM', $2, true, now(), $1)`, [paulo, comuns['COM-03']]],
+    ]),
+    /row-level security|violates/i,
+  );
+});
+
+test('a entrada aceita nome de acesso além do e-mail', async () => {
+  const linhas = await dono.query(
+    `SELECT * FROM app.credenciais_para_login($1)`, ['  Maria.Aluna@Exemplo.ORG ']);
+  assert.equal(linhas.rows.length, 1, 'e-mail com espaço e caixa trocada precisa casar');
+
+  await dono.query(`UPDATE usuarios SET "login" = app.normalizar_login('Maria Souza') WHERE email = $1`,
+    ['maria.aluna@exemplo.org']);
+  const porNome = await dono.query(`SELECT * FROM app.credenciais_para_login($1)`, ['MARIA  SOUZA']);
+  assert.equal(porNome.rows.length, 1, 'nome em caixa alta e com espaço a mais precisa casar');
+  await dono.query(`UPDATE usuarios SET "login" = NULL WHERE email = $1`, ['maria.aluna@exemplo.org']);
 });
 
 // ------------------------------------------------------------------ turmas

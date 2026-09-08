@@ -64,16 +64,27 @@ model Usuario {
   id                  String        @id @default(cuid())
   nomeCompleto        String
   email               String        @unique
+  /// Nome de acesso, guardado normalizado (minúsculas, espaços colapsados).
+  /// Existe para quem entra por nome em vez de e-mail; o login aceita os dois.
+  login               String?       @unique
   telefone            String?
   nascimento          DateTime?     @db.Date
   senhaHash           String
+  /// Senha definida por quem cadastrou: o dono troca no primeiro acesso, e
+  /// até lá nenhuma outra tela abre.
+  deveTrocarSenha     Boolean       @default(false)
   status              StatusUsuario @default(PENDENTE)
+  /// Quem cadastrou este usuário. Nulo apenas no primeiro administrador, que
+  /// nasce com o sistema — todos os demais têm um responsável registrado.
+  criadoPorId         String?
   aceiteTermosEm      DateTime?
   versaoPrivacidade   String?
   ultimoAcessoEm      DateTime?
   criadoEm            DateTime      @default(now())
   atualizadoEm        DateTime      @updatedAt
 
+  criadoPor           Usuario?       @relation("cadastradosPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  cadastrados         Usuario[]      @relation("cadastradosPor")
   vinculos            Vinculo[]      @relation("vinculosDoUsuario")
   vinculosConcedidos  Vinculo[]      @relation("vinculosConcedidos")
   perfilAluno         PerfilAluno?   @relation("perfilDoAluno")

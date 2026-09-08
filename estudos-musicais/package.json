@@ -15,13 +15,17 @@
     "db:gerar": "prisma generate",
     "db:migrar": "prisma migrate dev",
     "db:aplicar": "prisma migrate deploy",
-    "db:permissoes": "psql \"$DATABASE_URL_MIGRACAO\" -f prisma/infra/permissoes-aplicacao.sql",
+    "db:permissoes": "node --experimental-strip-types scripts/permissoes.ts",
     "db:semear": "node --experimental-strip-types scripts/semear.ts",
+    "db:iniciar": "node --experimental-strip-types scripts/iniciar.ts",
     "metodo:importar": "node --experimental-strip-types scripts/importar-metodo.ts",
     "preparar": "npm run db:gerar && npm run db:aplicar && npm run db:permissoes && npm run db:semear",
     "teste": "node --experimental-strip-types --test testes/*.test.ts",
     "teste:preparar": "node --experimental-strip-types scripts/preparar-testes.ts",
-    "teste:integracao": "node --experimental-strip-types --test testes/integracao/*.test.ts"
+    "teste:integracao": "node --experimental-strip-types --test testes/integracao/*.test.ts",
+    "db:publicar": "node --experimental-strip-types scripts/publicar-banco.ts",
+    "vercel-build": "npm run db:gerar && npm run db:publicar && next build",
+    "app:sincronizar": "rm -rf public/estudar && mkdir -p public/estudar && cp -r ../musica/js ../musica/css ../musica/icones public/estudar/"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

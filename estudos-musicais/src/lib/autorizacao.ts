@@ -101,6 +101,20 @@ export function filtroDeComuns(escopo: EscopoDoUsuario): { in: string[] } | unde
   return { in: escopo.comunsVisiveis };
 }
 
+/**
+ * Onde cada um cai depois de entrar: quem só estuda vai para as suas jornadas,
+ * quem acompanha vai para o painel.
+ *
+ * Existe como função — e não como um `/` que redireciona de novo — porque uma
+ * ação de servidor entrega UM redirecionamento ao navegador. Encadear
+ * `/entrar` → `/` → `/painel` fazia o segundo salto se perder, e o usuário
+ * voltava à tela de entrada mesmo já autenticado.
+ */
+export function destinoInicial(escopo: EscopoDoUsuario): string {
+  const soAluno = escopo.papeis.length === 1 && escopo.papeis[0] === 'ALUNO';
+  return soAluno ? '/aluno' : '/painel';
+}
+
 export class SemPermissao extends Error {
   constructor(mensagem = 'Você não tem permissão para esta ação.') {
     super(mensagem);
