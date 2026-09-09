@@ -217,6 +217,42 @@ function telaFicha() {
 }
 
 // ================================================================== painel
+// Conferência do cadastro: o que está incompleto e de onde vieram os dados.
+// Nada aqui trava o uso do app — é a lista do que ainda falta conferir, mais o
+// registro da atualização (de onde os dados vieram e onde ficou a cópia).
+function blocoDeConferencia() {
+  const pendencias = banco.pendenciasDoCadastro();
+  const migracao = banco.informacoesDaMigracao();
+
+  const nomeDoRegistro = (p) => {
+    if (p.entidade === 'alunos') {
+      const aluno = banco.usuarioPorId(p.id);
+      return aluno ? aluno.nome : p.id;
+    }
+    return p.id || '—';
+  };
+
+  const lista = pendencias.length
+    ? `<ul class="lista-chave">${pendencias.slice(0, 20).map((p) => `<li><b>${escapar(nomeDoRegistro(p))}</b> — ${escapar(p.mensagem)}</li>`).join('')}
+       ${pendencias.length > 20 ? `<li class="mini">e mais ${pendencias.length - 20}.</li>` : ''}</ul>`
+    : '<p class="mini">Nada pendente de conferência.</p>';
+
+  const origem = migracao && migracao.origem
+    ? `<p class="mini">Os dados deste aparelho vieram da versão anterior do aplicativo
+       (${escapar(migracao.origem)}), em ${data(migracao.migradoEm)}, com ${migracao.registros} registros.
+       ${migracao.backup ? `A cópia de segurança de antes da atualização ficou guardada como
+       <code>${escapar(migracao.backup)}</code>, e os dados antigos continuam no aparelho, intactos.` : ''}</p>`
+    : '<p class="mini">Cadastro criado nesta versão do aplicativo.</p>';
+
+  return `<h2 class="titulo-secao">Conferência</h2>
+    <section class="sobre">
+      <h3>Pendente de conferência${pendencias.length ? ` (${pendencias.length})` : ''}</h3>
+      ${lista}
+      <h3>De onde vêm estes dados</h3>
+      ${origem}
+    </section>`;
+}
+
 function telaAdmin() {
   const alunos = banco.usuarios();
   return `<header class="topo topo-inicial">
@@ -252,6 +288,7 @@ function telaAdmin() {
       <a class="botao grande" href="#/instrutor/novo">+ Cadastrar aluno</a>
       <a class="botao secundario" href="#/instrutor/senha">Trocar a minha senha</a>
     </div>
+    ${blocoDeConferencia()}
     <h2 class="titulo-secao">Aparelho</h2>
     <section class="sobre">
       <label class="opcao"><input type="checkbox" id="autocadastro" data-acao="autocadastro"

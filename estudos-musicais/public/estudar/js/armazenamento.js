@@ -1,285 +1,349 @@
-// Cadastro e progresso, guardados no próprio aparelho (localStorage).
-// Uma "escola" por aparelho: o instrutor (administrador) cadastra os alunos,
-// cada aluno tem o seu instrumento, a sua senha e o seu progresso separado.
-// Nada sai do celular: não há servidor nem envio de dados.
+// Fachada do armazenamento.
+//
+// Este arquivo tem a mesma cara de sempre: as telas continuam chamando
+// `criarUsuario`, `faseDoAluno`, `registrarTentativa` exatamente como antes.
+// O que mudou foi o que está por baixo. Onde havia um objetão único no
+// localStorage, agora há entidades separadas — alunos, acessos, fases,
+// progresso, resultados, certificados — atrás de repositórios (js/dados/).
+//
+// Por que manter a fachada em vez de mudar as telas: porque o aplicativo em
+// uso não pode parar. Quem já tem progresso guardado abre o app, os dados são
+// migrados uma única vez, e tudo continua funcionando. As telas migram para os
+// repositórios aos poucos, sem pressa e sem risco.
+//
+// Duas mudanças de fundo, visíveis daqui:
+//
+//   Acesso e ficha são coisas diferentes. `usuarios()` devolve a ficha do
+//   aluno junto com o que a tela precisa saber do acesso dele, mas no depósito
+//   são duas entidades. Remover o acesso não apaga a ficha.
+//
+//   Não existe mais `senhaPadrao` gravado. Saber se a senha ainda é a de
+//   fábrica é conferir o resumo, como se faz com qualquer senha.
 
-import { conferirSenha, criarHash } from './senha.js';
 import { CAMPOS_DA_FICHA, camposFaltando, fichaCompleta, fichaMinimaCompleta } from './ficha.js';
+import * as R from './dados/repositorios.js';
+import { autenticar, guardarSenha, normalizarLogin, senhaEhInicial, LOGIN_INICIAL, SENHA_INICIAL } from './dados/permissoes.js';
+import { idDoAcesso, idDoCertificado, idDoProgresso, novoId } from './dados/ids.js';
+import { CHAVE_V0, CHAVE_V1, depositoAtual } from './dados/deposito.js';
+import { estadoVazio } from './dados/esquema.js';
+import { semear } from './dados/semente.js';
+import { VERSAO_DA_MIGRACAO, converterV1 } from './dados/migracao.js';
 
-const CHAVE = 'msa.escola.v1';
-const CHAVE_ANTIGA = 'msa.progresso.v1';
+const CAMPOS = CAMPOS_DA_FICHA.map((c) => c.id);
 
-const ADMIN_PADRAO = { usuario: 'RENATO', senha: 'CCB123' };
+export const escola = () => R.estadoAtual();
 
-const progressoVazio = () => ({ fases: {}, usadas: {}, certificados: [], xp: 0 });
+// Reexportado para quem precisa ir além da fachada (painel, relatórios).
+export const dados = R;
+export const pendenciasDoCadastro = () => R.pendenciasDoCadastro();
+// Relê tudo do depósito, descartando o que estava em memória. É o que se faz
+// depois de mexer no armazenamento por fora — outra aba, importação, testes.
+export const recarregar = () => R.recarregar();
+export const informacoesDaMigracao = () => R.informacoesDaMigracao();
 
-const vazio = () => ({
-  versao: 2,
-  admin: {
-    usuario: ADMIN_PADRAO.usuario,
-    sal: 'admin',
-    senhaHash: criarHash(ADMIN_PADRAO.senha, 'admin'),
-    senhaPadrao: true,
-  },
-  usuarios: [],
-  progressos: {},
-  config: { autocadastro: true },
-  sessao: null,
-});
+// ------------------------------------------------------------------ o acesso
 
-let cache = null;
-
-const novoId = () => `u${Date.now().toString(36)}${Math.floor(Math.random() * 46656).toString(36).padStart(3, '0')}`;
-
-function ler() {
-  if (cache) return cache;
-  try {
-    const bruto = localStorage.getItem(CHAVE);
-    if (bruto) {
-      cache = { ...vazio(), ...JSON.parse(bruto) };
-    } else {
-      cache = vazio();
-      migrarDaVersaoAntiga();
-    }
-  } catch (erro) {
-    cache = vazio();
-  }
-  return cache;
+// O instrutor: o acesso de administrador. Se o cadastro ainda não tem nenhum
+// (instalação nova), ele é criado aqui com o usuário e a senha de fábrica.
+function acessoDoInstrutor() {
+  const existente = R.usuarios.umPorCampo('papel', 'ADMIN');
+  if (existente) return existente;
+  return R.usuarios.criar({
+    id: 'admin',
+    login: LOGIN_INICIAL,
+    papel: 'ADMIN',
+    exigeSenha: true,
+    ...guardarSenha(SENHA_INICIAL, 'admin'),
+    alunoId: null,
+    ativo: true,
+  });
 }
 
-// Quem já usava o app antes do cadastro vira o primeiro aluno, sem senha,
-// com o progresso que tinha.
-function migrarDaVersaoAntiga() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_ANTIGA);
-    if (!bruto) return;
-    const antigo = JSON.parse(bruto);
-    if (!antigo || !antigo.aluno || !antigo.aluno.nome) return;
-    const id = novoId();
-    cache.usuarios.push({
-      id, nome: antigo.aluno.nome, instrumento: '', exigeSenha: false, sal: id, senhaHash: null,
-      criadoEm: antigo.aluno.criadoEm || new Date().toISOString(),
-    });
-    cache.progressos[id] = {
-      fases: antigo.fases || {}, usadas: antigo.usadas || {},
-      certificados: (antigo.certificados || []).map((c) => ({ ...c, faseId: c.faseId || String(c.fase), trilha: c.trilha || 'msa' })),
-      xp: antigo.xp || 0,
-    };
-    gravar();
-  } catch (erro) {
-    // Progresso antigo ilegível: começa limpo, sem travar o app.
-  }
-}
+export const sessao = () => {
+  const s = R.sessaoAtual();
+  if (!s) return null;
+  return s.papel === 'ALUNO' ? { tipo: 'aluno', id: s.alunoId } : { tipo: 'admin' };
+};
 
-function gravar() {
-  try {
-    localStorage.setItem(CHAVE, JSON.stringify(cache));
-  } catch (erro) {
-    // Aparelho sem espaço ou com armazenamento bloqueado: o app continua
-    // funcionando nesta sessão, só não guarda o que foi feito.
-    console.warn('Não foi possível guardar os dados:', erro);
-  }
-}
+export const ehAdmin = () => {
+  const s = R.sessaoAtual();
+  return Boolean(s && s.papel !== 'ALUNO');
+};
 
-export const escola = () => ler();
-
-// ------------------------------------------------------------------ sessão
-
-export const sessao = () => ler().sessao;
-export const ehAdmin = () => Boolean(ler().sessao && ler().sessao.tipo === 'admin');
+const idDoAlunoNaSessao = () => {
+  const s = R.sessaoAtual();
+  return s && s.papel === 'ALUNO' ? s.alunoId : null;
+};
 
 export function alunoAtual() {
-  const s = ler().sessao;
-  if (!s || s.tipo !== 'aluno') return null;
-  return ler().usuarios.find((u) => u.id === s.id) || null;
+  const id = idDoAlunoNaSessao();
+  return id ? usuarioPorId(id) : null;
 }
 
 export function entrarComoAdmin(usuario, senha) {
-  const { admin } = ler();
-  const nomeConfere = String(usuario || '').trim().toLowerCase() === admin.usuario.toLowerCase();
-  if (!nomeConfere || !conferirSenha(senha, admin.sal, admin.senhaHash)) return false;
-  ler().sessao = { tipo: 'admin' };
-  gravar();
+  const acesso = acessoDoInstrutor();
+  if (normalizarLogin(usuario) !== normalizarLogin(acesso.login)) return false;
+  if (!autenticar(acesso, senha)) return false;
+  R.abrirSessao(acesso.id);
   return true;
 }
 
 export function entrarComoAluno(id, senha) {
-  const usuario = ler().usuarios.find((u) => u.id === id);
-  if (!usuario) return false;
-  if (usuario.exigeSenha && !conferirSenha(senha, usuario.sal, usuario.senhaHash)) return false;
-  ler().sessao = { tipo: 'aluno', id };
-  gravar();
+  const aluno = R.alunos.buscar(id);
+  if (!aluno) return false;
+  const acesso = R.acessoDoAluno(id);
+  if (!acesso) return false;
+  if (!autenticar(acesso, senha)) return false;
+  R.abrirSessao(acesso.id);
   return true;
 }
 
 export function sair() {
-  ler().sessao = null;
-  gravar();
+  R.fecharSessao();
 }
 
 export function trocarSenhaAdmin(novaSenha) {
-  const p = ler();
-  p.admin.senhaHash = criarHash(novaSenha, p.admin.sal);
-  p.admin.senhaPadrao = false;
-  gravar();
+  const acesso = acessoDoInstrutor();
+  R.usuarios.atualizar(acesso.id, { exigeSenha: true, ...guardarSenha(novaSenha, acesso.sal) });
 }
 
-export const senhaDoAdminEhPadrao = () => Boolean(ler().admin.senhaPadrao);
+export const senhaDoAdminEhPadrao = () => senhaEhInicial(acessoDoInstrutor());
 
-export const permiteAutocadastro = () => (ler().config || { autocadastro: true }).autocadastro !== false;
+export const usuarioDoAdmin = () => acessoDoInstrutor().login;
+
+export const permiteAutocadastro = () => R.configuracoes.obter('autocadastro', true) !== false;
 
 export function definirAutocadastro(permitido) {
-  const p = ler();
-  p.config = { ...(p.config || {}), autocadastro: Boolean(permitido) };
-  gravar();
+  R.configuracoes.definir('autocadastro', Boolean(permitido));
 }
-export const usuarioDoAdmin = () => ler().admin.usuario;
 
 // ----------------------------------------------------------------- cadastro
 
-export const usuarios = () => ler().usuarios.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+// A tela conhece "um aluno": ficha e acesso na mesma linha. O depósito guarda
+// as duas coisas separadas. Esta função junta as duas para a tela.
+function comAcesso(aluno) {
+  if (!aluno) return null;
+  const acesso = R.acessoDoAluno(aluno.id);
+  return {
+    ...aluno,
+    sal: acesso ? acesso.sal : aluno.id,
+    senhaHash: acesso ? acesso.senhaHash : null,
+    exigeSenha: Boolean(acesso && acesso.exigeSenha),
+  };
+}
 
-export const usuarioPorId = (id) => ler().usuarios.find((u) => u.id === id) || null;
+export const usuarios = () =>
+  R.alunos.listar().map(comAcesso).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
-const CAMPOS = CAMPOS_DA_FICHA.map((c) => c.id);
+export const usuarioPorId = (id) => comAcesso(R.alunos.buscar(id));
 
 const conferirNome = (nome, idAtual = null) => {
   const limpo = String(nome || '').trim();
   if (!limpo) throw new Error('O nome do aluno é obrigatório.');
-  if (ler().usuarios.some((u) => u.id !== idAtual && u.nome.toLowerCase() === limpo.toLowerCase())) {
-    throw new Error('Já existe um aluno com esse nome.');
-  }
+  const repetido = R.alunos.listar()
+    .some((a) => a.id !== idAtual && String(a.nome).toLowerCase() === limpo.toLowerCase());
+  if (repetido) throw new Error('Já existe um aluno com esse nome.');
   return limpo;
 };
 
 export function criarUsuario(dados = {}) {
   const nome = conferirNome(dados.nome);
-  const p = ler();
-  const id = novoId();
-  const usuario = { id, criadoEm: new Date().toISOString(), sal: id };
-  for (const campo of CAMPOS) usuario[campo] = String(dados[campo] || '').trim();
-  usuario.nome = nome;
-  usuario.senhaHash = dados.senha ? criarHash(dados.senha, id) : null;
-  usuario.exigeSenha = Boolean(dados.exigeSenha && usuario.senhaHash);
-  p.usuarios.push(usuario);
-  p.progressos[id] = progressoVazio();
-  gravar();
-  return usuario;
+  const id = novoId('u');
+
+  const ficha = { id, criadoEm: new Date().toISOString(), ativo: true };
+  for (const campo of CAMPOS) ficha[campo] = String(dados[campo] || '').trim();
+  ficha.nome = nome;
+  const aluno = R.alunos.criar(ficha);
+
+  const senha = dados.senha ? guardarSenha(dados.senha, id) : { sal: id, senhaHash: null };
+  R.usuarios.criar({
+    id: idDoAcesso(id),
+    login: nome,
+    papel: 'ALUNO',
+    ...senha,
+    exigeSenha: Boolean(dados.exigeSenha && senha.senhaHash),
+    alunoId: id,
+    ativo: true,
+  });
+
+  return comAcesso(aluno);
 }
 
 export function atualizarUsuario(id, dados = {}) {
-  const usuario = usuarioPorId(id);
-  if (!usuario) throw new Error('Aluno não encontrado.');
-  if (dados.nome !== undefined) usuario.nome = conferirNome(dados.nome, id);
+  const aluno = R.alunos.buscar(id);
+  if (!aluno) throw new Error('Aluno não encontrado.');
+
+  const mudancas = {};
+  if (dados.nome !== undefined) mudancas.nome = conferirNome(dados.nome, id);
   for (const campo of CAMPOS) {
     if (campo === 'nome' || dados[campo] === undefined) continue;
-    usuario[campo] = String(dados[campo] || '').trim();
+    mudancas[campo] = String(dados[campo] || '').trim();
   }
-  if (dados.senha) usuario.senhaHash = criarHash(dados.senha, usuario.sal);
+  // O instrumento digitado precisa reencontrar o cadastro do instrumento.
+  if (mudancas.instrumento !== undefined) mudancas.instrumentoId = '';
+  const atualizado = R.alunos.atualizar(id, mudancas);
+
+  const acesso = R.acessoDoAluno(id) || R.usuarios.criar({
+    id: idDoAcesso(id), login: atualizado.nome, papel: 'ALUNO', sal: id, senhaHash: null,
+    exigeSenha: false, alunoId: id, ativo: true,
+  });
+
+  const noAcesso = {};
+  if (mudancas.nome) noAcesso.login = mudancas.nome;
+  if (dados.senha) Object.assign(noAcesso, guardarSenha(dados.senha, acesso.sal));
   if (dados.exigeSenha !== undefined) {
-    usuario.exigeSenha = Boolean(dados.exigeSenha && usuario.senhaHash);
-    if (!dados.exigeSenha) usuario.senhaHash = null;
+    const temSenha = Boolean(noAcesso.senhaHash || acesso.senhaHash);
+    noAcesso.exigeSenha = Boolean(dados.exigeSenha && temSenha);
+    // Deixar de exigir senha apaga o resumo guardado: nada de senha órfã
+    // esperando ser reativada sem o aluno saber.
+    if (!dados.exigeSenha) noAcesso.senhaHash = null;
   }
-  gravar();
-  return usuario;
+  if (Object.keys(noAcesso).length) R.usuarios.atualizar(acesso.id, noAcesso);
+
+  return comAcesso(R.alunos.buscar(id));
 }
 
-// A ficha do aluno está completa? É o que decide se o app pede o cadastro
-// antes de liberar o estudo.
-export const fichaDoAlunoCompleta = (id = null) => {
-  const usuario = id ? usuarioPorId(id) : alunoAtual();
-  return fichaCompleta(usuario);
-};
-
-export const fichaDoAlunoFaltando = (id = null) => {
-  const usuario = id ? usuarioPorId(id) : alunoAtual();
-  return camposFaltando(usuario);
-};
-
-// O estudo só é liberado com os dados essenciais; os nomes do ministério
-// podem ser informados depois.
-export const fichaDoAlunoLiberada = (id = null) => {
-  const usuario = id ? usuarioPorId(id) : alunoAtual();
-  return fichaMinimaCompleta(usuario);
-};
+export const fichaDoAlunoCompleta = (id = null) => fichaCompleta(id ? usuarioPorId(id) : alunoAtual());
+export const fichaDoAlunoFaltando = (id = null) => camposFaltando(id ? usuarioPorId(id) : alunoAtual());
+export const fichaDoAlunoLiberada = (id = null) => fichaMinimaCompleta(id ? usuarioPorId(id) : alunoAtual());
 
 export function removerUsuario(id) {
-  const p = ler();
-  p.usuarios = p.usuarios.filter((u) => u.id !== id);
-  delete p.progressos[id];
-  if (p.sessao && p.sessao.tipo === 'aluno' && p.sessao.id === id) p.sessao = null;
-  gravar();
+  const acesso = R.acessoDoAluno(id);
+  if (R.sessaoAtual() && R.sessaoAtual().alunoId === id) R.fecharSessao();
+  for (const p of R.progressoDeTodasAsFases(id)) R.progressos.remover(p.id);
+  for (const r of R.resultadosDoAluno(id)) R.resultados.remover(r.id);
+  for (const c of R.certificadosDoAluno(id)) R.certificados.remover(c.id);
+  if (acesso) R.usuarios.remover(acesso.id);
+  R.alunos.remover(id);
 }
 
 // ---------------------------------------------------------------- progresso
 
-function progressoDe(id) {
-  const p = ler();
-  if (!p.progressos[id]) p.progressos[id] = progressoVazio();
-  return p.progressos[id];
+// A tela ainda pede "o progresso do aluno" como um bloco só. Aqui ele é
+// remontado a partir das linhas por fase — o formato de leitura continua o
+// mesmo, mas a gravação já vai para a entidade certa.
+export function progresso(id = null) {
+  const alvo = id || idDoAlunoNaSessao();
+  if (!alvo) return { fases: {}, usadas: {}, certificados: [], xp: 0 };
+
+  const linhas = R.progressoDeTodasAsFases(alvo);
+  const fases = {};
+  const usadas = {};
+  for (const linha of linhas) {
+    fases[linha.faseId] = faseDoAluno(linha.faseId, alvo);
+    usadas[linha.faseId] = linha.usadas;
+  }
+  const aluno = R.alunos.buscar(alvo);
+  const xp = (aluno ? aluno.xpHistorico : 0) + linhas.reduce((soma, l) => soma + (l.xp || 0), 0);
+  return { fases, usadas, certificados: R.certificadosDoAluno(alvo), xp };
 }
 
-export function progresso(id = null) {
-  const alvo = id || (ler().sessao && ler().sessao.tipo === 'aluno' ? ler().sessao.id : null);
-  return alvo ? progressoDe(alvo) : progressoVazio();
-}
+const faseVazia = () => ({ licoesLidas: [], jogos: {}, tentativas: [], aprovadoEm: null, melhorNota: 0 });
 
 export function faseDoAluno(faseId, id = null) {
-  const p = progresso(id);
-  const chave = String(faseId);
-  if (!p.fases[chave]) p.fases[chave] = { licoesLidas: [], jogos: {}, tentativas: [], aprovadoEm: null, melhorNota: 0 };
-  return p.fases[chave];
+  const alvo = id || idDoAlunoNaSessao();
+  if (!alvo) return faseVazia();
+  const linha = R.progressoDoAluno(alvo, faseId);
+  return {
+    licoesLidas: linha.licoesLidas,
+    jogos: linha.jogos,
+    tentativas: R.resultadosDoAluno(alvo, faseId),
+    aprovadoEm: linha.aprovadoEm,
+    melhorNota: linha.melhorNota,
+  };
+}
+
+// Soma pontos na fase em que foram ganhos. O total do aluno é o histórico
+// anterior à atualização mais o que ele somou fase a fase.
+function pontuar(linha, pontos) {
+  linha.xp = (linha.xp || 0) + pontos;
 }
 
 export function marcarLicaoLida(faseId, indice) {
-  const f = faseDoAluno(faseId);
-  if (!f.licoesLidas.includes(indice)) {
-    f.licoesLidas.push(indice);
-    progresso().xp += 5;
-    gravar();
-  }
+  const alvo = idDoAlunoNaSessao();
+  if (!alvo) return;
+  const linha = R.progressoDoAluno(alvo, faseId);
+  if (linha.licoesLidas.includes(indice)) return;
+  linha.licoesLidas.push(indice);
+  pontuar(linha, 5);
+  linha.atualizadoEm = new Date().toISOString();
+  R.progressos.salvar(linha);
 }
 
 export function registrarJogo(faseId, tipo, pontos) {
-  const f = faseDoAluno(faseId);
-  const anterior = f.jogos[tipo] || 0;
+  const alvo = idDoAlunoNaSessao();
+  if (!alvo) return;
+  const linha = R.progressoDoAluno(alvo, faseId);
+  const anterior = linha.jogos[tipo] || 0;
   if (pontos > anterior) {
-    f.jogos[tipo] = pontos;
-    progresso().xp += Math.max(0, pontos - anterior);
+    linha.jogos[tipo] = pontos;
+    pontuar(linha, Math.max(0, pontos - anterior));
   }
-  gravar();
+  linha.atualizadoEm = new Date().toISOString();
+  R.progressos.salvar(linha);
 }
 
-export const usadasDaFase = (faseId) => progresso().usadas[String(faseId)] || [];
+export function usadasDaFase(faseId) {
+  const alvo = idDoAlunoNaSessao();
+  return alvo ? R.progressoDoAluno(alvo, faseId).usadas : [];
+}
 
 export function registrarUsadas(faseId, assinaturas) {
-  const p = progresso();
-  const chave = String(faseId);
-  p.usadas[chave] = [...(p.usadas[chave] || []), ...assinaturas];
-  gravar();
+  const alvo = idDoAlunoNaSessao();
+  if (!alvo) return;
+  const linha = R.progressoDoAluno(alvo, faseId);
+  linha.usadas = [...linha.usadas, ...assinaturas];
+  R.progressos.salvar(linha);
 }
 
 export function registrarTentativa(faseId, tentativa) {
-  const f = faseDoAluno(faseId);
-  f.tentativas.push(tentativa);
-  f.melhorNota = Math.max(f.melhorNota || 0, tentativa.nota);
-  if (tentativa.aprovado && !f.aprovadoEm) f.aprovadoEm = tentativa.data;
-  progresso().xp += tentativa.acertos * 10 + (tentativa.aprovado ? 50 : 0);
-  gravar();
-  return f;
+  const alvo = idDoAlunoNaSessao();
+  if (!alvo) return faseVazia();
+
+  const linha = R.progressoDoAluno(alvo, faseId);
+  R.resultados.criar({
+    alunoId: alvo,
+    faseId: String(faseId),
+    avaliacaoId: `av-${faseId}`,
+    data: tentativa.data,
+    nota: tentativa.nota,
+    acertos: tentativa.acertos,
+    total: tentativa.total,
+    aprovado: tentativa.aprovado,
+    respostas: tentativa.respostas || [],
+  });
+
+  linha.melhorNota = Math.max(linha.melhorNota || 0, tentativa.nota);
+  if (tentativa.aprovado && !linha.aprovadoEm) linha.aprovadoEm = tentativa.data;
+  pontuar(linha, tentativa.acertos * 10 + (tentativa.aprovado ? 50 : 0));
+  linha.atualizadoEm = new Date().toISOString();
+  R.progressos.salvar(linha);
+
+  return faseDoAluno(faseId, alvo);
 }
 
 export function guardarCertificado(certificado) {
-  const p = progresso();
-  const existente = p.certificados.findIndex((c) => c.faseId === certificado.faseId);
-  if (existente >= 0) p.certificados[existente] = certificado;
-  else p.certificados.push(certificado);
-  gravar();
+  const alvo = idDoAlunoNaSessao();
+  if (!alvo) return;
+  R.certificados.salvar({
+    ...certificado,
+    id: idDoCertificado(alvo, String(certificado.faseId)),
+    alunoId: alvo,
+    faseId: String(certificado.faseId),
+  });
 }
 
-export const certificados = (id = null) => progresso(id).certificados;
+export const certificados = (id = null) => {
+  const alvo = id || idDoAlunoNaSessao();
+  return alvo ? R.certificadosDoAluno(alvo) : [];
+};
 
-export const faseAprovada = (faseId, id = null) => Boolean(faseDoAluno(faseId, id).aprovadoEm);
+export function faseAprovada(faseId, id = null) {
+  const alvo = id || idDoAlunoNaSessao();
+  if (!alvo) return false;
+  const linha = R.progressos.buscar(idDoProgresso(alvo, String(faseId)));
+  return Boolean(linha && linha.aprovadoEm);
+}
 
 // ------------------------------------------------------------ demonstração
 
@@ -287,11 +351,8 @@ let modoTeste = false;
 
 export function ativarModoTeste() {
   modoTeste = true;
-  const p = ler();
-  if (p.sessao) return;
-  let demo = p.usuarios.find((u) => u.nome === 'Aluno de teste');
-  // A ficha da demonstração já vem preenchida (com dados de exemplo) para o
-  // visitante cair direto nas trilhas.
+  if (R.sessaoAtual()) return;
+  let demo = R.alunos.listar((a) => a.nome === 'Aluno de teste')[0];
   if (!demo) {
     demo = criarUsuario({
       nome: 'Aluno de teste', comum: 'Comum de demonstração', instrumento: 'violino',
@@ -299,54 +360,74 @@ export function ativarModoTeste() {
       anciao: 'Ancião (exemplo)', email: 'demonstracao@exemplo.com', whatsapp: '(11) 90000-0000',
     });
   }
-  p.sessao = { tipo: 'aluno', id: demo.id };
-  gravar();
+  const acesso = R.acessoDoAluno(demo.id);
+  if (acesso) R.abrirSessao(acesso.id);
 }
 
 export const emModoTeste = () => modoTeste;
 
-// A fase 1 de cada trilha está sempre aberta; as demais abrem quando a
-// anterior daquela mesma trilha é aprovada.
+// A primeira fase de cada método está sempre aberta; as demais abrem quando a
+// anterior daquele mesmo método é aprovada. A regra não conhece quantas fases
+// o método tem — serve igual para um de 10, de 16 ou de 20.
 export function faseLiberada(fase) {
-  if (modoTeste || fase.numero === 1) return true;
+  if (modoTeste || fase.numero === 1 || fase.ordem === 1) return true;
   return fase.anteriorId ? faseAprovada(fase.anteriorId) : true;
 }
 
 // -------------------------------------------------------- painel e arquivos
 
 export function resumoDoAluno(id) {
-  const p = progressoDe(id);
-  const fases = Object.entries(p.fases);
-  const tentativas = fases.flatMap(([, f]) => f.tentativas || []);
+  const linhas = R.progressoDeTodasAsFases(id);
+  const tentativas = R.resultadosDoAluno(id);
   const ultima = tentativas.map((t) => t.data).sort().pop() || null;
+  const aluno = R.alunos.buscar(id);
   return {
-    aprovadas: fases.filter(([, f]) => f.aprovadoEm).length,
-    licoes: fases.reduce((soma, [, f]) => soma + f.licoesLidas.length, 0),
-    certificados: p.certificados.length,
+    aprovadas: linhas.filter((l) => l.aprovadoEm).length,
+    licoes: linhas.reduce((soma, l) => soma + l.licoesLidas.length, 0),
+    certificados: R.certificadosDoAluno(id).length,
     tentativas: tentativas.length,
-    xp: p.xp,
+    xp: (aluno ? aluno.xpHistorico : 0) + linhas.reduce((soma, l) => soma + (l.xp || 0), 0),
     ultimaAtividade: ultima,
   };
 }
 
 export function apagarTudo() {
-  cache = vazio();
-  try {
-    localStorage.removeItem(CHAVE);
-    localStorage.removeItem(CHAVE_ANTIGA);
-  } catch (erro) { /* nada a fazer */ }
+  const deposito = depositoAtual();
+  deposito.remover();
+  if (deposito.removerChave) {
+    deposito.removerChave(CHAVE_V1);
+    deposito.removerChave(CHAVE_V0);
+  }
+  const limpo = { ...estadoVazio(), ...semear() };
+  limpo.migracao = { versao: VERSAO_DA_MIGRACAO, migradoEm: new Date().toISOString(), origem: null, backup: null, registros: 0 };
+  R.definirEstado(limpo);
 }
 
 export function exportar() {
-  return JSON.stringify(ler(), null, 2);
+  return JSON.stringify(R.estadoAtual(), null, 2);
 }
 
 export function importar(texto) {
   const dados = JSON.parse(texto);
-  if (!dados || typeof dados !== 'object' || !('usuarios' in dados) || !('progressos' in dados)) {
-    throw new Error('Arquivo inválido: não parece uma cópia deste aplicativo.');
+  if (!dados || typeof dados !== 'object') throw new Error('Arquivo inválido: não parece uma cópia deste aplicativo.');
+
+  // Arquivo do V2: entra como está.
+  if (Array.isArray(dados.alunos) && Array.isArray(dados.progressos)) {
+    R.definirEstado({ ...dados, sessao: null });
+    return R.estadoAtual();
   }
-  cache = { ...vazio(), ...dados, sessao: null };
-  gravar();
-  return cache;
+
+  // Arquivo gravado pela versão anterior do aplicativo: é convertido na
+  // entrada, do mesmo jeito que os dados do próprio aparelho foram.
+  if (Array.isArray(dados.usuarios) && dados.progressos && typeof dados.progressos === 'object') {
+    const convertido = converterV1(dados);
+    convertido.migracao = {
+      versao: VERSAO_DA_MIGRACAO, migradoEm: new Date().toISOString(),
+      origem: 'arquivo', backup: null, registros: convertido.alunos.length,
+    };
+    R.definirEstado({ ...convertido, sessao: null });
+    return R.estadoAtual();
+  }
+
+  throw new Error('Arquivo inválido: não parece uma cópia deste aplicativo.');
 }

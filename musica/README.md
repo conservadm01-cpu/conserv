@@ -217,19 +217,59 @@ musica/
     quiz.js             montagem e correção da prova, com a regra do não repetir
     jogos.js            os sete jogos
     certificado.js      certificado em SVG, impressão e PNG
-    armazenamento.js    progresso no localStorage
+    armazenamento.js    fachada: a API que as telas usam, sobre as entidades
     senha.js            SHA-256 puro e conferência de senha
     ficha.js            campos da ficha do aluno, validação e máscara
+    plataforma.js       ponte para quando o app roda dentro da plataforma
+    dados/esquema.js         as 14 entidades, os seus campos e as validações
+    dados/deposito.js        camada de armazenamento trocável (localStorage hoje)
+    dados/repositorios.js    um repositório por entidade — a porta das telas
+    dados/semente.js         o conteúdo de js/conteudo/ virado cadastro
+    dados/migracao.js        V1 -> V2, com cópia de segurança e rollback
+    dados/compatibilidade.js completa registros gravados por versões antigas
+    dados/permissoes.js      perfis ADMIN / PROFESSOR / ALUNO e autenticação
+    dados/ids.js             identificadores
     conteudo/fases.js              as 10 fases do MSA e as suas lições
     conteudo/geradores.js          os 69 geradores de pergunta do MSA
     conteudo/instrumentos.js       os 21 instrumentos e a conta de transposição
     conteudo/fases-instrumento.js  as 4 fases e os 15 geradores do instrumento
     conteudo/trilhas.js            junta as duas trilhas do aluno
-  teste/                46 testes (node --test): teoria, acesso, ficha e instrumento
+  teste/                77 testes (node --test): teoria, acesso, ficha,
+                        instrumento, entidades e migração
   ferramentas/gerar-unico.js  empacota tudo em um arquivo
   servidor.js           servidor estático mínimo, só com o Node
   sw.js                 service worker (funciona offline)
 ```
+
+### A estrutura dos dados
+
+Até a versão anterior, tudo vivia em um único objeto no `localStorage` e as fases eram
+fixas no código. Agora há **14 entidades** — instrumentos, métodos, fases, lições,
+exercícios, jogos, avaliações, questões, alunos, usuários, progresso, resultados,
+certificados e configurações — e as telas falam com elas por **repositórios**, nunca com o
+armazenamento direto.
+
+Três consequências práticas:
+
+- **Um método pode ter qualquer número de fases.** Dez, dezesseis, vinte: a quantidade é
+  dado, não código. Um instrumento novo ou um método novo entram pelo cadastro.
+- **Trocar de armazenamento não mexe nas telas.** O `deposito.js` é a única peça que sabe
+  onde os dados ficam. Um adaptador de Supabase, Firebase ou API REST implementa as mesmas
+  quatro funções e o resto do app não muda.
+- **Acesso e ficha são coisas separadas.** A ficha pedagógica do aluno está em `alunos`; o
+  login, o perfil e o resumo da senha estão em `usuarios`. Não existe mais nenhum campo do
+  tipo "senha padrão": saber se a senha ainda é a de fábrica é conferir o resumo, como se
+  faz com qualquer outra senha.
+
+**A atualização não apaga nada.** Quem já usava o app tem os dados convertidos na primeira
+abertura, uma única vez: antes de converter é gravada uma cópia de segurança datada, e a
+chave antiga (`msa.escola.v1`) continua intacta no aparelho. O painel do instrutor mostra de
+onde os dados vieram e onde a cópia ficou. Se algo sair errado, `rollback()` devolve tudo ao
+estado anterior. Descartar os dados antigos é um passo à parte, feito de propósito.
+
+Registros incompletos **não são recusados**: entram e ficam *pendentes de conferência*, numa
+lista no painel. O que é recusado é o que quebra a estrutura — nome vazio, identificador
+repetido, fase sem método, senha em texto puro.
 
 A notação é **desenhada em SVG pelo próprio app** — claves, cabeças, hastes, bandeirolas,
 pausas, armaduras e teclado. Não depende de fonte musical instalada no aparelho, que é

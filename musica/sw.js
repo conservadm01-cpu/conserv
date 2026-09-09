@@ -1,15 +1,18 @@
 // Service worker: guarda o app inteiro no aparelho para funcionar sem
 // internet. Estratégia: cache primeiro, rede como reserva.
 
-const CACHE = 'msa-v3';
+const CACHE = 'msa-v4';
 const ARQUIVOS = [
   './', './index.html', './manifest.webmanifest', './css/estilo.css',
   './icones/icone.svg', './icones/icone-192.png', './icones/icone-512.png',
   './js/app.js', './js/aleatorio.js', './js/armazenamento.js', './js/audio.js',
   './js/certificado.js', './js/download.js', './js/jogos.js', './js/musica.js', './js/notacao.js',
-  './js/quiz.js', './js/senha.js', './js/ficha.js',
+  './js/quiz.js', './js/senha.js', './js/ficha.js', './js/plataforma.js',
   './js/conteudo/apoio.js', './js/conteudo/fases.js', './js/conteudo/fases-instrumento.js',
   './js/conteudo/geradores.js', './js/conteudo/instrumentos.js', './js/conteudo/trilhas.js',
+  './js/dados/deposito.js', './js/dados/esquema.js', './js/dados/ids.js',
+  './js/dados/compatibilidade.js', './js/dados/permissoes.js', './js/dados/semente.js',
+  './js/dados/migracao.js', './js/dados/repositorios.js',
 ];
 
 self.addEventListener('install', (evento) => {

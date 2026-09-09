@@ -126,14 +126,17 @@ test('exportar e importar preservam o cadastro', () => {
   assert.throws(() => banco.importar('{"algo":1}'), /inválido/);
 });
 
-test('quem já usava a versão sem cadastro vira aluno na migração', async () => {
+test('quem já usava a versão sem cadastro vira aluno na migração', () => {
   memoria.clear();
   memoria.set('msa.progresso.v1', JSON.stringify({
     versao: 1, aluno: { nome: 'Aluno Antigo', criadoEm: '2026-01-01T00:00:00.000Z' },
     fases: { 1: { licoesLidas: [0, 1], jogos: {}, tentativas: [], aprovadoEm: '2026-01-02T00:00:00.000Z', melhorNota: 80 } },
     usadas: { 1: ['x#1'] }, certificados: [{ fase: 1, nota: 80 }], xp: 120,
   }));
-  const modulo = await import(`../js/armazenamento.js?migracao=${Date.now()}`);
+  // O estado fica em memória depois da primeira leitura; recarregar obriga o
+  // app a reler o depósito e, aí sim, a migrar o que encontrar.
+  banco.recarregar();
+  const modulo = banco;
   const migrado = modulo.usuarios().find((u) => u.nome === 'Aluno Antigo');
   assert.ok(migrado, 'o aluno antigo precisa aparecer no cadastro');
   assert.equal(modulo.resumoDoAluno(migrado.id).aprovadas, 1);

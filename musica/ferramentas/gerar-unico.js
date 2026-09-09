@@ -16,7 +16,10 @@ const MODULOS = [
   'js/aleatorio.js', 'js/senha.js', 'js/ficha.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js', 'js/download.js',
   'js/conteudo/apoio.js', 'js/conteudo/instrumentos.js', 'js/conteudo/fases.js',
   'js/conteudo/fases-instrumento.js', 'js/conteudo/geradores.js', 'js/conteudo/trilhas.js',
-  'js/armazenamento.js', 'js/quiz.js', 'js/certificado.js', 'js/jogos.js', 'js/app.js',
+  'js/quiz.js',
+  'js/dados/deposito.js', 'js/dados/esquema.js', 'js/dados/ids.js', 'js/dados/compatibilidade.js',
+  'js/dados/permissoes.js', 'js/dados/semente.js', 'js/dados/migracao.js', 'js/dados/repositorios.js',
+  'js/armazenamento.js', 'js/certificado.js', 'js/jogos.js', 'js/plataforma.js', 'js/app.js',
 ];
 
 const chaveDoModulo = (caminho) => caminho.replace(/^js\//, '').replace(/\.js$/, '');
@@ -33,7 +36,7 @@ function empacotar(caminho, fonte) {
 
   corpo = corpo.replace(/^import\s*\*\s*as\s+([\p{L}\p{N}_$]+)\s+from\s+['"]([^'"]+)['"];?$/gmu,
     (_, nome, alvo) => `const ${nome} = __modulos['${resolverImport(caminho, alvo)}'];`);
-  corpo = corpo.replace(/^import\s*\{([^}]+)\}\s*from\s+['"]([^'"]+)['"];?$/gm,
+  corpo = corpo.replace(/^import\s*\{([\s\S]*?)\}\s*from\s+['"]([^'"]+)['"];?$/gm,
     (_, nomes, alvo) => `const {${nomes.replace(/\s+as\s+/g, ': ')}} = __modulos['${resolverImport(caminho, alvo)}'];`);
 
   corpo = corpo.replace(/^export\s+((?:async\s+)?(?:const|let|function|class))\s+([\p{L}\p{N}_$]+)/gmu, (_, tipo, nome) => {
