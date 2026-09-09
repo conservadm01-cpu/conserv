@@ -119,6 +119,7 @@ model Usuario {
   comoResponsavel     Responsavel?   @relation("acessoDoResponsavel")
   responsaveisCadastrados Responsavel[] @relation("responsaveisCadastrados")
   permissoesConcedidas PermissaoDoPapel[] @relation("permissoesConcedidas")
+  avisos              Aviso[]            @relation("avisosDoUsuario")
   alunosComoInstrutor PerfilAluno[]  @relation("instrutorDoAluno")
   sessoes             Sessao[]
   solicitacoes        Solicitacao[]  @relation("solicitante")
@@ -242,6 +243,73 @@ model PermissaoDoPapel {
   @@unique([papel, permissaoChave])
   @@index([papel, concedida])
   @@map("permissoes_do_papel")
+}
+
+
+// ==================================================== avisos internos
+
+enum CanalDeAviso {
+  INTERNO
+  EMAIL
+  PUSH
+  WHATSAPP
+}
+
+enum EstadoDoAviso {
+  PENDENTE
+  ENVIADO
+  FALHOU
+  DISPENSADO
+}
+
+/// Aviso para uma pessoa.
+///
+/// Nasce SEMPRE como aviso interno — aparece no painel de quem o recebe — e a
+/// entrega por outro canal é uma linha à parte, em `entregas`. É essa
+/// separação que permite ligar e-mail ou WhatsApp depois sem tocar em quem
+/// cria o aviso: quem avisa continua chamando a mesma função.
+model Aviso {
+  id           String    @id @default(cuid())
+  usuarioId    String
+  tipo         String
+  titulo       String
+  texto        String
+  destino      String?
+  /// A que registro o aviso se refere, para não avisar duas vezes do mesmo.
+  entidade     String?
+  entidadeId   String?
+  lidoEm       DateTime?
+  criadoEm     DateTime  @default(now())
+
+  usuario      Usuario   @relation("avisosDoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  entregas     EntregaDeAviso[]
+
+  @@index([usuarioId, lidoEm])
+  @@index([entidade, entidadeId])
+  @@map("avisos")
+}
+
+/// A tentativa de entregar um aviso por um canal.
+///
+/// Existe desde já, vazia, porque a estrutura precisa estar pronta para
+/// e-mail, push e WhatsApp sem obrigar nenhum deles agora. Acrescentar um
+/// canal depois vira um processo que lê PENDENTE e grava ENVIADO — nada no
+/// resto do sistema muda.
+model EntregaDeAviso {
+  id         String        @id @default(cuid())
+  avisoId    String
+  canal      CanalDeAviso
+  estado     EstadoDoAviso @default(PENDENTE)
+  destino    String?
+  tentativas Int           @default(0)
+  erro       String?
+  enviadoEm  DateTime?
+  criadoEm   DateTime      @default(now())
+
+  aviso      Aviso @relation(fields: [avisoId], references: [id], onDelete: Cascade)
+
+  @@index([estado, canal])
+  @@map("entregas_de_aviso")
 }
 
 model Sessao {
@@ -1393,6 +1461,16 @@ model Certificado {
   arquivoId           String?
   revogadoEm          DateTime?
   revogadoMotivo      String?
+  /// O RETRATO do dia da emissão: nome do aluno, método, versão, instrumento,
+  /// localidade e responsável, copiados — não referenciados.
+  ///
+  /// É o que faz o certificado não mudar quando o cadastro muda. Se o método
+  /// for corrigido no ano que vem, o papel de quem concluiu continua dizendo
+  /// o que ele concluiu. Um certificado que se reescreve sozinho não serve
+  /// para nada, porque quem o recebeu não pode confiar no que está escrito.
+  retrato             Json?
+  /// Quem respondeu pela emissão.
+  responsavelNome     String?
 
   aluno               Usuario   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
   metodo              Metodo?         @relation(fields: [metodoId], references: [id], onDelete: SetNull)

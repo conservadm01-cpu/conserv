@@ -44,6 +44,9 @@ export function comandosDePermissao(papel: string): string[] {
     // credencial antes de existir sessão, e a RLS ainda não tem por quem filtrar.
     `GRANT EXECUTE ON FUNCTION app.credenciais_para_login(text) TO ${p}`,
     `GRANT EXECUTE ON FUNCTION app.usuario_da_sessao(text) TO ${p}`,
+    // Conferência pública de certificado: a função é de escopo estreito e
+    // devolve só o que o próprio papel impresso já mostra.
+    `GRANT EXECUTE ON FUNCTION app.certificado_publico(text) TO ${p}`,
   ];
 }
 
