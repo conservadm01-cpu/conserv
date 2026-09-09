@@ -1,0 +1,14 @@
+{
+  "name": "msa-estudo-musical",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Estudo Musical MSA - app de estudo de teoria musical e do método do instrumento, numa página só",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1"
+  },
+  "engines": { "node": ">=20" }
+}

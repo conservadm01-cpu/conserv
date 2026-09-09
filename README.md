@@ -397,9 +397,18 @@ colunas declaradas pela rota — e `?limite=`.
 
 ---
 
-## Outro app neste repositório: `musica/`
+## Outros apps neste repositório
+
+Nenhum dos dois compartilha banco, dependências ou código com o ERP.
 
 A pasta `musica/` guarda o **CLAVE**, um app independente para acompanhar o progresso de alunos
-de música — trilha, fase, avaliação por objetivo com peso e boletim impresso. Ele não compartilha
-banco, dependências nem código com o ERP: sobe sozinho com `cd musica && npm run db:seed && npm start`.
-O porquê e as regras estão em [`musica/README.md`](musica/README.md).
+de música — trilha, fase, avaliação por objetivo com peso e boletim impresso. Sobe sozinho com
+`cd musica && npm run db:seed && npm start`. O porquê e as regras estão em
+[`musica/README.md`](musica/README.md).
+
+A pasta `msa/` guarda o **Estudo Musical — MSA**, o app de estudo do aluno: teoria do MSA e método
+do instrumento, fase a fase, com lições, jogos, avaliação que nunca repete pergunta e certificado.
+É **uma página só** (`msa/index.html`), sem servidor e sem build — abrir o arquivo no celular basta.
+A entrada é por usuário e senha; o acesso de fábrica do instrutor é `admin` / `ccb123`. Os testes
+rodam a página num Chromium de verdade: `cd msa && npm install && npm test`. As regras estão em
+[`msa/README.md`](msa/README.md).
