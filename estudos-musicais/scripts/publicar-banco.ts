@@ -22,14 +22,20 @@ import { iniciar } from './iniciar.ts';
 const url = process.env.DATABASE_URL_MIGRACAO;
 if (!url) throw new Error('Defina DATABASE_URL_MIGRACAO: conexão DIRETA (sem pooler) do dono do schema.');
 
-console.log('1/3  migrações');
+console.log('1/4  migrações');
 execFileSync('npx', ['prisma', 'migrate', 'deploy'], { stdio: 'inherit' });
 
-console.log('2/3  permissões do papel da aplicação');
+console.log('2/4  permissões do papel da aplicação');
 const quantos = await aplicarPermissoes(url);
 console.log(`     ${quantos} comandos aplicados.`);
 
-console.log('3/3  primeiro administrador');
+console.log('3/4  catálogo de permissões da aplicação');
+// O catálogo é sincronizado a cada publicação; a CONCESSÃO só é criada onde
+// ainda não existe, para que a publicação não desfaça o que a administração
+// decidiu na tela.
+execFileSync('node', ['--experimental-strip-types', 'scripts/semear-permissoes.ts'], { stdio: 'inherit' });
+
+console.log('4/4  primeiro administrador');
 const prisma = clienteAdministrativo();
 try {
   const resultado = await iniciar(prisma);

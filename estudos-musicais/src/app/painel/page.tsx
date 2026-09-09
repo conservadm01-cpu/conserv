@@ -301,6 +301,7 @@ export default async function PaginaDoPainel({
         <Link href="/painel/relatorios" className="botao-secundario">Relatórios</Link>
         <Link href="/painel/turmas" className="botao-secundario">Turmas</Link>
         {escopo.ehAdministracao && <Link href="/admin/metodos" className="botao-secundario">Central de métodos</Link>}
+        {escopo.ehAdministracao && <Link href="/admin/permissoes" className="botao-secundario">Permissões</Link>}
         <Link href="/assunto" className="botao-secundario">Índice por assunto</Link>
         <Link href="/sair" className="botao-secundario">Sair</Link>
       </nav>

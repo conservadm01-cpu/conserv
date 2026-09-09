@@ -198,3 +198,33 @@ test('a localidade nasce com tipo, e o tipo é dado', async () => {
   assert.ok(comuns.every((c) => typeof c.tipo === 'string'));
   assert.ok(comuns.some((c) => c.tipo === 'COMUM'), 'o que já existia continua sendo comum');
 });
+
+test('permissão é dado: a administração concede e o instrutor passa a poder', async () => {
+  const { escopoPode } = await import('../../src/lib/permissoes.ts');
+  const { escopoDoUsuario } = await import('../../src/lib/autorizacao.ts');
+  const marcos = comoQuem('marcos.instrutor@exemplo.org');
+
+  const antes = await escopoDoUsuario(marcos);
+  assert.ok(antes.permissoes, 'a semente precisa ter criado as concessões');
+  assert.equal(escopoPode(antes, 'turma.gerir'), false, 'instrutor não gere turmas de fábrica');
+
+  await dono.query(
+    `INSERT INTO permissoes_do_papel (id, papel, "permissaoChave", concedida, "criadoEm", "atualizadoEm")
+     VALUES ('teste_turma_instrutor', 'INSTRUTOR', 'turma.gerir', true, now(), now())
+     ON CONFLICT (papel, "permissaoChave") DO UPDATE SET concedida = true`,
+  );
+  const depois = await escopoDoUsuario(marcos);
+  assert.equal(escopoPode(depois, 'turma.gerir'), true, 'concedida no banco, passa a valer — sem publicar código');
+
+  await dono.query('DELETE FROM permissoes_do_papel WHERE id = $1', ['teste_turma_instrutor']);
+});
+
+test('quem não é administração não muda permissão de ninguém', async () => {
+  await assert.rejects(
+    () => comoUsuario(comoQuem('marcos.instrutor@exemplo.org'), (tx) =>
+      tx.permissaoDoPapel.create({
+        data: { papel: 'INSTRUTOR', permissaoChave: 'metodo.publicar', concedida: true },
+      })),
+    'conceder a si mesmo precisa falhar no banco, não só na tela',
+  );
+});

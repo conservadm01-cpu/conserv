@@ -26,6 +26,12 @@ export interface EscopoDoUsuario {
   comunsVisiveis: string[];
   ehAdministracao: boolean;
   comumDoAluno: string | null;
+  /**
+   * As permissões concedidas aos papéis desta pessoa, lidas do banco. Vem
+   * vazia quando a tabela ainda não foi semeada — e nesse caso quem decide é
+   * a concessão de fábrica, em src/lib/permissoes.ts.
+   */
+  permissoes?: string[];
 }
 
 const ADMINISTRACAO: Papel[] = ['SUPERADMIN', 'ADMIN_PEDAGOGICO'];
@@ -55,6 +61,18 @@ export async function escopoDoUsuario(usuarioId: string, tx?: TransacaoPrisma): 
     // um aluno enxergaria os colegas da própria comum.
     const comunsVisiveis = [...new Set([...comunsDiretas, ...comunsDasRegioes])];
 
+    // As permissões concedidas aos papéis desta pessoa. A tabela pode estar
+    // vazia num banco ainda não semeado; nesse caso a lista sai indefinida e
+    // quem decide é a concessão de fábrica, em src/lib/permissoes.ts. Vale a
+    // pena esse cuidado: sem ele, um banco recém-migrado trancaria todo mundo
+    // para fora por falta de linhas numa tabela.
+    const concedidas = papeis.length
+      ? await banco.permissaoDoPapel.findMany({
+        where: { papel: { in: papeis }, concedida: true },
+        select: { permissaoChave: true },
+      })
+      : [];
+
     return {
       usuarioId,
       papeis,
@@ -63,6 +81,7 @@ export async function escopoDoUsuario(usuarioId: string, tx?: TransacaoPrisma): 
       comunsVisiveis,
       ehAdministracao: papeis.some((p) => ADMINISTRACAO.includes(p)),
       comumDoAluno: perfil?.comumId ?? null,
+      permissoes: concedidas.length ? [...new Set(concedidas.map((c) => c.permissaoChave))] : undefined,
     };
   };
 

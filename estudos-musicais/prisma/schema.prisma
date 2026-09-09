@@ -118,6 +118,7 @@ model Usuario {
   responsaveis        ResponsavelDoAluno[] @relation("responsaveisDoAluno")
   comoResponsavel     Responsavel?   @relation("acessoDoResponsavel")
   responsaveisCadastrados Responsavel[] @relation("responsaveisCadastrados")
+  permissoesConcedidas PermissaoDoPapel[] @relation("permissoesConcedidas")
   alunosComoInstrutor PerfilAluno[]  @relation("instrutorDoAluno")
   sessoes             Sessao[]
   solicitacoes        Solicitacao[]  @relation("solicitante")
@@ -196,6 +197,51 @@ model Vinculo {
   @@index([usuarioId, ativo])
   @@index([papel, ativo])
   @@map("vinculos")
+}
+
+
+// ================================================ permissões de aplicação
+
+/// Uma permissão que o programa verifica em algum lugar.
+///
+/// O CATÁLOGO vive em código (src/lib/permissoes.ts) e é semeado aqui; esta
+/// tabela existe para que a CONCESSÃO possa ser dado. Permissão gravada aqui
+/// sem verificação correspondente no código não faria nada — a semente é a
+/// fonte, e linhas órfãs aparecem como pendência.
+model Permissao {
+  chave           String   @id
+  grupo           String
+  nome            String
+  descricao       String?
+  /// O banco só autoriza a administração: conceder a papel de campo faria a
+  /// tela oferecer o que a RLS recusaria.
+  soAdministracao Boolean  @default(false)
+  criadoEm        DateTime @default(now())
+
+  papeis          PermissaoDoPapel[]
+
+  @@index([grupo])
+  @@map("permissoes")
+}
+
+/// Quem tem cada permissão. É esta tabela que a especificação pede: conceder
+/// e retirar permissão sem alterar o programa.
+model PermissaoDoPapel {
+  id             String   @id @default(cuid())
+  papel          Papel
+  permissaoChave String
+  concedida      Boolean  @default(true)
+  concedidoPorId String?
+  observacao     String?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  permissao      Permissao @relation(fields: [permissaoChave], references: [chave], onDelete: Cascade)
+  concedidoPor   Usuario?  @relation("permissoesConcedidas", fields: [concedidoPorId], references: [id], onDelete: SetNull)
+
+  @@unique([papel, permissaoChave])
+  @@index([papel, concedida])
+  @@map("permissoes_do_papel")
 }
 
 model Sessao {
