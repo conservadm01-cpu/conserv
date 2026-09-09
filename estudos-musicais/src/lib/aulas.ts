@@ -135,6 +135,24 @@ export function resumoDeFrequencia(
   };
 }
 
+/**
+ * A frase da frequência, com as parcelas que existem.
+ *
+ * Existe porque a soma precisa fechar na leitura. "1 aula, 0 presenças, 0
+ * faltas" é o que sai quando a única ausência foi justificada e a frase não a
+ * menciona — e um número que não fecha derruba a confiança no painel inteiro.
+ */
+export function frequenciaPorExtenso(resumo: ResumoDeFrequencia): string {
+  if (resumo.percentual === null) return 'Nenhuma aula registrada para este aluno ainda.';
+  const parcelas = [
+    `${resumo.presencas} presença(s)`,
+    resumo.faltas ? `${resumo.faltas} falta(s)` : null,
+    resumo.faltasJustificadas ? `${resumo.faltasJustificadas} falta(s) justificada(s)` : null,
+    resumo.atrasos ? `${resumo.atrasos} atraso(s)` : null,
+  ].filter(Boolean);
+  return `${resumo.percentual}% de presença em ${resumo.aulas} aula(s) — ${parcelas.join(', ')}.`;
+}
+
 export const FALTAS_SEGUIDAS_PARA_ALERTA = 3;
 export const FREQUENCIA_MINIMA = 75;
 

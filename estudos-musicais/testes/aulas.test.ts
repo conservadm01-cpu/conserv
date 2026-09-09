@@ -2,8 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  alertaDeFrequencia, comparece, listaDePresencaInicial, motivoDaRecusaDeAula,
-  motivoDaRecusaDePresenca, nomeDaPresenca, resumoDeFrequencia, TIPOS_DE_PRESENCA,
+  alertaDeFrequencia, comparece, frequenciaPorExtenso, listaDePresencaInicial,
+  motivoDaRecusaDeAula, motivoDaRecusaDePresenca, nomeDaPresenca, resumoDeFrequencia,
+  TIPOS_DE_PRESENCA,
 } from '../src/lib/aulas.ts';
 
 const HOJE = new Date('2026-09-09T12:00:00Z');
@@ -128,4 +129,22 @@ test('o alerta fala de faltas seguidas antes de falar de percentual', () => {
 test('a chamada começa com todos presentes', () => {
   const lista = listaDePresencaInicial([{ alunoId: 'a1' }, { alunoId: 'a2' }]);
   assert.deepEqual(lista.map((l) => l.tipo), ['PRESENTE', 'PRESENTE']);
+});
+
+test('a frase da frequência fecha a conta', () => {
+  // O caso que denunciou o defeito: uma aula, a única ausência justificada.
+  // A frase dizia "1 aula, 0 presenças, 0 faltas" — e o aluno sumia da conta.
+  const soJustificada = resumoDeFrequencia([p('FALTA_JUSTIFICADA', '2026-09-01')]);
+  const frase = frequenciaPorExtenso(soJustificada);
+  assert.match(frase, /1 falta\(s\) justificada\(s\)/);
+  assert.ok(!/0 falta\(s\)/.test(frase), 'não se anuncia parcela que não existe');
+
+  const completa = frequenciaPorExtenso(resumoDeFrequencia([
+    p('PRESENTE', '2026-09-01'), p('FALTA', '2026-09-02'),
+    p('FALTA_JUSTIFICADA', '2026-09-03'), p('ATRASO', '2026-09-04'),
+  ]));
+  assert.match(completa, /50% de presença em 4 aula\(s\)/);
+  assert.match(completa, /2 presença\(s\), 1 falta\(s\), 1 falta\(s\) justificada\(s\), 1 atraso\(s\)/);
+
+  assert.match(frequenciaPorExtenso(resumoDeFrequencia([])), /Nenhuma aula registrada/);
 });

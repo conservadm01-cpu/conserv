@@ -4,6 +4,8 @@ import { comoUsuario } from '@/lib/banco.ts';
 import { usuarioDaTela } from '@/lib/sessao.ts';
 import { podeVerAluno, ehAcompanhante } from '@/lib/autorizacao.ts';
 import { calcularAproveitamento, type EstadoProgresso } from '@/lib/regras.ts';
+import { alertaDeFrequencia, frequenciaPorExtenso, resumoDeFrequencia } from '@/lib/aulas.ts';
+import { avisoDeResponsavelObrigatorio } from '@/lib/pessoas.ts';
 import { Cabecalho, Indicador, Aviso, formatarTempo } from '@/componentes/basicos.tsx';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +38,7 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
     const perfil = await banco.perfilAluno.findUnique({
       where: { usuarioId: id },
       include: {
-        usuario: { select: { nomeCompleto: true, email: true, telefone: true, ultimoAcessoEm: true } },
+        usuario: { select: { nomeCompleto: true, email: true, telefone: true, ultimoAcessoEm: true, nascimento: true } },
         comum: { include: { regiao: true } }, instrumento: true, instrutor: { select: { nomeCompleto: true } },
       },
     });
@@ -60,11 +62,25 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
       include: { turma: { select: { nome: true, metodo: { select: { codigo: true } } } } },
     });
     const tempos = await banco.tempoDiario.findMany({ where: { usuarioId: id }, orderBy: { dia: 'desc' }, take: 30 });
+    const responsaveis = await banco.responsavelDoAluno.findMany({
+      where: { alunoId: id },
+      orderBy: [{ pedagogico: 'desc' }, { criadoEm: 'asc' }],
+      include: { responsavel: true },
+    });
+    const presencas = await banco.presenca.findMany({
+      where: { alunoId: id },
+      include: { aula: { select: { data: true, situacao: true } } },
+    });
+    const ultimaAula = await banco.aula.findFirst({
+      where: { presencas: { some: { alunoId: id } }, situacao: 'REALIZADA' },
+      orderBy: { data: 'desc' },
+      select: { data: true, conteudo: true, proximaAtividade: true },
+    });
     const envios = await banco.envio.findMany({
       where: { alunoId: id }, orderBy: { atualizadoEm: 'desc' }, take: 10,
       include: { atividade: { select: { titulo: true } } },
     });
-    return { perfil, progresso, jornadas, turmas, tempos, envios };
+    return { perfil, progresso, jornadas, turmas, tempos, envios, responsaveis, presencas, ultimaAula };
   });
 
   if (!dados.perfil) {
@@ -86,6 +102,15 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
   );
   const aprovadasNoTotal = dados.progresso.filter((p) => p.estado === 'APROVADO').length;
   const tempoTotal = dados.tempos.reduce((soma, t) => soma + t.segundosDedicacao, 0);
+
+  const frequencia = resumoDeFrequencia(dados.presencas.map((p) => ({
+    tipo: p.tipo, aula: p.aula ? { data: p.aula.data, situacao: p.aula.situacao } : null,
+  })));
+  const primeiroNome = dados.perfil.usuario.nomeCompleto.split(' ')[0];
+  const alertaDeFrequenciaDoAluno = alertaDeFrequencia(frequencia, primeiroNome);
+  const avisoDeMenor = avisoDeResponsavelObrigatorio(
+    dados.perfil.usuario.nascimento, dados.responsaveis,
+  );
 
   return (
     <main className="mx-auto max-w-3xl p-6 pb-16">
@@ -148,6 +173,43 @@ export default async function FichaDoAluno({ params }: { params: Promise<{ id: s
           </ul>
         </section>
       )}
+
+      <section className="mt-6">
+        <h2 className="rotulo">Responsáveis</h2>
+        {dados.responsaveis.length ? (
+          <ul className="mt-2 grid gap-2">
+            {dados.responsaveis.map((vinculo) => (
+              <li key={vinculo.id} className="cartao">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-semibold">{vinculo.responsavel.nomeCompleto}</span>
+                  {vinculo.parentesco && <span className="etiqueta bg-black/5">{vinculo.parentesco}</span>}
+                </div>
+                <p className="text-xs text-tinta-fraca">
+                  {[vinculo.responsavel.telefone, vinculo.responsavel.email].filter(Boolean).join(' · ') || 'sem contato registrado'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-tinta-fraca">Nenhum responsável cadastrado.</p>
+        )}
+        {avisoDeMenor && <div className="mt-2"><Aviso tom="pendente">{avisoDeMenor}</Aviso></div>}
+        <Link href={`/painel/aluno/${id}/responsaveis`} className="botao-secundario mt-2 inline-block">
+          Cadastrar ou remover responsável
+        </Link>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="rotulo">Frequência</h2>
+        <div className="cartao mt-2">
+          <p className="text-sm">{frequenciaPorExtenso(frequencia)}</p>
+          {alertaDeFrequenciaDoAluno && <p className="mt-1 text-sm text-alerta">{alertaDeFrequenciaDoAluno}</p>}
+          {dados.ultimaAula?.proximaAtividade && (
+            <p className="mt-1 text-sm"><b>Combinado na última aula:</b> {dados.ultimaAula.proximaAtividade}</p>
+          )}
+        </div>
+        <Link href={`/painel/aulas?aluno=${id}`} className="botao-secundario mt-2 inline-block">Ver as aulas</Link>
+      </section>
 
       <section className="mt-6">
         <h2 className="rotulo">Situação do cadastro</h2>
