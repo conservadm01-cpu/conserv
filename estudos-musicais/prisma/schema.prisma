@@ -29,14 +29,36 @@ model Regiao {
   @@map("regioes")
 }
 
+enum TipoDeLocalidade {
+  COMUM
+  ESCOLA_DE_MUSICA
+  POLO
+  SALA
+  UNIDADE
+  OUTRO
+}
+
+/// O lugar onde se estuda.
+///
+/// Chama-se `Comum` porque foi assim que nasceu, e renomear a tabela custaria
+/// caro: ela é referência de vínculo, de aluno, de turma e de meia dúzia de
+/// políticas de RLS. O que ela ganhou foi um TIPO — comum, escola de música,
+/// polo, sala — para que a plataforma sirva a quem não organiza o ensino por
+/// congregação. Para o resto do sistema, isto aqui é "localidade".
 model Comum {
   id            String   @id @default(cuid())
   nome          String
   codigo        String?  @unique
   regiaoId      String
+  tipo          TipoDeLocalidade @default(COMUM)
   cidade        String
   estado        String   @db.VarChar(2)
   endereco      String?
+  numero        String?
+  bairro        String?
+  cep           String?  @db.VarChar(9)
+  telefone      String?
+  responsavelNome String?
   ativo         Boolean  @default(true)
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt
@@ -45,9 +67,11 @@ model Comum {
   vinculos      Vinculo[]
   alunos        PerfilAluno[]
   turmas        Turma[]
+  instrutores   PerfilInstrutor[]
 
   @@unique([regiaoId, nome])
   @@index([ativo])
+  @@index([tipo, ativo])
   @@map("comuns")
 }
 
@@ -88,6 +112,10 @@ model Usuario {
   vinculos            Vinculo[]      @relation("vinculosDoUsuario")
   vinculosConcedidos  Vinculo[]      @relation("vinculosConcedidos")
   perfilAluno         PerfilAluno?   @relation("perfilDoAluno")
+  perfilInstrutor     PerfilInstrutor? @relation("perfilDoInstrutor")
+  responsaveis        ResponsavelDoAluno[] @relation("responsaveisDoAluno")
+  comoResponsavel     Responsavel?   @relation("acessoDoResponsavel")
+  responsaveisCadastrados Responsavel[] @relation("responsaveisCadastrados")
   alunosComoInstrutor PerfilAluno[]  @relation("instrutorDoAluno")
   sessoes             Sessao[]
   solicitacoes        Solicitacao[]  @relation("solicitante")
@@ -215,6 +243,113 @@ model PerfilAluno {
   @@map("perfis_aluno")
 }
 
+
+// ============================================ responsáveis e instrutores
+
+/// Responsável pelo aluno: pai, mãe, cônjuge, tutor.
+///
+/// Uma escolha de nome que vale explicar. A especificação chama isto de
+/// "encarregado"; aqui não dá. Neste domínio ENCARREGADO_LOCAL e
+/// ENCARREGADO_REGIONAL já existem, e são cargos do ministério — quem responde
+/// pela música na comum e na região. Chamar o pai de um aluno de "encarregado"
+/// misturaria duas coisas que ninguém confunde na vida real, e a confusão
+/// apareceria em tela, em relatório e em permissão. Então: RESPONSÁVEL.
+model Responsavel {
+  id            String   @id @default(cuid())
+  /// Quando o responsável também acessa o sistema. Continua nulo para quem só
+  /// consta como contato — não se cria acesso para ninguém sem necessidade.
+  usuarioId     String?  @unique
+  nomeCompleto  String
+  documento     String?
+  telefone      String?
+  email         String?
+  endereco      String?
+  numero        String?
+  bairro        String?
+  cidade        String?
+  estado        String?  @db.VarChar(2)
+  cep           String?  @db.VarChar(9)
+  observacao    String?
+  ativo         Boolean  @default(true)
+  /// Quem cadastrou. Existe por dois motivos: registro de responsabilidade, e
+  /// porque o Prisma grava com RETURNING — sem poder ler de volta o que
+  /// acabou de criar, o INSERT falha. Ligar isso a quem criou é preciso e
+  /// permanente; ligar a "criado há pouco" seria um buraco com relógio.
+  criadoPorId   String?
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  usuario       Usuario? @relation("acessoDoResponsavel", fields: [usuarioId], references: [id], onDelete: SetNull)
+  criadoPor     Usuario? @relation("responsaveisCadastrados", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  alunos        ResponsavelDoAluno[]
+
+  @@index([ativo])
+  @@map("responsaveis")
+}
+
+/// O vínculo entre aluno e responsável. É N:N de propósito: um aluno pode ter
+/// pai e mãe, e um pai pode ter três filhos estudando.
+model ResponsavelDoAluno {
+  id             String   @id @default(cuid())
+  alunoId        String
+  responsavelId  String
+  parentesco     String?
+  /// Quem responde pelas decisões de estudo — trocar de instrumento, avançar
+  /// de fase, autorizar apresentação.
+  pedagogico     Boolean  @default(false)
+  /// Quem responde por mensalidade e material, onde isso existir.
+  financeiro     Boolean  @default(false)
+  recebeAvisos   Boolean  @default(true)
+  criadoEm       DateTime @default(now())
+
+  aluno          Usuario     @relation("responsaveisDoAluno", fields: [alunoId], references: [id], onDelete: Cascade)
+  responsavel    Responsavel @relation(fields: [responsavelId], references: [id], onDelete: Cascade)
+
+  @@unique([alunoId, responsavelId])
+  @@index([responsavelId])
+  @@map("responsaveis_do_aluno")
+}
+
+/// A ficha do instrutor. O PAPEL dele já existe em `vinculos` — este perfil é
+/// o que o papel não guarda: formação, documento, observação, e com que
+/// instrumentos e métodos ele trabalha.
+model PerfilInstrutor {
+  id            String   @id @default(cuid())
+  usuarioId     String   @unique
+  comumId       String?
+  documento     String?
+  formacao      String?
+  observacao    String?
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  usuario       Usuario  @relation("perfilDoInstrutor", fields: [usuarioId], references: [id], onDelete: Cascade)
+  comum         Comum?   @relation(fields: [comumId], references: [id], onDelete: SetNull)
+  atuacoes      AtuacaoDoInstrutor[]
+
+  @@index([ativo])
+  @@map("perfis_instrutor")
+}
+
+/// Com que instrumento e método um instrutor trabalha. Sem método, vale para
+/// todos os métodos daquele instrumento — é o caso comum, e obrigar a
+/// cadastrar um a um só criaria trabalho.
+model AtuacaoDoInstrutor {
+  id            String   @id @default(cuid())
+  instrutorId   String
+  instrumentoId String?
+  metodoId      String?
+  criadoEm      DateTime @default(now())
+
+  instrutor     PerfilInstrutor @relation(fields: [instrutorId], references: [id], onDelete: Cascade)
+  instrumento   Instrumento?    @relation(fields: [instrumentoId], references: [id], onDelete: Cascade)
+  metodo        Metodo?         @relation(fields: [metodoId], references: [id], onDelete: Cascade)
+
+  @@unique([instrutorId, instrumentoId, metodoId])
+  @@map("atuacoes_do_instrutor")
+}
+
 enum TipoSolicitacao {
   TROCA_INSTRUMENTO
   TRANSFERENCIA_COMUM
@@ -325,6 +460,7 @@ model Instrumento {
   licoes                Licao[]
 
   @@index([status])
+  atuacoes             AtuacaoDoInstrutor[]
   @@map("instrumentos")
 }
 
@@ -376,6 +512,7 @@ model Metodo {
   avaliacoes     Avaliacao[]
 
   @@index([escopo, status])
+  atuacoes             AtuacaoDoInstrutor[]
   @@map("metodos")
 }
 
