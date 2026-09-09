@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EscopoDoUsuario, Papel } from '../src/lib/autorizacao.ts';
 import {
-  camposDaMudancaDeSituacao, descreverMatricula, encerra, estaEmCurso,
+  camposDaMudancaDeSituacao, descreverMatricula, encerra, estaEmCurso, matriculaPrincipal,
   motivoDaRecusaDeAbertura, motivoDaRecusaDeGestao, motivoDaRecusaDeSituacaoDaMatricula,
   nomeDaSituacao, SITUACOES_DA_MATRICULA,
 } from '../src/lib/matriculas.ts';
@@ -124,4 +124,25 @@ test('a matrícula se descreve para a lista', () => {
     descreverMatricula({ metodo: { nome: 'MSA' }, instrumento: null, status: 'INTERROMPIDA' }),
     'MSA — trancada',
   );
+});
+
+test('a matrícula que representa o aluno numa linha só é sempre a mesma', () => {
+  // Painel e relatório escolhiam por critérios diferentes, e o mesmo aluno
+  // aparecia em métodos diferentes nas duas telas.
+  const matriculas = [
+    { id: 'antiga-ativa', status: 'ATIVA', inicioEm: '2024-01-01' },
+    { id: 'concluida-recente', status: 'CONCLUIDA', inicioEm: '2026-01-01' },
+    { id: 'nova-ativa', status: 'ATIVA', inicioEm: '2025-06-01' },
+  ];
+  assert.equal(matriculaPrincipal(matriculas)!.id, 'nova-ativa',
+    'a mais recente EM CURSO, não a mais recente de todas');
+
+  const soEncerradas = [
+    { id: 'velha', status: 'CANCELADA', inicioEm: '2023-01-01' },
+    { id: 'recente', status: 'CONCLUIDA', inicioEm: '2026-01-01' },
+  ];
+  assert.equal(matriculaPrincipal(soEncerradas)!.id, 'recente',
+    'sem nenhuma em curso, a mais recente de todas');
+
+  assert.equal(matriculaPrincipal([]), null);
 });

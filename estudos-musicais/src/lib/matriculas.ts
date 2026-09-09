@@ -147,6 +147,28 @@ export function camposDaMudancaDeSituacao(
   return { status: para, encerradaEm: null, conclusaoEm: null };
 }
 
+/**
+ * A matrícula que representa o aluno numa lista de uma linha só.
+ *
+ * Existe porque painel e relatório escolhiam por critérios diferentes — um
+ * pegava a mais recente, o outro a primeira ativa — e o mesmo aluno aparecia
+ * em métodos diferentes nas duas telas. Quem lê os dois no mesmo dia conclui,
+ * com razão, que um deles está errado.
+ *
+ * O critério: a mais recente EM CURSO; não havendo nenhuma em curso, a mais
+ * recente de todas; não havendo nenhuma, nada.
+ */
+export function matriculaPrincipal<T extends { status: string; inicioEm: Date | string }>(
+  matriculas: T[],
+): T | null {
+  if (!matriculas.length) return null;
+  const maisRecente = (lista: T[]) => lista.slice().sort(
+    (a, b) => new Date(b.inicioEm).getTime() - new Date(a.inicioEm).getTime(),
+  )[0];
+  const emCurso = matriculas.filter((m) => estaEmCurso(m.status));
+  return emCurso.length ? maisRecente(emCurso) : maisRecente(matriculas);
+}
+
 /** Resumo para a lista da secretaria. */
 export const descreverMatricula = (m: {
   metodo?: { nome: string } | null;
