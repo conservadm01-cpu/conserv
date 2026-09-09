@@ -68,6 +68,8 @@ model Comum {
   alunos        PerfilAluno[]
   turmas        Turma[]
   instrutores   PerfilInstrutor[]
+  jornadas      JornadaDoAluno[]
+  aulas         Aula[]
 
   @@unique([regiaoId, nome])
   @@index([ativo])
@@ -128,6 +130,11 @@ model Usuario {
   progressoUnidades   ProgressoUnidade[]
   jornadas            JornadaDoAluno[]      @relation("alunoDaJornada")
   turmasComoInstrutor Turma[]               @relation("instrutorDaTurma")
+  jornadasComoInstrutor JornadaDoAluno[]    @relation("instrutorDaJornada")
+  aulasComoInstrutor  Aula[]                @relation("instrutorDaAula")
+  aulasRegistradas    Aula[]                @relation("aulasRegistradas")
+  presencas           Presenca[]            @relation("presencasDoAluno")
+  presencasRegistradas Presenca[]           @relation("presencasRegistradas")
   matriculas          MatriculaEmTurma[]
   documentosEnviados  DocumentoMetodo[]
   autorizacoesDeMetodo MetodoInstrumento[]
@@ -714,6 +721,7 @@ model UnidadeCurricular {
   @@index([curriculoId, tipo, ordem])
   @@index([paiId, ordem])
   @@index([caminho])
+  aulas                Aula[]
   @@map("unidades_curriculares")
 }
 
@@ -1353,14 +1361,28 @@ model Certificado {
 
 enum SituacaoDaJornada {
   ATIVA
+  /// Parada por decisão do aluno ou da localidade, com intenção de voltar.
+  TRANCADA
   CONCLUIDA
+  /// Encerrada sem conclusão. Diferente de trancada: não se espera retorno.
+  CANCELADA
+  /// Nome antigo do que hoje se chama TRANCADA. Continua aqui porque há
+  /// registros gravados com ele — apagar o valor apagaria o passado.
   INTERROMPIDA
   AGUARDANDO_LIBERACAO
 }
 
-/// A jornada do aluno em UM método de UM instrumento. Um mesmo aluno pode ter
-/// várias jornadas ao mesmo tempo — MSA na fase 4, violino na fase 2,
-/// saxofone na fase 1 — cada uma com progresso próprio.
+/// A MATRÍCULA do aluno em UM método de UM instrumento.
+///
+/// Chama-se jornada porque foi assim que nasceu, e o nome descreve bem o que
+/// ela guarda: onde o aluno está e quanto andou. Mas é a matrícula do sistema
+/// — quem estuda o quê, com quem, onde, desde quando e em que situação. Não
+/// existe uma segunda tabela de matrícula ao lado desta; duas espinhas para a
+/// mesma coisa divergem em seis meses.
+///
+/// Um mesmo aluno pode ter várias ao mesmo tempo: MSA na fase 4, violino na
+/// fase 2, saxofone na fase 1, cada uma com progresso próprio e podendo ter
+/// instrutor e localidade diferentes.
 model JornadaDoAluno {
   id             String            @id @default(cuid())
   alunoId        String
@@ -1368,9 +1390,17 @@ model JornadaDoAluno {
   metodoId       String
   curriculoId    String
   unidadeAtualId String?
+  /// Quem acompanha o aluno NESTA matrícula. Pode ser diferente do instrutor
+  /// da ficha do aluno: quem ensina violino não é quem ensina teoria.
+  instrutorId    String?
+  /// Onde esta matrícula acontece. Também pode diferir da comum do aluno —
+  /// quem mora numa comum e estuda na escola de música da região.
+  comumId        String?
   progresso      Int               @default(0)
   status         SituacaoDaJornada @default(ATIVA)
   inicioEm       DateTime          @default(now())
+  /// Quando saiu, por conclusão, trancamento ou cancelamento.
+  encerradaEm    DateTime?
   conclusaoEm    DateTime?
   observacao     String?
   atualizadoEm   DateTime          @updatedAt
@@ -1380,19 +1410,107 @@ model JornadaDoAluno {
   metodo         Metodo             @relation(fields: [metodoId], references: [id], onDelete: Cascade)
   curriculo      Curriculo          @relation(fields: [curriculoId], references: [id], onDelete: Cascade)
   unidadeAtual   UnidadeCurricular? @relation(fields: [unidadeAtualId], references: [id], onDelete: SetNull)
+  instrutor      Usuario?           @relation("instrutorDaJornada", fields: [instrutorId], references: [id], onDelete: SetNull)
+  comum          Comum?             @relation(fields: [comumId], references: [id], onDelete: SetNull)
 
   progressoUnidades ProgressoUnidade[]
   progressoLicoes   ProgressoLicao[]
   matriculas        MatriculaEmTurma[]
+  aulas             Aula[]
+  presencas         Presenca[]
   medalhas          Medalha[]
   certificados      Certificado[]
 
   @@unique([alunoId, metodoId, instrumentoId])
   @@index([status])
+  @@index([instrutorId, status])
+  @@index([comumId, status])
   @@map("jornadas_do_aluno")
 }
 
 /// Turma: instrumento + método + fase (unidade) + instrutor + localidade.
+
+// ================================================== aulas e frequência
+
+enum SituacaoDaAula {
+  PLANEJADA
+  REALIZADA
+  CANCELADA
+}
+
+/// A aula dada. É o registro que o instrutor faz depois de encontrar o aluno:
+/// quando foi, o que se viu, o que fica para a próxima.
+///
+/// A aula é de uma TURMA ou de uma MATRÍCULA, nunca das duas: aula coletiva
+/// pertence à turma e tem vários presentes; aula individual pertence à
+/// matrícula daquele aluno. Guardar as duas no mesmo lugar evita que a
+/// frequência de um aluno fique partida em dois relatórios.
+model Aula {
+  id            String         @id @default(cuid())
+  turmaId       String?
+  jornadaId     String?
+  instrutorId   String
+  comumId       String?
+  data          DateTime       @db.Date
+  horaInicio    String?        @db.VarChar(5)
+  horaFim       String?        @db.VarChar(5)
+  situacao      SituacaoDaAula @default(REALIZADA)
+  /// O que foi trabalhado, nas palavras do instrutor.
+  conteudo      String?
+  observacao    String?
+  /// O combinado para a próxima vez. É o que o aluno vê no painel dele.
+  proximaAtividade String?
+  /// Unidades do currículo trabalhadas na aula. Liga o registro do instrutor
+  /// à trilha do método, sem obrigá-lo a preencher quando não couber.
+  unidadeId     String?
+  registradoPorId String
+  criadoEm      DateTime       @default(now())
+  atualizadoEm  DateTime       @updatedAt
+
+  turma         Turma?             @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  jornada       JornadaDoAluno?    @relation(fields: [jornadaId], references: [id], onDelete: Cascade)
+  instrutor     Usuario            @relation("instrutorDaAula", fields: [instrutorId], references: [id], onDelete: Restrict)
+  comum         Comum?             @relation(fields: [comumId], references: [id], onDelete: SetNull)
+  unidade       UnidadeCurricular? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+  registradoPor Usuario            @relation("aulasRegistradas", fields: [registradoPorId], references: [id], onDelete: Restrict)
+  presencas     Presenca[]
+
+  @@index([data])
+  @@index([instrutorId, data])
+  @@index([turmaId, data])
+  @@index([jornadaId, data])
+  @@map("aulas")
+}
+
+enum TipoDePresenca {
+  PRESENTE
+  FALTA
+  FALTA_JUSTIFICADA
+  ATRASO
+}
+
+/// Quem esteve na aula. Uma linha por aluno e aula.
+model Presenca {
+  id           String         @id @default(cuid())
+  aulaId       String
+  alunoId      String
+  jornadaId    String?
+  tipo         TipoDePresenca @default(PRESENTE)
+  justificativa String?
+  observacao   String?
+  registradoPorId String?
+  criadoEm     DateTime       @default(now())
+
+  aula         Aula            @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  aluno        Usuario         @relation("presencasDoAluno", fields: [alunoId], references: [id], onDelete: Cascade)
+  jornada      JornadaDoAluno? @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
+  registradoPor Usuario?       @relation("presencasRegistradas", fields: [registradoPorId], references: [id], onDelete: SetNull)
+
+  @@unique([aulaId, alunoId])
+  @@index([alunoId, tipo])
+  @@map("presencas")
+}
+
 model Turma {
   id            String   @id @default(cuid())
   nome          String
@@ -1413,6 +1531,7 @@ model Turma {
   unidade       UnidadeCurricular? @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
   instrutor     Usuario?           @relation("instrutorDaTurma", fields: [instrutorId], references: [id], onDelete: SetNull)
   matriculas    MatriculaEmTurma[]
+  aulas         Aula[]
 
   @@index([comumId, status])
   @@index([instrutorId])

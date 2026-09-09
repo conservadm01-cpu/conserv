@@ -165,6 +165,32 @@ test('o instrutor edita a própria ficha e não a do colega', async () => {
   );
 });
 
+test('a matrícula guarda instrutor e localidade, herdados da ficha do aluno', async () => {
+  const jornadas = await comoUsuario(comoQuem('renato@exemplo.org'), (tx) =>
+    tx.jornadaDoAluno.findMany({ select: { comumId: true, instrutorId: true, status: true } }));
+  assert.ok(jornadas.length > 0);
+  assert.ok(jornadas.every((j) => j.comumId), 'a migração precisa ter preenchido a localidade');
+  assert.ok(jornadas.some((j) => j.instrutorId), 'e o instrutor de quem já o tinha na ficha');
+});
+
+test('o instrutor da matrícula a enxerga mesmo sem acompanhar a comum do aluno', async () => {
+  // O caso real: instrutor de instrumento que atende aluno de outra
+  // localidade. Sem isto ele não veria o próprio aluno.
+  const alunoDeOutraComum = pessoas['pedro.aluno@exemplo.org'];   // Vila Nova
+  const marcos = comoQuem('marcos.instrutor@exemplo.org');        // Centro
+
+  const antes = await comoUsuario(marcos, (tx) =>
+    tx.jornadaDoAluno.findMany({ where: { alunoId: alunoDeOutraComum } }));
+
+  await dono.query('UPDATE jornadas_do_aluno SET "instrutorId" = $1 WHERE "alunoId" = $2', [marcos, alunoDeOutraComum]);
+  const depois = await comoUsuario(marcos, (tx) =>
+    tx.jornadaDoAluno.findMany({ where: { alunoId: alunoDeOutraComum } }));
+  await dono.query('UPDATE jornadas_do_aluno SET "instrutorId" = NULL WHERE "alunoId" = $1', [alunoDeOutraComum]);
+
+  assert.equal(antes.length, 0, 'antes de ser o instrutor dele, não via');
+  assert.ok(depois.length > 0, 'sendo o instrutor da matrícula, vê');
+});
+
 test('a localidade nasce com tipo, e o tipo é dado', async () => {
   const comuns = await comoUsuario(comoQuem('renato@exemplo.org'), (tx) =>
     tx.comum.findMany({ select: { nome: true, tipo: true } }));
