@@ -10,6 +10,7 @@ import {
   ENTIDADES, completarEstado, impedimentos, pendencias,
   validarAlunos, validarAvaliacoes, validarExercicios, validarFases, validarInstrumentos,
   validarJogos, validarLicoes, validarMetodos, validarQuestoes, validarUsuarios,
+  validarMatriculas, validarVersoes,
 } from './esquema.js';
 import { NORMALIZADORES } from './compatibilidade.js';
 import { migrarDadosV1ParaV2 } from './migracao.js';
@@ -30,10 +31,25 @@ export function estadoAtual() {
   return estado;
 }
 
+// Quando o aparelho recusa a gravação — armazenamento cheio ou bloqueado —
+// o aplicativo continua funcionando nesta sessão, mas o que o aluno fizer não
+// sobrevive a fechar a página. Isso não pode ser silencioso: fica registrado
+// aqui para a tela avisar.
+let ultimaFalhaAoGravar = null;
+
 export function gravar() {
   if (!estado) return false;
-  return depositoAtual().gravar(estado);
+  const gravou = depositoAtual().gravar(estado);
+  if (!gravou) ultimaFalhaAoGravar = new Date().toISOString();
+  else ultimaFalhaAoGravar = null;
+  return gravou;
 }
+
+export const falhouAoGravar = () => ultimaFalhaAoGravar;
+
+// O tamanho do que está guardado, em KB. Serve para avisar antes de o
+// armazenamento do navegador estourar (o limite costuma ser 5 MB).
+export const tamanhoGuardadoKB = () => Math.round(JSON.stringify(estadoAtual()).length / 1024);
 
 // Recomeça do zero a partir do depósito. Usado pelos testes e depois de
 // importar um arquivo.
@@ -71,6 +87,8 @@ const VALIDADORES = {
   questoes: (e) => validarQuestoes(e.questoes, e.avaliacoes),
   alunos: (e) => validarAlunos(e.alunos, e.instrumentos),
   usuarios: (e) => validarUsuarios(e.usuarios, e.alunos),
+  versoes: (e) => validarVersoes(e.versoes, e.metodos),
+  matriculas: (e) => validarMatriculas(e.matriculas, e),
 };
 
 // Recusa a gravação quando o registro quebra a estrutura (id repetido, fase
@@ -206,6 +224,14 @@ export const usuarios = criarRepositorio('usuarios', { prefixo: 'ac' });
 export const progressos = criarRepositorio('progressos', { prefixo: 'p', validar: false });
 export const resultados = criarRepositorio('resultados', { prefixo: 'r', validar: false });
 export const certificados = criarRepositorio('certificados', { prefixo: 'c', validar: false });
+export const versoes = criarRepositorio('versoes', { prefixo: 'v' });
+export const matriculas = criarRepositorio('matriculas', { prefixo: 'mt' });
+// Eventos, auditoria, conquistas e avisos são produzidos pelo próprio sistema,
+// não por formulário: entram sem validação de cadastro.
+export const eventos = criarRepositorio('eventos', { prefixo: 'ev', validar: false });
+export const auditorias = criarRepositorio('auditorias', { prefixo: 'au', validar: false });
+export const conquistas = criarRepositorio('conquistas', { prefixo: 'cq', validar: false });
+export const notificacoes = criarRepositorio('notificacoes', { prefixo: 'nt', validar: false });
 
 // ------------------------------------------------------- consultas compostas
 
@@ -259,6 +285,50 @@ export const alunoDoAcesso = (usuarioId) => {
 };
 
 // -------------------------------------------------------------- configurações
+
+// --------------------------------------------------- versões e matrículas
+
+export const versoesDoMetodo = (metodoId) =>
+  versoes.porCampo('metodoId', metodoId).slice().sort((a, b) => a.ordem - b.ordem);
+
+// A versão em que um método novo matricula quem chega agora: a última
+// publicada. Quem já está matriculado continua na versão da sua matrícula.
+export function versaoVigente(metodoId) {
+  const publicadas = versoesDoMetodo(metodoId).filter((v) => v.situacao === 'publicada');
+  return publicadas.length ? publicadas[publicadas.length - 1] : (versoesDoMetodo(metodoId).pop() || null);
+}
+
+export const matriculasDoAluno = (alunoId) =>
+  matriculas.porCampo('alunoId', alunoId).slice().sort((a, b) => String(a.dataInicio).localeCompare(String(b.dataInicio)));
+
+export const matriculasEmCurso = (alunoId) =>
+  matriculasDoAluno(alunoId).filter((m) => m.situacao === 'em_curso');
+
+// As fases de uma versão. Uma fase gravada antes de existirem versões não tem
+// versaoId: ela pertence à primeira versão do seu método.
+export function fasesDaVersao(versaoId) {
+  const versao = versoes.buscar(versaoId);
+  if (!versao) return [];
+  const daVersao = fases.porCampo('versaoId', versaoId);
+  if (daVersao.length) return daVersao.slice().sort((a, b) => a.ordem - b.ordem);
+  const primeira = versoesDoMetodo(versao.metodoId)[0];
+  if (!primeira || primeira.id !== versaoId) return [];
+  return fases.listar((f) => f.metodoId === versao.metodoId && !f.versaoId).sort((a, b) => a.ordem - b.ordem);
+}
+
+export const eventosDoAluno = (alunoId, limite = 0) => {
+  const lista = eventos.porCampo('alunoId', alunoId)
+    .slice().sort((a, b) => String(b.dataHora).localeCompare(String(a.dataHora)));
+  return limite > 0 ? lista.slice(0, limite) : lista;
+};
+
+export const conquistasDoAluno = (alunoId) =>
+  conquistas.porCampo('alunoId', alunoId).slice().sort((a, b) => String(a.conquistadaEm).localeCompare(String(b.conquistadaEm)));
+
+export const avisosDoAluno = (alunoId, { apenasNaoLidos = false } = {}) =>
+  notificacoes.porCampo('alunoId', alunoId)
+    .filter((n) => (apenasNaoLidos ? !n.lidaEm : true))
+    .sort((a, b) => String(b.criadaEm).localeCompare(String(a.criadaEm)));
 
 export const configuracoes = {
   todas() {

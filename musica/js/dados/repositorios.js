@@ -31,10 +31,25 @@ export function estadoAtual() {
   return estado;
 }
 
+// Quando o aparelho recusa a gravação — armazenamento cheio ou bloqueado —
+// o aplicativo continua funcionando nesta sessão, mas o que o aluno fizer não
+// sobrevive a fechar a página. Isso não pode ser silencioso: fica registrado
+// aqui para a tela avisar.
+let ultimaFalhaAoGravar = null;
+
 export function gravar() {
   if (!estado) return false;
-  return depositoAtual().gravar(estado);
+  const gravou = depositoAtual().gravar(estado);
+  if (!gravou) ultimaFalhaAoGravar = new Date().toISOString();
+  else ultimaFalhaAoGravar = null;
+  return gravou;
 }
+
+export const falhouAoGravar = () => ultimaFalhaAoGravar;
+
+// O tamanho do que está guardado, em KB. Serve para avisar antes de o
+// armazenamento do navegador estourar (o limite costuma ser 5 MB).
+export const tamanhoGuardadoKB = () => Math.round(JSON.stringify(estadoAtual()).length / 1024);
 
 // Recomeça do zero a partir do depósito. Usado pelos testes e depois de
 // importar um arquivo.

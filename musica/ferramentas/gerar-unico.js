@@ -15,11 +15,16 @@ const TESTE = process.argv.includes('--teste');
 const MODULOS = [
   'js/aleatorio.js', 'js/senha.js', 'js/ficha.js', 'js/musica.js', 'js/notacao.js', 'js/audio.js', 'js/download.js',
   'js/conteudo/apoio.js', 'js/conteudo/instrumentos.js', 'js/conteudo/fases.js',
-  'js/conteudo/fases-instrumento.js', 'js/conteudo/geradores.js', 'js/conteudo/trilhas.js',
-  'js/quiz.js',
+  'js/conteudo/fases-instrumento.js', 'js/conteudo/geradores.js',
+  'js/quiz.js', 'js/certificado.js',
   'js/dados/deposito.js', 'js/dados/esquema.js', 'js/dados/ids.js', 'js/dados/compatibilidade.js',
   'js/dados/permissoes.js', 'js/dados/semente.js', 'js/dados/migracao.js', 'js/dados/repositorios.js',
-  'js/armazenamento.js', 'js/certificado.js', 'js/jogos.js', 'js/plataforma.js', 'js/app.js',
+  'js/servicos/catalogo.js', 'js/conteudo/trilhas.js',
+  'js/servicos/eventos.js', 'js/servicos/progresso.js', 'js/servicos/desempenho.js',
+  'js/servicos/gamificacao.js', 'js/servicos/auditoria.js', 'js/servicos/avaliacoes.js',
+  'js/servicos/certificados.js', 'js/servicos/estudo.js', 'js/servicos/recomendacao.js',
+  'js/servicos/alertas.js', 'js/servicos/relatorios.js', 'js/servicos/importacao.js',
+  'js/armazenamento.js', 'js/jogos.js', 'js/plataforma.js', 'js/app.js',
 ];
 
 const chaveDoModulo = (caminho) => caminho.replace(/^js\//, '').replace(/\.js$/, '');

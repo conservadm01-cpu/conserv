@@ -263,13 +263,17 @@ export function validarFases(fases, metodos = []) {
   for (const d of duplicados(fases, 'id')) {
     problemas.push(erro('fases', d.linha.id, `Duplicidade de fases: já existe uma com id "${texto(d.linha.id)}".`));
   }
-  // Duas fases não podem disputar a mesma posição dentro do mesmo método.
-  const porMetodo = new Map();
+  // Duas fases não podem disputar a mesma posição — dentro da MESMA VERSÃO.
+  // Entre versões diferentes do mesmo método a repetição é esperada: a versão
+  // 2.0 tem a sua fase 1 como a 1.0 tem a dela.
+  const porVersao = new Map();
   for (const f of fases) {
-    const chave = `${f.metodoId}#${f.ordem}`;
-    if (porMetodo.has(chave)) {
-      problemas.push(erro('fases', f.id, `Duplicidade de fases: a ordem ${f.ordem} já é usada pela fase "${porMetodo.get(chave)}" no método "${f.metodoId}".`));
-    } else porMetodo.set(chave, f.id);
+    const escopo = f.versaoId || f.metodoId;
+    const chave = `${escopo}#${f.ordem}`;
+    if (porVersao.has(chave)) {
+      problemas.push(erro('fases', f.id,
+        `Duplicidade de fases: a ordem ${f.ordem} já é usada pela fase "${porVersao.get(chave)}" ${f.versaoId ? `na versão "${f.versaoId}"` : `no método "${f.metodoId}"`}.`));
+    } else porVersao.set(chave, f.id);
   }
   return problemas;
 }

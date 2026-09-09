@@ -632,3 +632,12 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   .botao, .atalho, .alternativa, .item-licao, .item-jogo,
   .cartao-aluno, .cartao-alerta, select.campo, input.campo { min-height: 44px; }
 }
+
+/* O nível do título é decidido pela estrutura da página (para o leitor de
+   tela), não pelo tamanho da letra: a aparência é a mesma em h2 e h3. */
+h2.titulo-secao, h3.titulo-secao { font-size: 13px; }
+h2.titulo-grupo, h3.titulo-grupo { font-size: 14px; }
+.linha-do-tempo .dia h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--tinta-fraca); margin: 0 0 6px;
+}

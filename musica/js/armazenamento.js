@@ -44,6 +44,8 @@ export const pendenciasDoCadastro = () => R.pendenciasDoCadastro();
 // depois de mexer no armazenamento por fora — outra aba, importação, testes.
 export const recarregar = () => R.recarregar();
 export const informacoesDaMigracao = () => R.informacoesDaMigracao();
+export const falhouAoGravar = () => R.falhouAoGravar();
+export const tamanhoGuardadoKB = () => R.tamanhoGuardadoKB();
 
 // ------------------------------------------------------------------ o acesso
 

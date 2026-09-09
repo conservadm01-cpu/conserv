@@ -27,7 +27,11 @@ import { idDoAcesso, idDoCertificado, idDoProgresso, novoId } from './dados/ids.
 import { CHAVE_V0, CHAVE_V1, depositoAtual } from './dados/deposito.js';
 import { estadoVazio } from './dados/esquema.js';
 import { semear } from './dados/semente.js';
-import { VERSAO_DA_MIGRACAO, converterV1 } from './dados/migracao.js';
+import { VERSAO_DA_MIGRACAO, converterV1, matricularNosMetodos } from './dados/migracao.js';
+import * as estudo from './servicos/estudo.js';
+import * as avaliacoes from './servicos/avaliacoes.js';
+import * as certificadosServico from './servicos/certificados.js';
+import * as gamificacao from './servicos/gamificacao.js';
 
 const CAMPOS = CAMPOS_DA_FICHA.map((c) => c.id);
 
@@ -40,6 +44,8 @@ export const pendenciasDoCadastro = () => R.pendenciasDoCadastro();
 // depois de mexer no armazenamento por fora — outra aba, importação, testes.
 export const recarregar = () => R.recarregar();
 export const informacoesDaMigracao = () => R.informacoesDaMigracao();
+export const falhouAoGravar = () => R.falhouAoGravar();
+export const tamanhoGuardadoKB = () => R.tamanhoGuardadoKB();
 
 // ------------------------------------------------------------------ o acesso
 
@@ -166,6 +172,11 @@ export function criarUsuario(dados = {}) {
     ativo: true,
   });
 
+  // Cadastrar um aluno é também matriculá-lo: sem matrícula ele não teria
+  // método nenhum para estudar, e o painel não teria o que acompanhar.
+  matricularNosMetodos(R.estadoAtual(), R.alunos.buscar(id));
+  R.gravar();
+
   return comAcesso(aluno);
 }
 
@@ -200,7 +211,21 @@ export function atualizarUsuario(id, dados = {}) {
   }
   if (Object.keys(noAcesso).length) R.usuarios.atualizar(acesso.id, noAcesso);
 
-  return comAcesso(R.alunos.buscar(id));
+  // Trocou de instrumento: as matrículas em curso acompanham, e os métodos
+  // que passaram a servir ao novo instrumento entram. O progresso já feito
+  // não é tocado.
+  const depois = R.alunos.buscar(id);
+  if (mudancas.instrumento !== undefined || mudancas.instrumentoId !== undefined) {
+    for (const matricula of R.matriculasEmCurso(id)) {
+      if (matricula.instrumentoId !== depois.instrumentoId) {
+        R.matriculas.atualizar(matricula.id, { instrumentoId: depois.instrumentoId });
+      }
+    }
+    matricularNosMetodos(R.estadoAtual(), depois);
+    R.gravar();
+  }
+
+  return comAcesso(depois);
 }
 
 export const fichaDoAlunoCompleta = (id = null) => fichaCompleta(id ? usuarioPorId(id) : alunoAtual());
@@ -213,6 +238,10 @@ export function removerUsuario(id) {
   for (const p of R.progressoDeTodasAsFases(id)) R.progressos.remover(p.id);
   for (const r of R.resultadosDoAluno(id)) R.resultados.remover(r.id);
   for (const c of R.certificadosDoAluno(id)) R.certificados.remover(c.id);
+  for (const m of R.matriculasDoAluno(id)) R.matriculas.remover(m.id);
+  for (const e of R.eventosDoAluno(id)) R.eventos.remover(e.id);
+  for (const c of R.conquistasDoAluno(id)) R.conquistas.remover(c.id);
+  for (const n of R.avisosDoAluno(id)) R.notificacoes.remover(n.id);
   if (acesso) R.usuarios.remover(acesso.id);
   R.alunos.remover(id);
 }
@@ -253,34 +282,16 @@ export function faseDoAluno(faseId, id = null) {
   };
 }
 
-// Soma pontos na fase em que foram ganhos. O total do aluno é o histórico
-// anterior à atualização mais o que ele somou fase a fase.
-function pontuar(linha, pontos) {
-  linha.xp = (linha.xp || 0) + pontos;
-}
-
-export function marcarLicaoLida(faseId, indice) {
+export function marcarLicaoLida(faseId, indice, titulo = '') {
   const alvo = idDoAlunoNaSessao();
-  if (!alvo) return;
-  const linha = R.progressoDoAluno(alvo, faseId);
-  if (linha.licoesLidas.includes(indice)) return;
-  linha.licoesLidas.push(indice);
-  pontuar(linha, 5);
-  linha.atualizadoEm = new Date().toISOString();
-  R.progressos.salvar(linha);
+  if (!alvo) return null;
+  return estudo.marcarLicaoLida(alvo, faseId, indice, { titulo });
 }
 
 export function registrarJogo(faseId, tipo, pontos) {
   const alvo = idDoAlunoNaSessao();
-  if (!alvo) return;
-  const linha = R.progressoDoAluno(alvo, faseId);
-  const anterior = linha.jogos[tipo] || 0;
-  if (pontos > anterior) {
-    linha.jogos[tipo] = pontos;
-    pontuar(linha, Math.max(0, pontos - anterior));
-  }
-  linha.atualizadoEm = new Date().toISOString();
-  R.progressos.salvar(linha);
+  if (!alvo) return null;
+  return estudo.registrarJogo(alvo, faseId, tipo, pontos);
 }
 
 export function usadasDaFase(faseId) {
@@ -291,45 +302,50 @@ export function usadasDaFase(faseId) {
 export function registrarUsadas(faseId, assinaturas) {
   const alvo = idDoAlunoNaSessao();
   if (!alvo) return;
-  const linha = R.progressoDoAluno(alvo, faseId);
-  linha.usadas = [...linha.usadas, ...assinaturas];
-  R.progressos.salvar(linha);
+  estudo.registrarUsadas(alvo, faseId, assinaturas);
 }
 
+// Mantida para quem ainda chama a fachada com uma tentativa "crua" (sem a
+// prova em mãos). A tela da avaliação usa o serviço diretamente, que guarda
+// também o detalhe de cada questão — é dele que sai a análise de desempenho.
 export function registrarTentativa(faseId, tentativa) {
   const alvo = idDoAlunoNaSessao();
   if (!alvo) return faseVazia();
-
-  const linha = R.progressoDoAluno(alvo, faseId);
-  R.resultados.criar({
+  const fase = R.fases.buscar(String(faseId));
+  const provaMinima = { questoes: (tentativa.assinaturas || []).map((a) => ({ assinatura: a })) };
+  avaliacoes.registrarTentativa({
     alunoId: alvo,
-    faseId: String(faseId),
-    avaliacaoId: `av-${faseId}`,
-    data: tentativa.data,
-    nota: tentativa.nota,
-    acertos: tentativa.acertos,
-    total: tentativa.total,
-    aprovado: tentativa.aprovado,
-    respostas: tentativa.respostas || [],
+    fase: fase
+      ? { ...fase, numero: fase.ordem, metodoId: fase.metodoId }
+      : { id: String(faseId), numero: 0, metodoId: null, titulo: '' },
+    prova: provaMinima,
+    resultado: {
+      nota: tentativa.nota, acertos: tentativa.acertos, total: tentativa.total,
+      aprovado: tentativa.aprovado, detalhes: tentativa.detalhes || [],
+    },
+    duracaoSegundos: tentativa.duracaoSegundos || 0,
+    data: tentativa.data || null,
   });
-
-  linha.melhorNota = Math.max(linha.melhorNota || 0, tentativa.nota);
-  if (tentativa.aprovado && !linha.aprovadoEm) linha.aprovadoEm = tentativa.data;
-  pontuar(linha, tentativa.acertos * 10 + (tentativa.aprovado ? 50 : 0));
-  linha.atualizadoEm = new Date().toISOString();
-  R.progressos.salvar(linha);
-
+  gamificacao.conferir(alvo);
   return faseDoAluno(faseId, alvo);
 }
 
+// A emissão passou a ser do serviço, que acrescenta número, responsável,
+// versão do método, retrato e resumo de conferência. A fachada continua
+// aceitando o formato antigo para não quebrar quem já a chama.
 export function guardarCertificado(certificado) {
   const alvo = idDoAlunoNaSessao();
   if (!alvo) return;
-  R.certificados.salvar({
-    ...certificado,
-    id: idDoCertificado(alvo, String(certificado.faseId)),
+  const fase = R.fases.buscar(String(certificado.faseId));
+  certificadosServico.emitir({
     alunoId: alvo,
-    faseId: String(certificado.faseId),
+    fase: fase
+      ? { ...fase, numero: fase.ordem, nomeTrilha: certificado.nomeTrilha, instrumento: certificado.instrumento }
+      : { id: String(certificado.faseId), numero: certificado.fase, titulo: certificado.titulo, metodoId: null },
+    nota: certificado.nota,
+    acertos: certificado.acertos,
+    total: certificado.total,
+    data: certificado.data,
   });
 }
 

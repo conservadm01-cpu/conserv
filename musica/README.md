@@ -221,6 +221,19 @@ musica/
     senha.js            SHA-256 puro e conferência de senha
     ficha.js            campos da ficha do aluno, validação e máscara
     plataforma.js       ponte para quando o app roda dentro da plataforma
+    servicos/catalogo.js      o que existe para estudar, lido do cadastro
+    servicos/progresso.js     motor pedagógico e próxima atividade
+    servicos/avaliacoes.js    montar, corrigir e registrar com histórico
+    servicos/desempenho.js    pontos fortes e fracos, evolução, tendência
+    servicos/recomendacao.js  o que fazer antes de avançar, com o motivo
+    servicos/gamificacao.js   níveis, sequência de dias e conquistas
+    servicos/certificados.js  emissão com retrato, número e conferência
+    servicos/eventos.js       a linha do tempo do aluno
+    servicos/estudo.js        lição lida e jogo jogado
+    servicos/auditoria.js     registro das ações com consequência
+    servicos/alertas.js       quem parou, quem travou, quem concluiu
+    servicos/relatorios.js    panorama, por método e por instrumento
+    servicos/importacao.js    importar método de arquivo, com prévia
     dados/esquema.js         as 14 entidades, os seus campos e as validações
     dados/deposito.js        camada de armazenamento trocável (localStorage hoje)
     dados/repositorios.js    um repositório por entidade — a porta das telas
@@ -234,12 +247,31 @@ musica/
     conteudo/instrumentos.js       os 21 instrumentos e a conta de transposição
     conteudo/fases-instrumento.js  as 4 fases e os 15 geradores do instrumento
     conteudo/trilhas.js            junta as duas trilhas do aluno
-  teste/                77 testes (node --test): teoria, acesso, ficha,
-                        instrumento, entidades e migração
+  teste/                109 testes (node --test): teoria, acesso, ficha,
+                        instrumento, entidades, migração, plataforma e
+                        empacotamento
   ferramentas/gerar-unico.js  empacota tudo em um arquivo
   servidor.js           servidor estático mínimo, só com o Node
   sw.js                 service worker (funciona offline)
 ```
+
+### Como está organizado
+
+```
+INTERFACE (js/app.js)
+      ↓
+SERVIÇOS (js/servicos/)      regras de negócio
+      ↓
+REPOSITÓRIOS (js/dados/)     um por entidade
+      ↓
+DEPÓSITO (js/dados/deposito.js)   trocável: localStorage hoje
+```
+
+A interface mostra e recebe; ela não decide. Quem decide se uma fase está
+liberada, qual é a próxima atividade, se a nota passou, o que emitir e o que
+registrar são os serviços. Foi isso que permitiu que a tela do aluno, a do
+instrutor e a do administrador mostrassem coisas diferentes dos mesmos dados
+sem repetir uma linha de regra.
 
 ### A estrutura dos dados
 
@@ -270,6 +302,28 @@ estado anterior. Descartar os dados antigos é um passo à parte, feito de prop�
 Registros incompletos **não são recusados**: entram e ficam *pendentes de conferência*, numa
 lista no painel. O que é recusado é o que quebra a estrutura — nome vazio, identificador
 repetido, fase sem método, senha em texto puro.
+
+### Matrículas e versões
+
+O aluno tem uma **matrícula por método**, com o seu instrumento, a versão em que estuda e a
+fase em que está. Quem estuda violino e depois começa flauta tem dois progressos, não um só
+embaralhado.
+
+Um método publica **versões**. O histórico do aluno aponta para a versão em que ele estudou,
+então publicar uma versão nova não reescreve o passado de ninguém — e o certificado de quem
+já concluiu guarda um **retrato** dos dados do dia da emissão, com número, responsável e um
+resumo de conferência.
+
+### Importar um método
+
+Um método de ensino pode ser cadastrado por arquivo, no painel do instrutor. O caminho é
+**escolher → conferir → confirmar → criar**: a prévia mostra o que será criado e os erros vêm
+com endereço (`Fase 4 › Avaliação › Questão 7 — a resposta correta não está entre as
+alternativas`). Nada é gravado antes da confirmação, e o botão "baixar um modelo" entrega um
+arquivo de exemplo com o formato.
+
+O texto das lições importadas entra **escapado**: um arquivo de método não injeta script na
+página.
 
 A notação é **desenhada em SVG pelo próprio app** — claves, cabeças, hastes, bandeirolas,
 pausas, armaduras e teclado. Não depende de fonte musical instalada no aparelho, que é

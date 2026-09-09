@@ -1,7 +1,7 @@
 // Service worker: guarda o app inteiro no aparelho para funcionar sem
 // internet. Estratégia: cache primeiro, rede como reserva.
 
-const CACHE = 'msa-v4';
+const CACHE = 'msa-v5';
 const ARQUIVOS = [
   './', './index.html', './manifest.webmanifest', './css/estilo.css',
   './icones/icone.svg', './icones/icone-192.png', './icones/icone-512.png',
@@ -13,6 +13,11 @@ const ARQUIVOS = [
   './js/dados/deposito.js', './js/dados/esquema.js', './js/dados/ids.js',
   './js/dados/compatibilidade.js', './js/dados/permissoes.js', './js/dados/semente.js',
   './js/dados/migracao.js', './js/dados/repositorios.js',
+  './js/servicos/catalogo.js', './js/servicos/eventos.js', './js/servicos/progresso.js',
+  './js/servicos/desempenho.js', './js/servicos/gamificacao.js', './js/servicos/auditoria.js',
+  './js/servicos/avaliacoes.js', './js/servicos/certificados.js', './js/servicos/estudo.js',
+  './js/servicos/recomendacao.js', './js/servicos/alertas.js', './js/servicos/relatorios.js',
+  './js/servicos/importacao.js',
 ];
 
 self.addEventListener('install', (evento) => {

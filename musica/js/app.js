@@ -59,6 +59,17 @@ function barra(percentual, rotulo = 'progresso') {
 
 const dataCurta = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—');
 
+// Aviso que não some sozinho: se o aparelho recusou a gravação, o que a
+// pessoa fizer agora se perde ao fechar a página, e ela precisa saber disso
+// antes de estudar uma hora à toa.
+function avisoDeArmazenamento() {
+  if (!banco.falhouAoGravar()) return '';
+  return `<p class="recado erro" role="alert"><b>Este aparelho não está guardando o que você faz.</b>
+    O armazenamento do navegador está cheio ou bloqueado. O aplicativo continua funcionando agora,
+    mas o progresso desta sessão se perde ao fechar a página. Exporte uma cópia de segurança e
+    libere espaço no navegador.</p>`;
+}
+
 function mostrarRecado() {
   if (!recado) return '';
   const html = `<p class="recado ${recado.tipo}">${recado.texto}</p>`;
@@ -106,7 +117,7 @@ function campoDaFicha(campo, valores, erros) {
 }
 
 function camposDaFicha(valores = {}, erros = {}, { ministerioPendente = false } = {}) {
-  return GRUPOS_DA_FICHA.map((grupo) => `<h3 class="titulo-grupo">${grupo.titulo}</h3>
+  return GRUPOS_DA_FICHA.map((grupo) => `<h2 class="titulo-grupo">${grupo.titulo}</h2>
     ${grupo.ministerio ? `<label class="opcao"><input type="checkbox" id="ministerio-pendente"
         ${ministerioPendente ? 'checked' : ''}> Ainda não sei estes nomes — informo depois</label>` : ''}
     <div ${grupo.ministerio ? 'id="area-ministerio"' : ''} ${grupo.ministerio && ministerioPendente ? 'hidden' : ''}>
@@ -115,7 +126,7 @@ function camposDaFicha(valores = {}, erros = {}, { ministerioPendente = false } 
 }
 
 function camposDeSenha({ obrigatoria = true, jaTem = false, comConfirmacao = true } = {}) {
-  return `<h3 class="titulo-grupo">Acesso</h3>
+  return `<h2 class="titulo-grupo">Acesso</h2>
     ${obrigatoria ? '' : `<label class="opcao"><input type="checkbox" id="exige-senha" ${jaTem ? 'checked' : ''}>
       Exigir senha para entrar</label>`}
     <div id="area-senha" ${obrigatoria || jaTem ? '' : 'hidden'}>
@@ -266,9 +277,9 @@ function blocoDeConferencia() {
 
   return `<h2 class="titulo-secao">Conferência</h2>
     <section class="sobre">
-      <h3>Pendente de conferência${pendencias.length ? ` (${pendencias.length})` : ''}</h3>
+      <h2 class="titulo-secao">Pendente de conferência${pendencias.length ? ` (${pendencias.length})` : ''}</h2>
       ${lista}
-      <h3>De onde vêm estes dados</h3>
+      <h2 class="titulo-secao">De onde vêm estes dados</h2>
       ${origem}
     </section>`;
 }
@@ -330,6 +341,7 @@ function telaAdmin() {
       <div><span class="ola">Painel do instrutor</span><h1>${escapar(banco.usuarioDoAdmin())}</h1></div>
       <a class="avatar" href="#/sair" aria-label="Sair">⎋</a>
     </header>
+    ${avisoDeArmazenamento()}
     ${mostrarRecado()}
     ${banco.senhaDoAdminEhPadrao() ? `<p class="recado alerta">Você ainda está com a senha de fábrica.
       <a href="#/instrutor/senha">Troque a senha agora</a>.</p>` : ''}
@@ -396,8 +408,8 @@ function telaAdmin() {
         <button class="botao secundario" data-acao="importar">Importar cópia</button>
         <button class="botao perigo" data-acao="apagar">Apagar tudo deste aparelho</button>
       </div>
-      <input type="file" id="arquivo-progresso" accept="application/json" hidden>
-      <input type="file" id="arquivo-metodo" accept="application/json" hidden>
+      <input type="file" id="arquivo-progresso" accept="application/json" hidden aria-label="Arquivo de cópia de segurança">
+      <input type="file" id="arquivo-metodo" accept="application/json" hidden aria-label="Arquivo do método a importar">
     </section>
     <p class="rodape">Aviso: o app roda inteiro no aparelho, sem servidor. As fichas dos alunos — inclusive
     e-mail e WhatsApp — ficam guardadas apenas aqui, e as senhas em resumo (hash). Esta é uma portaria de
@@ -424,7 +436,7 @@ function telaRelatorios() {
       <div><strong>${panorama.mediaDasNotas}%</strong><span>nota média</span></div>
     </section>
 
-    <h3 class="titulo-secao">Por método</h3>
+    <h2 class="titulo-secao">Por método</h2>
     ${porMetodo.map((m) => `<section class="cartao-relatorio">
       <strong>${escapar(m.metodo.nome)}</strong>
       <small>${m.totalDeFases} fases · versão ${escapar(m.versaoVigente ? m.versaoVigente.rotulo : '—')}
@@ -441,7 +453,7 @@ function telaRelatorios() {
       </div><small class="mini">Onde os alunos estão agora, fase a fase.</small>` : ''}
     </section>`).join('')}
 
-    <h3 class="titulo-secao">Por instrumento</h3>
+    <h2 class="titulo-secao">Por instrumento</h2>
     <div class="lista-assuntos">
       ${porInstrumento.map((i) => `<div class="linha-assunto">
         <div class="rotulo"><strong>${escapar(i.nome)}</strong></div>
@@ -462,7 +474,7 @@ function telaMetodos() {
   return `${cabecalho('Métodos', '#/instrutor')}
     ${mostrarRecado()}
     ${previaDeImportacao ? blocoDePrevia(previaDeImportacao) : ''}
-    <h3 class="titulo-secao">Métodos cadastrados</h3>
+    <h2 class="titulo-secao">Métodos cadastrados</h2>
     ${metodos.map((m) => {
       const versoes = banco.dados.versoesDoMetodo(m.id);
       const fases = banco.dados.fasesDoMetodo(m.id);
@@ -475,7 +487,7 @@ function telaMetodos() {
         ${m.fonte ? `<p class="mini"><i>${escapar(m.fonte)}</i></p>` : ''}
       </section>`;
     }).join('')}
-    <h3 class="titulo-secao">Importar um método</h3>
+    <h2 class="titulo-secao">Importar um método</h2>
     <section class="sobre">
       <p>Um método de ensino pode ser cadastrado a partir de um arquivo JSON com as fases, lições,
       jogos e avaliações. O arquivo é <b>conferido antes</b>: você vê o que ele vai criar e só então
@@ -485,7 +497,7 @@ function telaMetodos() {
         <button class="botao secundario" data-acao="modelo-metodo">Baixar um modelo de arquivo</button>
       </div>
     </section>
-    <input type="file" id="arquivo-metodo" accept="application/json" hidden>`;
+    <input type="file" id="arquivo-metodo" accept="application/json" hidden aria-label="Arquivo do método a importar">`;
 }
 
 function blocoDePrevia(analise) {
@@ -647,6 +659,7 @@ function telaInicial() {
       <div><span class="ola">Bom estudo,</span><h1>${escapar(aluno.nome.split(' ')[0])}</h1></div>
       <a class="avatar" href="#/sobre" aria-label="Minha ficha e ajustes">⚙</a>
     </header>
+    ${avisoDeArmazenamento()}
     ${mostrarRecado()}
     ${cartaoDeSituacao(aluno)}
     ${banco.emModoTeste() ? `<p class="faixa-teste">Modo de demonstração: todas as fases já estão abertas,
@@ -721,11 +734,11 @@ function telaFase(id) {
       <p class="sub">${escapar(fase.subtitulo)}${fase.paginas ? ` · páginas ${fase.paginas} do método` : ''}</p>
       <p>${escapar(fase.resumo)}</p>
     </section>
-    <h3 class="titulo-secao">Lições</h3>
+    <h2 class="titulo-secao">Lições</h2>
     <div class="lista-licoes">${licoes}</div>
-    <h3 class="titulo-secao">Exercícios lúdicos</h3>
+    <h2 class="titulo-secao">Exercícios lúdicos</h2>
     <div class="lista-jogos">${jogos}</div>
-    <h3 class="titulo-secao">Avaliação da fase</h3>
+    <h2 class="titulo-secao">Avaliação da fase</h2>
     <div class="caixa-prova">
       <p>${prova.quantidade} ${prova.quantidade === 1 ? 'questão' : 'questões'} de múltipla escolha.
       Aprovação a partir de <b>${prova.notaMinima}%</b>.</p>
@@ -862,7 +875,7 @@ function blocoDeOndeErrou(resultado) {
   const ordenado = [...contagem.entries()].sort((a, b) => b[1] - a[1]);
   if (!ordenado.length) return '';
   return `<section class="onde-errou">
-    <h3>Os erros se concentraram em</h3>
+    <h2 class="titulo-secao">Os erros se concentraram em</h2>
     <ul class="lista-chave">${ordenado.map(([assunto, quantas]) =>
       `<li><b>${escapar(assunto)}</b> — ${quantas} ${quantas === 1 ? 'questão' : 'questões'}</li>`).join('')}</ul>
   </section>`;
@@ -909,14 +922,14 @@ function telaResultado(fase) {
            <a class="botao secundario" href="#/fase/${fase.id}">Rever as lições</a>`}
     </section>
     ${(prova.conquistas || []).length ? `<section class="conquistas-novas">
-      <h3>${prova.conquistas.length === 1 ? 'Nova conquista' : 'Novas conquistas'}</h3>
+      <h2 class="titulo-secao">${prova.conquistas.length === 1 ? 'Nova conquista' : 'Novas conquistas'}</h2>
       ${prova.conquistas.map((c) => `<div class="cartao-conquista ganha">
         <span class="icone" aria-hidden="true">${c.icone}</span>
         <div><strong>${escapar(c.titulo)}</strong><small>${escapar(c.descricao)}</small></div>
       </div>`).join('')}
     </section>` : ''}
     ${erradas.length ? blocoDeOndeErrou(resultado) : ''}
-    ${erradas.length ? `<h3 class="titulo-secao">O que revisar</h3>
+    ${erradas.length ? `<h2 class="titulo-secao">O que revisar</h2>
       <div class="revisao">${erradas.map((d) => `<div class="item-revisao">
         <p class="pergunta">${d.questao.enunciado}</p>
         <p class="sua">Sua resposta: <b>${escapar(d.resposta ?? '—')}</b></p>
@@ -969,13 +982,13 @@ function telaDesempenho() {
       ${tendencia.inicio}% e a das três últimas, ${tendencia.fim}%.</p>`
       : '<p class="mini">Com menos de quatro avaliações ainda não dá para falar em tendência.</p>'}
 
-    ${pontos.fracos.length ? `<h3 class="titulo-secao">Onde reforçar</h3>
+    ${pontos.fracos.length ? `<h2 class="titulo-secao">Onde reforçar</h2>
       <div class="lista-assuntos">${pontos.fracos.map(linhaDeAssunto).join('')}</div>` : ''}
 
-    ${pontos.fortes.length ? `<h3 class="titulo-secao">Onde você vai bem</h3>
+    ${pontos.fortes.length ? `<h2 class="titulo-secao">Onde você vai bem</h2>
       <div class="lista-assuntos">${pontos.fortes.map(linhaDeAssunto).join('')}</div>` : ''}
 
-    <h3 class="titulo-secao">Todas as fases avaliadas</h3>
+    <h2 class="titulo-secao">Todas as fases avaliadas</h2>
     <div class="lista-assuntos">${porFase.map(linhaDeAssunto).join('')}</div>
 
     ${pontos.semEvidencia ? `<p class="mini">${pontos.semEvidencia} ${pontos.semEvidencia === 1
@@ -1011,10 +1024,10 @@ function telaConquistas() {
       ${barra(resumo.percentualNoNivel, `Progresso no nível ${resumo.nivel}`)}
       <p class="mini">Faltam ${resumo.faltamParaOProximo} pontos para o nível ${resumo.nivel + 1}.</p>
     </section>
-    <h3 class="titulo-secao">Conquistadas (${ganhas.length} de ${painel.length})</h3>
+    <h2 class="titulo-secao">Conquistadas (${ganhas.length} de ${painel.length})</h2>
     ${ganhas.length ? `<div class="lista-conquistas">${ganhas.map(cartao).join('')}</div>`
       : '<p class="aviso">Nenhuma ainda. Ler a primeira lição já vale uma.</p>'}
-    <h3 class="titulo-secao">A conquistar</h3>
+    <h2 class="titulo-secao">A conquistar</h2>
     <div class="lista-conquistas">${faltam.map(cartao).join('')}</div>
     <p class="rodape">As conquistas premiam constância e superação — voltar, insistir e concluir.
     Não há disputa entre alunos e nenhuma delas premia quem vai mais rápido.</p>`;
@@ -1040,7 +1053,7 @@ function telaHistorico() {
   return `${cabecalho('Meu histórico')}
     <div class="linha-do-tempo">
       ${dias.map(({ dia, eventos: doDia }) => `<section class="dia">
-        <h3>${new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h3>
+        <h2>${new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</h2>
         ${doDia.map((e) => `<div class="evento">
           <span class="icone" aria-hidden="true">${ICONE_DO_EVENTO[e.tipo] || '•'}</span>
           <div><strong>${escapar(e.titulo)}</strong>
@@ -1093,17 +1106,17 @@ function telaSobre() {
       <button class="botao grande" data-acao="salvar-perfil" data-id="${aluno.id}">Salvar</button>
     </section>
     <section class="sobre">
-      <h3>O conteúdo</h3>
+      <h2 class="titulo-secao">O conteúdo</h2>
       <p>A trilha de <b>teoria</b> segue os assuntos do <b>Método Simplificado de Aprendizagem Musical</b>
       (Congregação Cristã no Brasil, 1ª edição, dez/2022), com a página do livro em cada lição.
       A trilha do <b>instrumento</b> traz a técnica padrão do instrumento escolhido — família, clave,
       afinação, transposição, cuidados e rotina de estudo. Nenhuma das duas substitui o método impresso
       nem a aula com o instrutor.</p>
-      <h3>Como a avaliação nunca repete</h3>
+      <h2 class="titulo-secao">Como a avaliação nunca repete</h2>
       <p>As perguntas são montadas na hora, a partir de ${total} combinações possíveis nas suas trilhas.
       Cada pergunta recebe uma assinatura; as que você já respondeu ficam guardadas neste aparelho e saem
       do sorteio seguinte.</p>
-      <h3>Seus dados</h3>
+      <h2 class="titulo-secao">Seus dados</h2>
       <p>A sua ficha, o progresso e os certificados ficam apenas neste aparelho. Não há servidor nem cadastro
       na internet. A senha é guardada em resumo (hash), mas o app roda todo no navegador: serve para organizar
       o acesso, não para proteger dados sigilosos.</p>

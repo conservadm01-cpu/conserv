@@ -21,6 +21,8 @@ import { QUESTOES_POR_PROVA, NOTA_MINIMA } from '../quiz.js';
 
 export const METODO_MSA = 'msa';
 export const METODO_INSTRUMENTO = 'instrumento';
+export const VERSAO_MSA = 'msa-1.0';
+export const VERSAO_INSTRUMENTO = 'instrumento-1.0';
 
 const FONTE_MSA = 'Método Simplificado de Aprendizagem Musical (MSA) — Congregação Cristã no Brasil, 1ª edição, dez/2022.';
 // Registrado tal como está declarado em js/conteudo/instrumentos.js: o método
@@ -28,17 +30,12 @@ const FONTE_MSA = 'Método Simplificado de Aprendizagem Musical (MSA) — Congre
 // a técnica padrão do instrumento somada à teoria do MSA.
 const FONTE_INSTRUMENTO = 'Técnica padrão do instrumento somada à teoria do MSA. O método impresso do instrumento não foi fornecido; este conteúdo não o substitui.';
 
+// O instrumento entra inteiro no cadastro — partes, cordas, tessitura,
+// cuidado, transposição. Guardar só o nome e a família economizaria espaço e
+// custaria caro: são justamente esses campos que as lições do método do
+// instrumento usam para falar do instrumento do aluno.
 export function instrumentosDaSemente() {
-  return INSTRUMENTOS.map((i) => ({
-    id: i.id,
-    nome: i.nome,
-    familia: i.familia,
-    familiaNome: i.familiaNome,
-    claves: [...i.claves],
-    afinacao: i.afinacao || '',
-    transposicao: i.transposicao ? { ...i.transposicao } : null,
-    ativo: true,
-  }));
+  return INSTRUMENTOS.map((i) => ({ ...i, ativo: true }));
 }
 
 export function metodosDaSemente() {
@@ -68,6 +65,20 @@ export function metodosDaSemente() {
   ];
 }
 
+// Cada método nasce com uma versão publicada. A versão é o que congela o
+// conteúdo: o histórico de um aluno aponta para a versão em que ele estudou,
+// então publicar uma versão nova não reescreve o passado de ninguém.
+export function versoesDaSemente() {
+  return [
+    { id: VERSAO_MSA, metodoId: METODO_MSA, rotulo: '1.0', situacao: 'publicada', ordem: 1,
+      publicadaEm: '2022-12-01T00:00:00.000Z',
+      notas: 'Conteúdo correspondente à 1ª edição do MSA (dez/2022).' },
+    { id: VERSAO_INSTRUMENTO, metodoId: METODO_INSTRUMENTO, rotulo: '1.0', situacao: 'publicada', ordem: 1,
+      publicadaEm: null,
+      notas: 'Técnica padrão do instrumento somada à teoria do MSA.' },
+  ];
+}
+
 // As fases do MSA mantêm exatamente os identificadores que sempre tiveram
 // ('1' a '10') e as do instrumento os seus ('inst1' a 'inst4'). É o que faz o
 // progresso já gravado continuar valendo depois da atualização.
@@ -75,6 +86,7 @@ export function fasesDaSemente() {
   const doMsa = FASES.map((f, i) => ({
     id: String(f.numero),
     metodoId: METODO_MSA,
+    versaoId: VERSAO_MSA,
     ordem: f.numero,
     titulo: f.titulo,
     subtitulo: f.subtitulo || '',
@@ -84,10 +96,13 @@ export function fasesDaSemente() {
     paginas: f.paginas || null,
     anteriorId: i > 0 ? String(FASES[i - 1].numero) : null,
     conteudoRef: f.id,
+    notaMinima: NOTA_MINIMA,
+    ativo: true,
   }));
   const doInstrumento = FASES_INSTRUMENTO.map((f, i) => ({
     id: f.id,
     metodoId: METODO_INSTRUMENTO,
+    versaoId: VERSAO_INSTRUMENTO,
     ordem: f.ordem,
     titulo: f.titulo,
     subtitulo: f.subtitulo || '',
@@ -97,6 +112,8 @@ export function fasesDaSemente() {
     paginas: null,
     anteriorId: i > 0 ? FASES_INSTRUMENTO[i - 1].id : null,
     conteudoRef: f.id,
+    notaMinima: NOTA_MINIMA,
+    ativo: true,
   }));
   return [...doMsa, ...doInstrumento];
 }
@@ -164,6 +181,7 @@ export function semear() {
   return {
     instrumentos: instrumentosDaSemente(),
     metodos: metodosDaSemente(),
+    versoes: versoesDaSemente(),
     fases: fasesDaSemente(),
     licoes: licoesDaSemente(),
     exercicios: exerciciosDaSemente(),
