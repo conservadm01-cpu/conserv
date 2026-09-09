@@ -99,6 +99,8 @@ export async function abrirApp() {
       await pagina.waitForTimeout(120);
     },
     /** Entra pela portaria, como qualquer pessoa faria. */
+    /** Entra como master, que é o que a maioria dos testes precisa. */
+    entrarComoMaster: () => app.entrar(MASTER.usuario, MASTER.senha),
     async entrar(usuario, senha) {
       await app.ir('#/');
       await pagina.fill('#usuario', usuario);
@@ -127,6 +129,9 @@ export async function abrirApp() {
   };
   return app;
 }
+
+/** O acesso de fábrica: o master, o topo, o único que libera outros acessos. */
+export const MASTER = { usuario: 'ADMIN', senha: 'CCB701040' };
 
 /** A ficha completa que o cadastro exige, para não repetir isto em cada teste. */
 export const FICHA = {

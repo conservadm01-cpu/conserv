@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { abrirApp, CABECALHOS } from './apoio.mjs';
+import { abrirApp, MASTER, CABECALHOS } from './apoio.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.join(AQUI, '..', '..');
@@ -56,7 +56,7 @@ test('o app não busca nada fora do próprio endereço', async () => {
     }
   });
   await app.reiniciar();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir('#/instrutor/relatorios');
   assert.deepEqual(forasteiros, [], 'a promessa é "sem internet": nada pode sair daqui');
 });
@@ -97,7 +97,7 @@ test('o trabalhador de serviço assume, e o app abre sem internet', async () => 
     await app.pagina.waitForSelector('#usuario', { timeout: 10000 });
     assert.match(await app.texto(), /Usuário/, 'sem internet, o app tem de abrir do cache');
     // E continua sendo um app: dá para entrar e estudar offline.
-    await app.entrar('admin', 'ccb123');
+    await app.entrarComoMaster();
     assert.equal(await app.rota(), '#/instrutor');
   } finally {
     await app.pagina.context().setOffline(false);

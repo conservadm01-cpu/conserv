@@ -3,7 +3,7 @@
 
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirApp, autocadastrar } from './apoio.mjs';
+import { abrirApp, MASTER, autocadastrar } from './apoio.mjs';
 
 let app;
 before(async () => { app = await abrirApp(); });
@@ -154,9 +154,9 @@ test('aprovar uma fase emite certificado, abre a próxima e conta no painel', as
   assert.doesNotMatch(classes, /trancada/, 'a fase 2 deveria ter aberto');
 
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   const painel = await app.texto();
-  assert.match(painel, /Painel do instrutor/);
+  assert.match(painel, /Painel do master/);
   assert.match(painel, /1\nfases vencidas/);
   assert.match(painel, /1\ncertificados/);
 });

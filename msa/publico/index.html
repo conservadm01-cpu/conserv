@@ -381,6 +381,29 @@ select.campo { appearance: none; background-image: linear-gradient(45deg, transp
 .opcao { display: flex !important; align-items: center; gap: 10px; margin: 18px 0 0 !important; font-size: 15px; color: var(--tinta) !important; }
 .opcao input { width: 20px; height: 20px; accent-color: var(--marca); }
 
+/* Escolher o perfil no primeiro acesso, e os pedidos esperando o master. */
+.perfis { display: grid; gap: 8px; }
+.perfil {
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+  border: 1.5px solid var(--linha); border-radius: 12px; padding: 12px 14px; background: var(--fundo);
+}
+.perfil.escolhido { border-color: var(--marca); background: color-mix(in srgb, var(--marca) 10%, var(--fundo)); }
+.perfil input { width: 20px; height: 20px; margin-top: 2px; flex: 0 0 20px; accent-color: var(--marca); }
+.perfil span { display: grid; gap: 2px; }
+.perfil small { color: var(--tinta-fraca); font-size: 12px; }
+
+.pedidos { display: grid; gap: 10px; margin-bottom: 18px; }
+.pedido {
+  background: var(--papel); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra);
+  border-left: 4px solid #e6a700;
+}
+.pedido strong { display: block; font-size: 17px; }
+.pedido .acoes { margin-top: 12px; }
+.etiqueta-perfil {
+  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: #b26a00;
+}
+
 .recado { border-radius: 12px; padding: 12px 14px; font-size: 14px; margin: 0 0 14px; }
 .recado.ok { background: color-mix(in srgb, var(--acerto) 16%, transparent); color: var(--tinta); }
 .recado.erro { background: color-mix(in srgb, var(--erro) 16%, transparent); color: var(--tinta); }
@@ -5740,6 +5763,13 @@ const ENTIDADES = {
     campos: ['id', 'alunoId', 'tipo', 'titulo', 'texto', 'destino', 'lidaEm', 'criadaEm'],
     unicos: ['id'],
   },
+  solicitacoes: {
+    nome: 'Pedidos de acesso',
+    chavePrimaria: 'id',
+    campos: ['id', 'nome', 'papelPretendido', 'comum', 'email', 'whatsapp', 'observacao',
+      'sal', 'senhaHash', 'situacao', 'motivo', 'criadaEm', 'decididaEm', 'decididaPor'],
+    unicos: ['id'],
+  },
   configuracoes: {
     nome: 'Configurações',
     chavePrimaria: 'chave',
@@ -5755,8 +5785,15 @@ const NOMES_DAS_ENTIDADES = Object.keys(ENTIDADES);
 // INSTRUTOR é o nome usado no aplicativo e na conversa com quem o usa.
 // PROFESSOR continua aceito porque existem cadastros gravados com ele: a
 // camada de compatibilidade traduz um no outro, e nenhum acesso se perde.
-const PAPEIS = ['ADMIN', 'INSTRUTOR', 'ALUNO'];
+// Do topo para baixo. O MASTER é quem libera acesso: instrutor, encarregado e
+// ministério não entram sozinhos — alguém com esse perfil precisa deixar.
+const PAPEIS = ['MASTER', 'ADMIN', 'INSTRUTOR', 'ENCARREGADO', 'MINISTERIO', 'ALUNO'];
 const PAPEL_ANTIGO = { PROFESSOR: 'INSTRUTOR' };
+
+// Quem pede acesso escolhe um destes. "Aluno" não entra na lista porque aluno
+// não pede: ele se cadastra e estuda.
+const PAPEIS_QUE_PEDEM = ['INSTRUTOR', 'ENCARREGADO', 'MINISTERIO'];
+const SITUACOES_DA_SOLICITACAO = ['pendente', 'aprovada', 'recusada'];
 
 // ------------------------------------------------------------ estado inicial
 
@@ -5918,6 +5955,32 @@ function validarAlunos(alunos, instrumentos = []) {
   return problemas;
 }
 
+// O pedido de acesso guarda a senha que a pessoa escolheu — em resumo, como
+// qualquer outra. É o que faz a senha continuar valendo no dia em que o master
+// aprovar, sem ninguém ter de combinar uma senha por fora.
+function validarSolicitacoes(solicitacoes, usuarios = []) {
+  const problemas = [];
+  const logins = new Set(usuarios.map((u) => texto(u.login).trim().toLowerCase()));
+  for (const s of solicitacoes) {
+    if (vazio(s.nome)) problemas.push(erro('solicitacoes', s.id, 'Pedido de acesso sem nome.'));
+    if (!PAPEIS_QUE_PEDEM.includes(s.papelPretendido)) {
+      problemas.push(erro('solicitacoes', s.id, `Perfil que não se pede: "${s.papelPretendido}".`));
+    }
+    if (!SITUACOES_DA_SOLICITACAO.includes(s.situacao)) {
+      problemas.push(erro('solicitacoes', s.id, `Situação inválida: "${s.situacao}".`));
+    }
+    if (s.senha !== undefined) problemas.push(erro('solicitacoes', s.id, 'Senha em texto puro no pedido de acesso.'));
+    if (vazio(s.senhaHash)) problemas.push(erro('solicitacoes', s.id, 'Pedido de acesso sem resumo de senha.'));
+    if (s.situacao === 'pendente' && logins.size && logins.has(texto(s.nome).trim().toLowerCase())) {
+      problemas.push(erro('solicitacoes', s.id, `Já existe um acesso com o login "${texto(s.nome)}".`));
+    }
+  }
+  for (const d of duplicados(solicitacoes.filter((s) => s.situacao === 'pendente'), 'nome')) {
+    problemas.push(erro('solicitacoes', d.linha.id, `Já há um pedido pendente no nome "${texto(d.linha.nome)}".`));
+  }
+  return problemas;
+}
+
 function validarUsuarios(usuarios, alunos = []) {
   const problemas = [];
   const existentes = new Set(alunos.map((a) => a.id));
@@ -6007,12 +6070,13 @@ function validarEstado(estado) {
     ...validarQuestoes(e.questoes, e.avaliacoes),
     ...validarAlunos(e.alunos, e.instrumentos),
     ...validarUsuarios(e.usuarios, e.alunos),
+    ...validarSolicitacoes(e.solicitacoes, e.usuarios),
     ...validarVersoes(e.versoes, e.metodos),
     ...validarMatriculas(e.matriculas, e),
   ];
 }
 
-return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
+return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, validarSolicitacoes, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
 })();
 
 __modulos['dados/ids'] = (function () {
@@ -6040,7 +6104,7 @@ __modulos['dados/compatibilidade'] = (function () {
 // Regra desta camada: ela COMPLETA, nunca inventa. Um campo que não existia
 // no dado antigo vira vazio, nulo ou zero — jamais um valor plausível.
 
-const { PAPEIS, PAPEL_ANTIGO } = __modulos['dados/esquema'];
+const { PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO } = __modulos['dados/esquema'];
 
 const texto = (valor) => String(valor === undefined || valor === null ? '' : valor).trim();
 const lista = (valor) => (Array.isArray(valor) ? valor.slice() : []);
@@ -6309,8 +6373,30 @@ function normalizeNotificacao(bruto = {}) {
   };
 }
 
+// Pedido de acesso. Como no cadastro de acesso, uma senha em texto que venha
+// num arquivo antigo morre aqui: só o resumo e o sal atravessam.
+function normalizeSolicitacao(bruto = {}) {
+  return {
+    id: texto(bruto.id),
+    nome: texto(bruto.nome),
+    papelPretendido: PAPEIS_QUE_PEDEM.includes(bruto.papelPretendido) ? bruto.papelPretendido : 'INSTRUTOR',
+    comum: texto(bruto.comum),
+    email: texto(bruto.email),
+    whatsapp: texto(bruto.whatsapp),
+    observacao: texto(bruto.observacao),
+    sal: texto(bruto.sal) || texto(bruto.id),
+    senhaHash: bruto.senhaHash ? texto(bruto.senhaHash) : null,
+    situacao: SITUACOES_DA_SOLICITACAO.includes(bruto.situacao) ? bruto.situacao : 'pendente',
+    motivo: texto(bruto.motivo),
+    criadaEm: texto(bruto.criadaEm) || new Date().toISOString(),
+    decididaEm: bruto.decididaEm ? texto(bruto.decididaEm) : null,
+    decididaPor: bruto.decididaPor ? texto(bruto.decididaPor) : null,
+  };
+}
+
 const NORMALIZADORES = {
   alunos: normalizeAluno,
+  solicitacoes: normalizeSolicitacao,
   usuarios: normalizeUsuario,
   instrumentos: normalizeInstrumento,
   metodos: normalizeMetodo,
@@ -6326,7 +6412,7 @@ const NORMALIZADORES = {
   notificacoes: normalizeNotificacao,
 };
 
-return { normalizeAluno, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
+return { normalizeAluno, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeSolicitacao, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
 })();
 
 __modulos['dados/permissoes'] = (function () {
@@ -6356,20 +6442,41 @@ const { PAPEIS } = __modulos['dados/esquema'];
 
 
 
-// O acesso de fábrica. Toda instalação nasce com ele, e é por ele que o
-// instrutor entra da primeira vez — depois troca a senha na própria tela.
-const LOGIN_INICIAL = 'admin';
-const SENHA_INICIAL = 'ccb123';
+// O acesso de fábrica: o master. Toda instalação nasce com ele, e é por ele
+// que se entra da primeira vez — depois troca a senha na própria tela.
+const LOGIN_INICIAL = 'ADMIN';
+const SENHA_INICIAL = 'CCB701040';
+const PAPEL_INICIAL = 'MASTER';
 
-// O acesso de fábrica das versões anteriores. Fica aqui só para reconhecer a
-// instalação que ainda não foi tocada e renomeá-la para o acesso de hoje, sem
+// Os acessos de fábrica das versões anteriores. Ficam aqui só para reconhecer
+// a instalação que ainda não foi tocada e passá-la para o acesso de hoje, sem
 // mexer em quem já escolheu o próprio usuário e a própria senha.
-const LOGIN_ANTIGO = 'RENATO';
-const SENHA_ANTIGA = 'CCB123';
+const ACESSOS_DE_FABRICA_ANTIGOS = [
+  { login: 'admin', senha: 'ccb123' },
+  { login: 'RENATO', senha: 'CCB123' },
+];
 
 // ------------------------------------------------------------ o que cada um pode
 
+const DO_ADMIN = [
+  'ver.painel',
+  'aluno.cadastrar', 'aluno.editar', 'aluno.remover', 'aluno.ver.todos',
+  'acesso.criar', 'acesso.editar', 'acesso.remover',
+  'metodo.cadastrar', 'metodo.editar', 'metodo.importar', 'metodo.publicar',
+  'instrumento.cadastrar', 'instrumento.editar',
+  'fase.cadastrar', 'fase.editar',
+  'matricula.criar', 'matricula.editar', 'matricula.encerrar',
+  'configuracao.editar',
+  'auditoria.ver',
+  'relatorio.ver',
+  'dados.exportar', 'dados.importar', 'dados.apagar',
+  'estudar',
+];
+
 const PERMISSOES = {
+  // O master é o administrador mais uma coisa que ninguém mais tem: liberar
+  // acesso. Instrutor, encarregado e ministério só entram depois que ele deixa.
+  MASTER: [...DO_ADMIN, 'acesso.conceder'],
   ADMIN: [
     'ver.painel',
     'aluno.cadastrar', 'aluno.editar', 'aluno.remover', 'aluno.ver.todos',
@@ -6393,6 +6500,23 @@ const PERMISSOES = {
     'relatorio.ver',
     'estudar',
   ],
+  // O encarregado acompanha os músicos da comum: vê a turma e os relatórios.
+  // Não cadastra, não edita e não leva os dados embora — a lista de contatos
+  // da turma é do instrutor, e a cópia de segurança é do master.
+  ENCARREGADO: [
+    'ver.painel',
+    'aluno.ver.todos',
+    'relatorio.ver',
+    'estudar',
+  ],
+  // O ministério vê como a turma vai — o panorama e os relatórios — sem a
+  // ficha individual de ninguém. É o que responde "como está o trabalho aqui?"
+  // sem abrir o e-mail e o WhatsApp de cada músico.
+  MINISTERIO: [
+    'ver.painel',
+    'relatorio.ver',
+    'estudar',
+  ],
   ALUNO: [
     'aluno.ver.proprio', 'aluno.editar.proprio',
     'estudar',
@@ -6410,14 +6534,20 @@ function pode(papel, permissao) {
 // Quem cadastra quem. O aluno não cadastra ninguém; o professor cadastra
 // alunos; só o administrador cria outro administrador ou professor.
 const PAPEIS_QUE_CONCEDE = {
-  ADMIN: ['ALUNO', 'INSTRUTOR', 'ADMIN'],
+  MASTER: ['ALUNO', 'INSTRUTOR', 'ENCARREGADO', 'MINISTERIO', 'ADMIN'],
+  ADMIN: ['ALUNO', 'INSTRUTOR'],
   INSTRUTOR: ['ALUNO'],
+  ENCARREGADO: [],
+  MINISTERIO: [],
   ALUNO: [],
 };
 
 const papeisQuePodeConceder = (papel) => (PAPEIS_QUE_CONCEDE[papel] || []).slice();
 
-const NOME_DO_PAPEL = { ADMIN: 'administrador', INSTRUTOR: 'instrutor', ALUNO: 'aluno' };
+const NOME_DO_PAPEL = {
+  MASTER: 'master', ADMIN: 'administrador', INSTRUTOR: 'instrutor',
+  ENCARREGADO: 'encarregado', MINISTERIO: 'ministério', ALUNO: 'aluno',
+};
 
 function motivoDaRecusa(papelDeQuemCadastra, papelPretendido) {
   if (!PAPEIS.includes(papelPretendido)) return `Perfil desconhecido: "${papelPretendido}".`;
@@ -6458,11 +6588,12 @@ function senhaEhInicial(usuario) {
 // mesma resposta: conferindo o resumo.
 function ehOAcessoDeFabricaAntigo(usuario) {
   if (!usuario || !usuario.senhaHash) return false;
-  if (normalizarLogin(usuario.login) !== normalizarLogin(LOGIN_ANTIGO)) return false;
-  return conferirSenha(SENHA_ANTIGA, usuario.sal, usuario.senhaHash);
+  return ACESSOS_DE_FABRICA_ANTIGOS.some((antigo) =>
+    normalizarLogin(usuario.login) === normalizarLogin(antigo.login)
+    && conferirSenha(antigo.senha, usuario.sal, usuario.senhaHash));
 }
 
-return { LOGIN_INICIAL, SENHA_INICIAL, LOGIN_ANTIGO, SENHA_ANTIGA, ehOAcessoDeFabricaAntigo, PERMISSOES, permissoesDoPapel, pode, PAPEIS_QUE_CONCEDE, papeisQuePodeConceder, NOME_DO_PAPEL, motivoDaRecusa, normalizarLogin, guardarSenha, autenticar, senhaEhInicial, PAPEIS };
+return { LOGIN_INICIAL, SENHA_INICIAL, PAPEL_INICIAL, ACESSOS_DE_FABRICA_ANTIGOS, ehOAcessoDeFabricaAntigo, PERMISSOES, permissoesDoPapel, pode, PAPEIS_QUE_CONCEDE, papeisQuePodeConceder, NOME_DO_PAPEL, motivoDaRecusa, normalizarLogin, guardarSenha, autenticar, senhaEhInicial, PAPEIS };
 })();
 
 __modulos['dados/semente'] = (function () {
@@ -7096,7 +7227,7 @@ const {
   ENTIDADES, completarEstado, impedimentos, pendencias,
   validarAlunos, validarAvaliacoes, validarExercicios, validarFases, validarInstrumentos,
   validarJogos, validarLicoes, validarMetodos, validarQuestoes, validarUsuarios,
-  validarMatriculas, validarVersoes,
+  validarMatriculas, validarSolicitacoes, validarVersoes,
 } = __modulos['dados/esquema'];
 const { NORMALIZADORES } = __modulos['dados/compatibilidade'];
 const { migrarDadosV1ParaV2 } = __modulos['dados/migracao'];
@@ -7173,6 +7304,7 @@ const VALIDADORES = {
   questoes: (e) => validarQuestoes(e.questoes, e.avaliacoes),
   alunos: (e) => validarAlunos(e.alunos, e.instrumentos),
   usuarios: (e) => validarUsuarios(e.usuarios, e.alunos),
+  solicitacoes: (e) => validarSolicitacoes(e.solicitacoes, e.usuarios),
   versoes: (e) => validarVersoes(e.versoes, e.metodos),
   matriculas: (e) => validarMatriculas(e.matriculas, e),
 };
@@ -7307,6 +7439,7 @@ const avaliacoes = criarRepositorio('avaliacoes', { prefixo: 'av' });
 const questoes = criarRepositorio('questoes', { prefixo: 'q' });
 const alunos = criarRepositorio('alunos', { prefixo: 'u' });
 const usuarios = criarRepositorio('usuarios', { prefixo: 'ac' });
+const solicitacoes = criarRepositorio('solicitacoes', { prefixo: 'sol' });
 const progressos = criarRepositorio('progressos', { prefixo: 'p', validar: false });
 const resultados = criarRepositorio('resultados', { prefixo: 'r', validar: false });
 const certificados = criarRepositorio('certificados', { prefixo: 'c', validar: false });
@@ -7320,6 +7453,12 @@ const conquistas = criarRepositorio('conquistas', { prefixo: 'cq', validar: fals
 const notificacoes = criarRepositorio('notificacoes', { prefixo: 'nt', validar: false });
 
 // ------------------------------------------------------- consultas compostas
+
+// Os pedidos de acesso à espera de uma decisão, do mais antigo para o mais
+// novo: quem pediu primeiro aparece primeiro para o master.
+const solicitacoesPendentes = () => solicitacoes
+  .listar((s) => s.situacao === 'pendente')
+  .sort((a, b) => String(a.criadaEm).localeCompare(String(b.criadaEm)));
 
 // As fases de um método, na ordem. É por aqui que um método com 10, 16 ou 20
 // fases funciona sem mudar código: a quantidade vem do dado.
@@ -7451,7 +7590,7 @@ function fecharSessao() {
   gravar();
 }
 
-return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
+return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, solicitacoes, solicitacoesPendentes, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
 })();
 
 __modulos['servicos/catalogo'] = (function () {
@@ -9413,7 +9552,8 @@ __modulos['armazenamento'] = (function () {
 
 const { CAMPOS_DA_FICHA, camposFaltando, fichaCompleta, fichaMinimaCompleta } = __modulos['ficha'];
 const R = __modulos['dados/repositorios'];
-const { autenticar, ehOAcessoDeFabricaAntigo, guardarSenha, normalizarLogin, senhaEhInicial, LOGIN_INICIAL, SENHA_INICIAL } = __modulos['dados/permissoes'];
+const { autenticar, ehOAcessoDeFabricaAntigo, guardarSenha, motivoDaRecusa, normalizarLogin, pode, senhaEhInicial, LOGIN_INICIAL, SENHA_INICIAL, PAPEL_INICIAL } = __modulos['dados/permissoes'];
+const { conferirSenha } = __modulos['senha'];
 const { idDoAcesso, idDoCertificado, idDoProgresso, novoId } = __modulos['dados/ids'];
 const { CHAVE_V0, CHAVE_V1, depositoAtual } = __modulos['dados/deposito'];
 const { estadoVazio } = __modulos['dados/esquema'];
@@ -9442,13 +9582,21 @@ const tamanhoGuardadoKB = () => R.tamanhoGuardadoKB();
 
 // O instrutor: o acesso de administrador. Se o cadastro ainda não tem nenhum
 // (instalação nova), ele é criado aqui com o usuário e a senha de fábrica.
-function acessoDoInstrutor() {
-  const existente = R.usuarios.umPorCampo('papel', 'ADMIN');
-  if (existente) return existente;
+// O master: o acesso do topo, o único que libera outros acessos. Numa
+// instalação nova ele nasce aqui, com o usuário e a senha de fábrica. Num
+// aparelho que vem da versão anterior, quem era o administrador do painel
+// vira o master — era ele o topo, e continua sendo.
+function acessoMestre() {
+  const mestre = R.usuarios.umPorCampo('papel', 'MASTER');
+  if (mestre) return mestre;
+
+  const antigoTopo = R.usuarios.umPorCampo('papel', 'ADMIN');
+  if (antigoTopo) return R.usuarios.atualizar(antigoTopo.id, { papel: 'MASTER' });
+
   return R.usuarios.criar({
     id: 'admin',
     login: LOGIN_INICIAL,
-    papel: 'ADMIN',
+    papel: PAPEL_INICIAL,
     exigeSenha: true,
     ...guardarSenha(SENHA_INICIAL, 'admin'),
     alunoId: null,
@@ -9462,9 +9610,22 @@ const sessao = () => {
   return s.papel === 'ALUNO' ? { tipo: 'aluno', id: s.alunoId } : { tipo: 'admin' };
 };
 
-const ehAdmin = () => {
+// "Esta sessão é de alguém da equipe?" — qualquer perfil que não seja aluno.
+// O que cada um pode fazer lá dentro é outra pergunta, e quem responde é
+// podeNaSessao: encarregado e ministério entram no painel e veem bem menos.
+const ehDaEquipe = () => {
   const s = R.sessaoAtual();
   return Boolean(s && s.papel !== 'ALUNO');
+};
+
+const papelDaSessao = () => (R.sessaoAtual() || {}).papel || null;
+
+// O que quem está na sessão pode fazer. A tabela de permissões por perfil já
+// existe em dados/permissoes — quem pergunta aqui está lendo aquela tabela, e
+// não inventando uma regra paralela que um dia discorda dela.
+const podeNaSessao = (permissao) => {
+  const s = R.sessaoAtual();
+  return Boolean(s && pode(s.papel, permissao));
 };
 
 const idDoAlunoNaSessao = () => {
@@ -9481,12 +9642,12 @@ function alunoAtual() {
 // nome na lista. Cadastros antigos que entravam sem senha recebem a senha de
 // fábrica e o aviso, na primeira entrada, de que precisam trocá-la.
 function prepararAcessos() {
-  const instrutor = acessoDoInstrutor();
-  // Aparelho que nunca saiu do acesso de fábrica da versão anterior passa a
-  // usar o de hoje. Quem já trocou o usuário ou a senha não é tocado.
-  if (ehOAcessoDeFabricaAntigo(instrutor)) {
-    R.usuarios.atualizar(instrutor.id, {
-      login: LOGIN_INICIAL, exigeSenha: true, ...guardarSenha(SENHA_INICIAL, instrutor.sal || 'admin'),
+  const mestre = acessoMestre();
+  // Aparelho que nunca saiu de um acesso de fábrica anterior passa a usar o de
+  // hoje. Quem já trocou o usuário ou a senha não é tocado.
+  if (ehOAcessoDeFabricaAntigo(mestre)) {
+    R.usuarios.atualizar(mestre.id, {
+      login: LOGIN_INICIAL, exigeSenha: true, ...guardarSenha(SENHA_INICIAL, mestre.sal || 'admin'),
     });
   }
   for (const acesso of R.usuarios.listar()) {
@@ -9510,10 +9671,109 @@ function acessoPorLogin(login) {
 function entrar(login, senha) {
   prepararAcessos();
   const acesso = acessoPorLogin(login);
-  if (!acesso || acesso.ativo === false) return false;
-  if (!autenticar(acesso, senha)) return false;
-  R.abrirSessao(acesso.id);
-  return true;
+  if (acesso && acesso.ativo !== false && autenticar(acesso, senha)) {
+    R.abrirSessao(acesso.id);
+    return { entrou: true };
+  }
+  // Quem pediu acesso e ainda não foi liberado merece saber disso em vez de
+  // "usuário ou senha incorretos" — mas só depois de provar a senha que ele
+  // mesmo escolheu no pedido. Sem essa prova, a resposta é a de sempre.
+  const pedido = solicitacaoPorNome(login);
+  if (pedido && conferirSenha(senha, pedido.sal, pedido.senhaHash)) {
+    return { entrou: false, motivo: pedido.situacao, pedido };
+  }
+  return { entrou: false, motivo: 'credenciais' };
+}
+
+// ------------------------------------------------------- pedidos de acesso
+
+const solicitacaoPorNome = (login) => {
+  const alvo = normalizarLogin(login);
+  if (!alvo) return null;
+  // O pendente vale mais que o já decidido: é sobre ele que a pessoa pergunta.
+  const dela = R.solicitacoes.listar((x) => normalizarLogin(x.nome) === alvo);
+  return dela.find((x) => x.situacao === 'pendente') || dela.pop() || null;
+};
+
+const solicitacoesPendentes = () => R.solicitacoesPendentes();
+
+/**
+ * Registra um pedido de acesso. Instrutor, encarregado e ministério não entram
+ * sozinhos: quem se apresenta como um deles fica aqui, esperando o master.
+ * A senha que a pessoa escolhe já é guardada (em resumo) e é a que vai valer
+ * no dia da liberação — ninguém precisa combinar senha por fora.
+ */
+function pedirAcesso(dados = {}) {
+  const nome = String(dados.nome || '').trim();
+  if (!nome) throw new Error('O nome completo é obrigatório.');
+  if (!dados.senha) throw new Error('Escolha uma senha.');
+
+  const papel = String(dados.papelPretendido || '');
+  const recusa = motivoDaRecusa(PAPEL_INICIAL, papel);
+  if (recusa || papel === 'ALUNO') throw new Error('Este perfil não se pede por aqui.');
+
+  if (acessoPorLogin(nome)) throw new Error(`"${nome}" já é o usuário de um acesso deste aparelho.`);
+  const anterior = solicitacaoPorNome(nome);
+  if (anterior && anterior.situacao === 'pendente') {
+    throw new Error('Já há um pedido de acesso neste nome, esperando liberação.');
+  }
+
+  const id = novoId('sol');
+  return R.solicitacoes.criar({
+    id,
+    nome,
+    papelPretendido: papel,
+    comum: String(dados.comum || '').trim(),
+    email: String(dados.email || '').trim(),
+    whatsapp: String(dados.whatsapp || '').trim(),
+    observacao: String(dados.observacao || '').trim(),
+    ...guardarSenha(dados.senha, id),
+    situacao: 'pendente',
+    criadaEm: new Date().toISOString(),
+  });
+}
+
+// Aprovar é criar o acesso — com a senha que a pessoa já escolheu no pedido.
+function aprovarSolicitacao(id, { papel = null } = {}) {
+  if (!podeNaSessao('acesso.conceder')) throw new Error('Só o master libera acesso.');
+  const pedido = R.solicitacoes.buscar(id);
+  if (!pedido) throw new Error('Pedido de acesso não encontrado.');
+  if (pedido.situacao !== 'pendente') throw new Error('Este pedido já foi decidido.');
+
+  const papelFinal = papel || pedido.papelPretendido;
+  const recusa = motivoDaRecusa(papelDaSessao(), papelFinal);
+  if (recusa) throw new Error(recusa);
+  if (acessoPorLogin(pedido.nome)) throw new Error(`"${pedido.nome}" já é o usuário de um acesso deste aparelho.`);
+
+  const acesso = R.usuarios.criar({
+    id: novoId('ac'),
+    login: pedido.nome,
+    papel: papelFinal,
+    sal: pedido.sal,
+    senhaHash: pedido.senhaHash,
+    exigeSenha: true,
+    alunoId: null,
+    ativo: true,
+  });
+  R.solicitacoes.atualizar(id, {
+    situacao: 'aprovada',
+    decididaEm: new Date().toISOString(),
+    decididaPor: (acessoDaSessao() || {}).login || '',
+  });
+  return acesso;
+}
+
+function recusarSolicitacao(id, motivo = '') {
+  if (!podeNaSessao('acesso.conceder')) throw new Error('Só o master libera acesso.');
+  const pedido = R.solicitacoes.buscar(id);
+  if (!pedido) throw new Error('Pedido de acesso não encontrado.');
+  if (pedido.situacao !== 'pendente') throw new Error('Este pedido já foi decidido.');
+  return R.solicitacoes.atualizar(id, {
+    situacao: 'recusada',
+    motivo: String(motivo || '').trim(),
+    decididaEm: new Date().toISOString(),
+    decididaPor: (acessoDaSessao() || {}).login || '',
+  });
 }
 
 // Abrir a sessão de um aluno sem pedir a senha dele. Só existe para quem já
@@ -9527,7 +9787,7 @@ function abrirSessaoDoAluno(id) {
 }
 
 function abrirComoAluno(id) {
-  if (!ehAdmin()) throw new Error('Só o instrutor pode abrir o aplicativo como um aluno.');
+  if (!podeNaSessao('aluno.editar')) throw new Error('Só o instrutor pode abrir o aplicativo como um aluno.');
   if (!abrirSessaoDoAluno(id)) throw new Error('Este aluno não tem acesso cadastrado.');
   return true;
 }
@@ -9557,7 +9817,7 @@ function trocarMinhaSenha(senhaAtual, novaSenha) {
   return true;
 }
 
-const usuarioDoAdmin = () => acessoDoInstrutor().login;
+const usuarioDoAdmin = () => acessoMestre().login;
 
 const permiteAutocadastro = () => R.configuracoes.obter('autocadastro', true) !== false;
 
@@ -9901,7 +10161,7 @@ function importar(texto) {
   throw new Error('Arquivo inválido: não parece uma cópia deste aplicativo.');
 }
 
-return { escola, dados, pendenciasDoCadastro, recarregar, informacoesDaMigracao, falhouAoGravar, tamanhoGuardadoKB, sessao, ehAdmin, alunoAtual, prepararAcessos, acessoPorLogin, entrar, abrirSessaoDoAluno, abrirComoAluno, sair, loginDaSessao, senhaDaSessaoEhDeFabrica, trocarMinhaSenha, usuarioDoAdmin, permiteAutocadastro, definirAutocadastro, usuarios, usuarioPorId, criarUsuario, atualizarUsuario, fichaDoAlunoCompleta, fichaDoAlunoFaltando, fichaDoAlunoLiberada, removerUsuario, progresso, faseDoAluno, marcarLicaoLida, registrarJogo, usadasDaFase, registrarUsadas, registrarTentativa, guardarCertificado, certificados, faseAprovada, ativarModoTeste, emModoTeste, faseLiberada, resumoDoAluno, apagarTudo, exportar, importar };
+return { escola, dados, pendenciasDoCadastro, recarregar, informacoesDaMigracao, falhouAoGravar, tamanhoGuardadoKB, sessao, ehDaEquipe, papelDaSessao, podeNaSessao, alunoAtual, prepararAcessos, acessoPorLogin, entrar, pedirAcesso, solicitacaoPorNome, solicitacoesPendentes, aprovarSolicitacao, recusarSolicitacao, abrirSessaoDoAluno, abrirComoAluno, sair, loginDaSessao, senhaDaSessaoEhDeFabrica, trocarMinhaSenha, usuarioDoAdmin, permiteAutocadastro, definirAutocadastro, usuarios, usuarioPorId, criarUsuario, atualizarUsuario, fichaDoAlunoCompleta, fichaDoAlunoFaltando, fichaDoAlunoLiberada, removerUsuario, progresso, faseDoAluno, marcarLicaoLida, registrarJogo, usadasDaFase, registrarUsadas, registrarTentativa, guardarCertificado, certificados, faseAprovada, ativarModoTeste, emModoTeste, faseLiberada, resumoDoAluno, apagarTudo, exportar, importar };
 })();
 
 __modulos['jogos'] = (function () {
@@ -10535,6 +10795,7 @@ const { iniciarJogo, pararJogo } = __modulos['jogos'];
 const { baixarCertificado, dataPorExtenso, imprimirCertificado, montarCertificado, svgDoCertificado } = __modulos['certificado'];
 const { salvarArquivo } = __modulos['download'];
 const { validarSenha } = __modulos['senha'];
+const { NOME_DO_PAPEL } = __modulos['dados/permissoes'];
 const { CAMPOS_DA_FICHA, CAMPOS_DO_MINISTERIO, camposFaltando, fichaCompleta, formatarWhatsapp, primeiroErro, validarFicha } = __modulos['ficha'];
 const { efeito } = __modulos['audio'];
 const plataforma = __modulos['plataforma'];
@@ -10688,7 +10949,27 @@ const valoresDaFicha = () => {
   return dados;
 };
 
+const valoresDoPedido = () => {
+  const dados = {};
+  for (const campo of CAMPOS_DO_PEDIDO) dados[campo.id] = valor(`campo-${campo.id}`);
+  return dados;
+};
+
+// Tudo o que estiver na tela agora, seja qual for o formulário aberto. Só
+// entram os campos que existem — trocar de perfil não apaga o que foi escrito
+// nem inventa campos em branco por cima do que já estava guardado.
+function valoresDigitados() {
+  const dados = {};
+  for (const campo of [...CAMPOS_DA_FICHA, ...CAMPOS_DO_PEDIDO]) {
+    const elemento = document.getElementById(`campo-${campo.id}`);
+    if (elemento) dados[campo.id] = elemento.value;
+  }
+  return dados;
+}
+
 let rascunho = null; // o que o aluno digitou, para não se perder quando dá erro
+
+const EMAIL_SIMPLES = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // ================================================================= entrada
 // O que a pessoa digitou no campo de usuário, para não sumir quando a senha
@@ -10725,7 +11006,7 @@ function telaEntrada() {
 // onde aponta o aviso de senha de fábrica.
 function telaTrocarMinhaSenha() {
   if (!banco.sessao()) return telaEntrada();
-  return `${cabecalho('Trocar a minha senha', banco.ehAdmin() ? '#/instrutor' : '#/')}
+  return `${cabecalho('Trocar a minha senha', banco.ehDaEquipe() ? '#/instrutor' : '#/')}
     <section class="formulario">
       ${mostrarRecado()}
       <p>O seu usuário é <b>${escapar(banco.loginDaSessao())}</b>.</p>
@@ -10739,23 +11020,95 @@ function telaTrocarMinhaSenha() {
     </section>`;
 }
 
+// Quem se apresenta como aluno entra na hora e começa a estudar. Quem se
+// apresenta como instrutor, encarregado ou ministério não entra sozinho: o
+// cadastro vira um pedido, e o master decide. É a regra da casa — ninguém
+// alcança a turma inteira sem alguém ter deixado.
+const PERFIS_DO_CADASTRO = [
+  { id: 'ALUNO', rotulo: 'Aluno', explica: 'Vou estudar pelo método. Começo agora mesmo.' },
+  { id: 'INSTRUTOR', rotulo: 'Instrutor', explica: 'Ensino e acompanho a turma. Preciso de liberação.' },
+  { id: 'ENCARREGADO', rotulo: 'Encarregado', explica: 'Acompanho os músicos da comum. Preciso de liberação.' },
+  { id: 'MINISTERIO', rotulo: 'Ministério', explica: 'Acompanho como o trabalho vai. Preciso de liberação.' },
+];
+
+// O perfil marcado agora, lido da tela. O rascunho não serve para isto: ele é
+// limpo logo depois de cada desenho, e o radio marcado continua onde está.
+const perfilEscolhido = () => {
+  const marcado = document.querySelector('input[name="perfil"]:checked');
+  return marcado ? marcado.value : 'ALUNO';
+};
+
+function seletorDePerfil(escolhido = 'ALUNO') {
+  return `<h2 class="titulo-grupo">Eu sou</h2>
+    <div class="perfis">
+      ${PERFIS_DO_CADASTRO.map((perfil) => `<label class="perfil ${perfil.id === escolhido ? 'escolhido' : ''}">
+        <input type="radio" name="perfil" value="${perfil.id}" data-perfil
+          ${perfil.id === escolhido ? 'checked' : ''}>
+        <span><strong>${escapar(perfil.rotulo)}</strong><small>${escapar(perfil.explica)}</small></span>
+      </label>`).join('')}
+    </div>`;
+}
+
 function telaCadastro() {
-  if (!banco.permiteAutocadastro()) {
-    return `${cabecalho('Cadastro', '#/sair')}<p class="aviso">O instrutor desligou o autocadastro neste aparelho.
-      Peça a ele para criar o seu acesso.</p>`;
-  }
   const dados = rascunho || {};
   const erros = dados.erros || {};
+  const perfil = dados.perfil || 'ALUNO';
+  const comoAluno = perfil === 'ALUNO';
+
+  if (comoAluno && !banco.permiteAutocadastro()) {
+    return `${cabecalho('Cadastro', '#/sair')}
+      ${mostrarRecado()}
+      <section class="formulario">
+        ${seletorDePerfil(perfil)}
+        <p class="aviso">O administrador desligou o autocadastro de alunos neste aparelho.
+        Peça a ele para criar o seu acesso.</p>
+        <a class="botao secundario" href="#/sair">Voltar</a>
+      </section>`;
+  }
+
   return `${cabecalho('Primeiro acesso', '#/sair')}
     <section class="formulario">
       ${mostrarRecado()}
-      <p>Preencha a sua ficha para começar. Estes dados ficam <b>só neste aparelho</b> e servem para o
-      instrutor organizar a turma.</p>
-      ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
-      ${camposDeSenha()}
-      <button class="botao grande" data-acao="criar-aluno">Criar cadastro e começar</button>
+      ${seletorDePerfil(perfil)}
+      ${comoAluno
+        ? `<p>Preencha a sua ficha para começar. Estes dados ficam <b>só neste aparelho</b> e servem para o
+           instrutor organizar a turma.</p>
+           ${camposDaFicha(dados, erros, { ministerioPendente: dados.ministerioPendente })}
+           ${camposDeSenha()}
+           <button class="botao grande" data-acao="criar-aluno">Criar cadastro e começar</button>`
+        : `<p>O acesso de <b>${escapar(NOME_DO_PAPEL[perfil])}</b> alcança a turma inteira, e por isso não é
+           dado automaticamente: o seu pedido fica guardado até o administrador liberar. A senha que você
+           escolher agora é a que vai valer quando isso acontecer.</p>
+           ${camposDoPedido(dados, erros)}
+           ${camposDeSenha()}
+           <button class="botao grande" data-acao="pedir-acesso">Enviar pedido de acesso</button>`}
       <a class="botao secundario" href="#/sair">Cancelar</a>
     </section>`;
+}
+
+// O pedido de acesso pede menos que a ficha do aluno: nome, comum e contato.
+// Instrumento, encarregados e ancião são da vida de quem estuda, não de quem
+// ensina — pedi-los aqui seria papelada por papelada.
+const CAMPOS_DO_PEDIDO = [
+  { id: 'nome', rotulo: 'Nome completo', tipo: 'text', dica: 'como o administrador vai te reconhecer' },
+  { id: 'comum', rotulo: 'Comum-congregação', tipo: 'text', dica: 'bairro e cidade' },
+  { id: 'email', rotulo: 'E-mail', tipo: 'email' },
+  { id: 'whatsapp', rotulo: 'WhatsApp', tipo: 'tel', dica: 'com DDD' },
+  { id: 'observacao', rotulo: 'Quem pode confirmar quem você é', tipo: 'text',
+    dica: 'opcional — o nome de quem o administrador pode perguntar' },
+];
+
+function camposDoPedido(valores = {}, erros = {}) {
+  return `<h2 class="titulo-grupo">Seus dados</h2>
+    ${CAMPOS_DO_PEDIDO.map((campo) => {
+      const erro = erros[campo.id];
+      return `<label for="campo-${campo.id}">${escapar(campo.rotulo)}</label>
+        <input id="campo-${campo.id}" type="${campo.tipo}" class="campo${erro ? ' com-erro' : ''}"
+          value="${escapar(valores[campo.id] || '')}" maxlength="80"
+          ${campo.tipo === 'tel' ? 'inputmode="tel" data-mascara="whatsapp" placeholder="(11) 91234-5678"' : ''}>
+        ${erro ? `<p class="erro-campo">${escapar(erro)}</p>`
+          : campo.dica ? `<p class="mini">${escapar(campo.dica)}</p>` : ''}`;
+    }).join('')}`;
 }
 
 // Quem entrou antes de a ficha existir (ou cadastrado pelo instrutor sem todos
@@ -10851,6 +11204,38 @@ function blocoDeAlertas() {
     </div>`;
 }
 
+// Os pedidos de acesso esperando o master. Fica no alto do painel porque uma
+// pessoa esperando liberação é a coisa mais urgente que pode haver ali: ela
+// não consegue trabalhar até alguém olhar.
+function blocoDePedidosDeAcesso() {
+  if (!banco.podeNaSessao('acesso.conceder')) return '';
+  const pedidos = banco.solicitacoesPendentes();
+  if (!pedidos.length) {
+    return `<h2 class="titulo-secao">Pedidos de acesso</h2>
+      <p class="aviso">Nenhum pedido esperando. Instrutor, encarregado e ministério que se cadastrarem
+      aparecem aqui, e só entram depois que você liberar.</p>`;
+  }
+  return `<h2 class="titulo-secao">Pedidos de acesso · ${pedidos.length}</h2>
+    <div class="pedidos">
+      ${pedidos.map((pedido) => `<article class="pedido">
+        <span class="etiqueta-perfil">${escapar(NOME_DO_PAPEL[pedido.papelPretendido])}</span>
+        <strong>${escapar(pedido.nome)}</strong>
+        <p class="mini">${escapar(pedido.comum || 'comum não informada')} · pedido em ${data(pedido.criadaEm)}</p>
+        <div class="contatos">
+          ${pedido.email ? `<a class="contato" href="mailto:${escapar(pedido.email)}">✉️ ${escapar(pedido.email)}</a>` : ''}
+          ${pedido.whatsapp ? `<a class="contato" href="https://wa.me/55${escapar(pedido.whatsapp.replace(/\D/g, ''))}"
+            target="_blank" rel="noopener">💬 ${escapar(pedido.whatsapp)}</a>` : ''}
+        </div>
+        ${pedido.observacao ? `<p class="mini">Quem confirma: <b>${escapar(pedido.observacao)}</b></p>` : ''}
+        <p class="mini">Confira quem é a pessoa antes de liberar — este acesso alcança a turma.</p>
+        <div class="acoes">
+          <button class="botao" data-acao="aprovar-pedido" data-id="${escapar(pedido.id)}">Liberar acesso</button>
+          <button class="botao perigo" data-acao="recusar-pedido" data-id="${escapar(pedido.id)}">Recusar</button>
+        </div>
+      </article>`).join('')}
+    </div>`;
+}
+
 function telaAdmin() {
   const quadro = relatorios.quadroDeAlunos();
   const panorama = relatorios.panorama();
@@ -10867,13 +11252,20 @@ function telaAdmin() {
     })
     .sort((a, b) => a.linha.aluno.nome.localeCompare(b.linha.aluno.nome, 'pt-BR'));
 
+  const papel = banco.papelDaSessao();
+  const podeVerAlunos = banco.podeNaSessao('aluno.ver.todos');
+  const podeCadastrar = banco.podeNaSessao('aluno.cadastrar');
+  const podeMexerNoAparelho = banco.podeNaSessao('configuracao.editar');
+
   return `<header class="topo topo-inicial">
-      <div><span class="ola">Painel do instrutor</span><h1>${escapar(banco.usuarioDoAdmin())}</h1></div>
+      <div><span class="ola">Painel do ${escapar(NOME_DO_PAPEL[papel] || 'instrutor')}</span>
+      <h1>${escapar(banco.loginDaSessao())}</h1></div>
       <a class="avatar" href="#/sair" aria-label="Sair">⎋</a>
     </header>
     ${avisoDeArmazenamento()}
     ${mostrarRecado()}
     ${avisoDeSenhaDeFabrica()}
+    ${blocoDePedidosDeAcesso()}
 
     <section class="resumo-topo">
       <div><strong>${panorama.alunos}</strong><span>alunos</span></div>
@@ -10884,6 +11276,7 @@ function telaAdmin() {
 
     ${blocoDeAlertas()}
 
+    ${podeVerAlunos ? `
     <h2 class="titulo-secao">Meus alunos</h2>
     <div class="filtros">
       <label class="oculto-visual" for="busca-aluno">Buscar aluno</label>
@@ -10914,17 +11307,19 @@ function telaAdmin() {
         : quadro.length
           ? '<p class="aviso">Nenhum aluno com esses filtros.</p>'
           : '<p class="aviso">Nenhum aluno cadastrado ainda.</p>'}
-    </div>
+    </div>` : `<p class="aviso">O seu perfil acompanha o andamento da turma pelos relatórios,
+      sem a ficha individual de cada músico.</p>`}
 
     <div class="acoes">
-      <a class="botao grande" href="#/instrutor/novo">+ Cadastrar aluno</a>
-      <a class="botao secundario" href="#/instrutor/relatorios">📊 Relatórios</a>
-      <a class="botao secundario" href="#/instrutor/metodos">📚 Métodos</a>
+      ${podeCadastrar ? '<a class="botao grande" href="#/instrutor/novo">+ Cadastrar aluno</a>' : ''}
+      ${banco.podeNaSessao('relatorio.ver') ? '<a class="botao secundario" href="#/instrutor/relatorios">📊 Relatórios</a>' : ''}
+      ${banco.podeNaSessao('metodo.cadastrar') ? '<a class="botao secundario" href="#/instrutor/metodos">📚 Métodos</a>' : ''}
       <a class="botao secundario" href="#/senha">Trocar a minha senha</a>
     </div>
 
-    ${blocoDeConferencia()}
+    ${podeCadastrar ? blocoDeConferencia() : ''}
 
+    ${podeMexerNoAparelho ? `
     <h2 class="titulo-secao">Aparelho</h2>
     <section class="sobre">
       <label class="opcao"><input type="checkbox" id="autocadastro" data-acao="autocadastro"
@@ -10939,7 +11334,7 @@ function telaAdmin() {
       </div>
       <input type="file" id="arquivo-progresso" accept="application/json" hidden aria-label="Arquivo de cópia de segurança">
       <input type="file" id="arquivo-metodo" accept="application/json" hidden aria-label="Arquivo do método a importar">
-    </section>
+    </section>` : ''}
     <p class="rodape">Aviso: o app roda inteiro no aparelho, sem servidor. As fichas dos alunos — inclusive
     e-mail e WhatsApp — ficam guardadas apenas aqui, e as senhas em resumo (hash). Esta é uma portaria de
     organização, não uma proteção contra quem sabe abrir o código da página; a cópia de segurança exportada
@@ -11648,8 +12043,12 @@ function telaSobre() {
       <p>A sua ficha, o progresso e os certificados ficam apenas neste aparelho. Não há servidor nem cadastro
       na internet. A senha é guardada em resumo (hash), mas o app roda todo no navegador: serve para organizar
       o acesso, não para proteger dados sigilosos.</p>
+      <p>A <b>cópia de segurança</b> é feita pelo instrutor, no painel dele: ela leva o aparelho inteiro —
+      a ficha, o contato e o progresso de <b>toda a turma</b>, não só os seus. Se você quer guardar o que é
+      seu, os seus certificados você baixa em
+      <a href="#/certificados">Meus certificados</a>.</p>
       <div class="acoes">
-        <button class="botao secundario" data-acao="exportar">Exportar cópia de segurança</button>
+        <a class="botao secundario" href="#/senha">Trocar a minha senha</a>
         <a class="botao secundario" href="#/sair">Sair desta conta</a>
       </div>
       <p class="mini">Aplicativo instalável: no navegador do celular, use "Adicionar à tela de início".</p>
@@ -11722,7 +12121,7 @@ function desenhar() {
   // O modo de demonstração abre todas as fases: fica atrás do painel, senão
   // seria um atalho para pular a avaliação e ganhar o certificado sem estudar.
   if (partes[0] === 'teste') {
-    if (!banco.ehAdmin()) { avisar('O modo de demonstração é do instrutor.', 'erro'); ir('#/'); return; }
+    if (!banco.podeNaSessao('configuracao.editar')) { avisar('O modo de demonstração é do administrador.', 'erro'); ir('#/'); return; }
     banco.ativarModoTeste();
     ir('#/');
     return;
@@ -11742,9 +12141,11 @@ function desenhar() {
   // rota que tenha digitado.
   if (!logado && partes[0] !== 'cadastrar') { html = telaEntrada(); }
   else if (partes[0] === 'entrar') { ir('#/'); return; }
-  else if (partes[0] === 'cadastrar') html = telaCadastro();
+  // Quem já entrou não se cadastra de novo: a tela de primeiro acesso é para
+  // quem ainda não tem acesso nenhum.
+  else if (partes[0] === 'cadastrar') { if (logado) { ir('#/'); return; } html = telaCadastro(); }
   else if (partes[0] === 'senha') html = telaTrocarMinhaSenha();
-  else if (partes[0] === 'instrutor' && !banco.ehAdmin()) { avisar('Esta área é do instrutor.', 'erro'); ir('#/'); return; }
+  else if (partes[0] === 'instrutor' && !banco.podeNaSessao('ver.painel')) { avisar('Esta área é da equipe.', 'erro'); ir('#/'); return; }
   else if (partes[0] === 'instrutor') {
     if (partes[1] === 'novo') html = telaAdminNovo();
     else if (partes[1] === 'senha') html = telaTrocarMinhaSenha();
@@ -11752,7 +12153,7 @@ function desenhar() {
     else if (partes[1] === 'relatorios') html = telaRelatorios();
     else if (partes[1] === 'metodos') html = telaMetodos();
     else html = telaAdmin();
-  } else if (banco.ehAdmin()) { ir('#/instrutor'); return; }
+  } else if (banco.ehDaEquipe()) { ir('#/instrutor'); return; }
   else if (!plataforma.integrado() && !banco.fichaDoAlunoLiberada() && partes[0] !== 'ficha') { ir('#/ficha'); return; }
   else if (partes[0] === 'ficha') html = telaFicha();
   else if (!partes.length) html = telaInicial();
@@ -11780,6 +12181,15 @@ function desenhar() {
 }
 
 // -------------------------------------------------------------------- ações
+
+// A cópia de segurança leva o aparelho inteiro: a ficha, o contato e o
+// progresso de toda a turma, e o resumo da senha de cada um. Esconder o botão
+// da tela do aluno não basta — o clique também precisa ser recusado, senão a
+// regra vale só para quem não sabe abrir o console.
+function exigirPermissao(permissao) {
+  if (!banco.podeNaSessao(permissao)) throw new Error('Esta ação é do instrutor.');
+}
+
 const valor = (id) => (document.getElementById(id) || {}).value || '';
 const marcado = (id) => Boolean((document.getElementById(id) || {}).checked);
 
@@ -11794,29 +12204,77 @@ function acoes(evento) {
 
   try {
     if (acao === 'entrar') {
-      // A mesma resposta para usuário errado e senha errada: quem chuta um
-      // nome não descobre por aqui quem estuda neste aparelho.
       loginTentado = valor('usuario');
-      if (banco.entrar(loginTentado, valor('senha'))) {
+      const tentativa = banco.entrar(loginTentado, valor('senha'));
+      if (tentativa.entrou) {
         loginTentado = '';
         provaEmCurso = null;
         // O aviso de senha de fábrica é permanente e fica na própria tela:
         // repeti-lo aqui só empilharia dois recados iguais.
-        ir(banco.ehAdmin() ? '#/instrutor' : '#/');
-      } else { avisar('Usuário ou senha incorretos.', 'erro'); desenhar(); }
+        ir(banco.ehDaEquipe() ? '#/instrutor' : '#/');
+      } else if (tentativa.motivo === 'pendente') {
+        avisar(`O seu pedido de acesso como ${escapar(NOME_DO_PAPEL[tentativa.pedido.papelPretendido])}
+          ainda está esperando a liberação do administrador.`, 'alerta');
+        desenhar();
+      } else if (tentativa.motivo === 'recusada') {
+        avisar(`O seu pedido de acesso não foi aprovado.${tentativa.pedido.motivo
+          ? ` Motivo: ${escapar(tentativa.pedido.motivo)}` : ''}`, 'erro');
+        desenhar();
+      } else {
+        // A mesma resposta para usuário errado e senha errada: quem chuta um
+        // nome não descobre por aqui quem estuda neste aparelho.
+        avisar('Usuário ou senha incorretos.', 'erro');
+        desenhar();
+      }
     } else if (acao === 'trocar-minha-senha') {
       const erro = validarSenha(valor('senha'));
       if (erro) { avisar(erro, 'erro'); desenhar(); return; }
       if (valor('senha') !== valor('senha2')) { avisar('As duas senhas novas não conferem.', 'erro'); desenhar(); return; }
       banco.trocarMinhaSenha(valor('senha-atual'), valor('senha'));
       avisar('Senha alterada.');
-      ir(banco.ehAdmin() ? '#/instrutor' : '#/');
+      ir(banco.ehDaEquipe() ? '#/instrutor' : '#/');
+    } else if (acao === 'pedir-acesso') {
+      const perfil = perfilEscolhido();
+      const pedido = valoresDoPedido();
+      const senha = valor('senha');
+      const erros = {};
+      if (!pedido.nome.trim()) erros.nome = 'Informe o nome completo.';
+      else if (!pedido.nome.trim().includes(' ')) erros.nome = 'Informe o nome completo.';
+      if (!pedido.comum.trim()) erros.comum = 'Informe a comum-congregação.';
+      if (!EMAIL_SIMPLES.test(pedido.email.trim())) erros.email = 'E-mail inválido.';
+      const digitos = pedido.whatsapp.replace(/\D/g, '');
+      if (digitos.length < 10 || digitos.length > 11) erros.whatsapp = 'Informe o WhatsApp com DDD.';
+      const erroSenha = validarSenha(senha);
+      if (erroSenha) erros.senha = erroSenha;
+      else if (senha !== valor('senha2')) erros.senha = 'As duas senhas não conferem.';
+      if (Object.keys(erros).length) {
+        rascunho = { ...pedido, perfil, erros };
+        avisar(primeiroErro(erros), 'erro');
+        desenhar();
+        return;
+      }
+      banco.pedirAcesso({ ...pedido, papelPretendido: perfil, senha });
+      rascunho = null;
+      loginTentado = pedido.nome.trim();
+      avisar(`Pedido enviado. O seu acesso como ${escapar(NOME_DO_PAPEL[perfil])} vale a partir do momento
+        em que o administrador liberar — avise-o. A senha é a que você acabou de escolher.`, 'ok');
+      ir('#/');
+    } else if (acao === 'aprovar-pedido') {
+      const criado = banco.aprovarSolicitacao(id);
+      avisar(`${escapar(criado.login)} liberado como ${escapar(NOME_DO_PAPEL[criado.papel])}.`);
+      desenhar();
+    } else if (acao === 'recusar-pedido') {
+      const motivo = window.prompt('Motivo da recusa (a pessoa vê este texto ao tentar entrar):', '');
+      if (motivo === null) return;
+      banco.recusarSolicitacao(id, motivo);
+      avisar('Pedido recusado.');
+      desenhar();
     } else if (acao === 'criar-aluno' || acao === 'criar-aluno-admin') {
       const peloAluno = acao === 'criar-aluno';
       // A tela já esconde o formulário quando o autocadastro está desligado.
       // A regra é conferida aqui também: quem manda é o dado, não a tela.
       if (peloAluno && !banco.permiteAutocadastro()) throw new Error('O instrutor desligou o autocadastro neste aparelho.');
-      if (!peloAluno && !banco.ehAdmin()) throw new Error('Só o instrutor cadastra alunos.');
+      if (!peloAluno) exigirPermissao('aluno.cadastrar');
       const ficha = valoresDaFicha();
       const ministerioPendente = marcado('ministerio-pendente');
       const senha = valor('senha');
@@ -11894,6 +12352,7 @@ function acoes(evento) {
       salvarArquivo('modelo-de-metodo.json',
         new Blob([JSON.stringify(MODELO_DE_METODO, null, 2)], { type: 'application/json' }));
     } else if (acao === 'exportar-progresso') {
+      exigirPermissao('dados.exportar');
       exportarProgresso();
     } else if (acao === 'autocadastro') {
       banco.definirAutocadastro(botao.checked);
@@ -11911,6 +12370,7 @@ function acoes(evento) {
     } else if (acao === 'baixar') {
       baixarCertificado(banco.certificados().find((c) => String(c.faseId) === botao.dataset.fase));
     } else if (acao === 'exportar-fichas') {
+      exigirPermissao('dados.exportar');
       const cabecalhos = ['Nome', 'Comum-congregação', 'Instrumento', 'Encarregado local', 'Encarregado regional',
         'Ancião', 'E-mail', 'WhatsApp', 'Fases vencidas', 'Certificados', 'Última atividade'];
       const celula = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -11923,10 +12383,13 @@ function acoes(evento) {
       const csv = `\ufeff${cabecalhos.map(celula).join(';')}\n${linhas.join('\n')}\n`;
       salvarArquivo('alunos-estudo-musical.csv', new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     } else if (acao === 'exportar') {
+      exigirPermissao('dados.exportar');
       salvarArquivo('backup-estudo-musical.json', new Blob([banco.exportar()], { type: 'application/json' }));
     } else if (acao === 'importar') {
+      exigirPermissao('dados.importar');
       document.getElementById('arquivo-progresso').click();
     } else if (acao === 'apagar') {
+      exigirPermissao('dados.apagar');
       if (window.confirm('Isto apaga alunos, progresso, certificados e histórico de perguntas deste aparelho. Continuar?')) {
         banco.apagarTudo();
         ir('#/');
@@ -11953,6 +12416,14 @@ function aplicarFiltro(campo, valor) {
 function mudancas(evento) {
   if (evento.target.dataset && evento.target.dataset.filtro) {
     aplicarFiltro(evento.target.dataset.filtro, evento.target.value);
+    return;
+  }
+  // Trocar o perfil redesenha o formulário: o aluno preenche a ficha inteira,
+  // quem pede acesso preenche cinco campos. Guardamos o que já foi digitado.
+  if (evento.target.dataset && evento.target.dataset.perfil !== undefined) {
+    const perfil = evento.target.value;
+    rascunho = { ...(rascunho || {}), ...valoresDigitados(), perfil, erros: {} };
+    desenhar();
     return;
   }
   if (evento.target.id === 'ministerio-pendente') {
@@ -11984,6 +12455,7 @@ function mudancas(evento) {
   const leitor = new FileReader();
   leitor.onload = () => {
     try {
+      exigirPermissao('dados.importar');
       banco.importar(String(leitor.result));
       avisar('Cópia importada. Entre novamente.');
       ir('#/');

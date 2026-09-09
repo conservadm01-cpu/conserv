@@ -3,7 +3,7 @@
 
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirApp, autocadastrar } from './apoio.mjs';
+import { abrirApp, MASTER, autocadastrar } from './apoio.mjs';
 
 let app;
 before(async () => { app = await abrirApp(); });
@@ -82,7 +82,7 @@ test('dois alunos com o mesmo nome não entram — o nome é o usuário', async 
   assert.match(erro, /Já existe um aluno com esse nome/);
 });
 
-test('aparelho da versão anterior: o acesso de fábrica antigo vira admin / ccb123', async () => {
+test('aparelho da versão anterior: o acesso de fábrica antigo vira o master de hoje', async () => {
   await autocadastrar(app, { nome: 'Bruno Antigo', senha: 'bruno1' });
   // Envelhece o que está guardado: instrutor RENATO/CCB123 e aluno sem senha,
   // que era como o aplicativo gravava antes.
@@ -90,7 +90,8 @@ test('aparelho da versão anterior: o acesso de fábrica antigo vira admin / ccb
     const { criarHash } = __modulos['senha'];
     const estado = JSON.parse(localStorage.getItem('msa.escola.v2'));
     for (const acesso of estado.usuarios) {
-      if (acesso.papel === 'ADMIN') {
+      if (acesso.papel !== 'ALUNO') {
+        acesso.papel = 'ADMIN';
         acesso.login = 'RENATO';
         acesso.sal = 'admin';
         acesso.senhaHash = criarHash('CCB123', 'admin');
@@ -109,25 +110,28 @@ test('aparelho da versão anterior: o acesso de fábrica antigo vira admin / ccb
   const acessos = await app.pagina.evaluate(() =>
     __modulos['dados/repositorios'].usuarios.listar().map((u) => ({ login: u.login, exige: u.exigeSenha, tem: Boolean(u.senhaHash) })));
   assert.ok(acessos.every((a) => a.exige && a.tem), 'todo acesso antigo ganhou senha');
-  assert.ok(acessos.some((a) => a.login === 'admin'), 'o instrutor antigo passou a ser admin');
+  assert.ok(acessos.some((a) => a.login === MASTER.usuario), 'o acesso do topo passou a ser o master de hoje');
+  const papeis = await app.pagina.evaluate(() =>
+    __modulos['dados/repositorios'].usuarios.listar().map((u) => u.papel));
+  assert.ok(papeis.includes('MASTER'), 'quem era o topo do painel virou master');
 
   await app.entrar('RENATO', 'CCB123');
   assert.equal(await app.sessao(), null, 'o acesso de fábrica antigo não entra mais');
 
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   assert.equal(await app.rota(), '#/instrutor');
 
   // O aluno que entrava sem senha agora entra com a de fábrica — e é avisado.
   await app.sair();
-  await app.entrar('Bruno Antigo', 'ccb123');
+  await app.entrar('Bruno Antigo', MASTER.senha);
   assert.equal((await app.sessao()).tipo, 'aluno');
   assert.match(await app.texto(), /senha ainda é a de fábrica/);
 });
 
-test('quem já tinha trocado a senha do instrutor não é mexido na subida', async () => {
-  await app.entrar('admin', 'ccb123');
+test('quem já tinha trocado a senha do topo não é mexido na subida', async () => {
+  await app.entrarComoMaster();
   await app.ir('#/senha');
-  await app.pagina.fill('#senha-atual', 'ccb123');
+  await app.pagina.fill('#senha-atual', MASTER.senha);
   await app.pagina.fill('#senha', 'minhasenha');
   await app.pagina.fill('#senha2', 'minhasenha');
   await app.pagina.click('[data-acao="trocar-minha-senha"]');
@@ -136,7 +140,7 @@ test('quem já tinha trocado a senha do instrutor não é mexido na subida', asy
   // O usuário antigo, com a senha que a pessoa escolheu: não é mais o de fábrica.
   await app.pagina.evaluate(() => {
     const estado = JSON.parse(localStorage.getItem('msa.escola.v2'));
-    estado.usuarios.find((u) => u.papel === 'ADMIN').login = 'RENATO';
+    estado.usuarios.find((u) => u.papel !== 'ALUNO').login = 'RENATO';
     estado.sessao = null;
     localStorage.setItem('msa.escola.v2', JSON.stringify(estado));
     window.location.hash = '#/';
@@ -148,7 +152,7 @@ test('quem já tinha trocado a senha do instrutor não é mexido na subida', asy
 });
 
 test('o instrutor cadastra um aluno, e o aluno entra com o que foi definido', async () => {
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir('#/instrutor/novo');
   await app.pagina.fill('#campo-nome', 'Carlos Aluno');
   await app.pagina.fill('#campo-comum', 'Central');
@@ -170,7 +174,7 @@ test('o instrutor cadastra um aluno, e o aluno entra com o que foi definido', as
 test('o instrutor troca a senha de um aluno pela ficha dele', async () => {
   const id = await autocadastrar(app);
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir(`#/instrutor/aluno/${id}`);
   await app.pagina.fill('#senha', 'trocada');
   await app.pagina.click('[data-acao="salvar-aluno"]');
@@ -185,7 +189,7 @@ test('o instrutor troca a senha de um aluno pela ficha dele', async () => {
 test('mudar o nome do aluno muda o usuário com que ele entra', async () => {
   const id = await autocadastrar(app);
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir(`#/instrutor/aluno/${id}`);
   await app.pagina.fill('#campo-nome', 'Ana Maria Teste');
   await app.pagina.click('[data-acao="salvar-aluno"]');
@@ -198,7 +202,7 @@ test('mudar o nome do aluno muda o usuário com que ele entra', async () => {
 test('o painel e os relatórios do instrutor desenham', async () => {
   await autocadastrar(app);
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   for (const rota of ['#/instrutor', '#/instrutor/relatorios', '#/instrutor/metodos', '#/instrutor/novo']) {
     await app.ir(rota);
     assert.ok((await app.texto()).length > 80, `${rota} saiu vazia`);

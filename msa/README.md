@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 60 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 80 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
@@ -31,8 +31,9 @@ A entrada é **uma porta só**: usuário e senha, para todo mundo.
 
 | Quem | Usuário | Senha |
 | --- | --- | --- |
-| Instrutor (administrador) | `admin` | `ccb123` |
+| **Master** (o acesso de fábrica) | `ADMIN` | `CCB701040` |
 | Aluno | o **nome completo** do cadastro dele | a que ele escolheu no cadastro |
+| Instrutor, encarregado, ministério | o **nome completo** do pedido | a que ele escolheu no pedido — **depois de o master liberar** |
 
 O usuário não diferencia maiúsculas nem espaços sobrando — `Ana Teste`,
 `ana teste` e ` ANA  TESTE ` são a mesma pessoa. A senha diferencia.
@@ -45,7 +46,7 @@ Três coisas que a tela de acesso deliberadamente **não** faz:
 - **não deixa entrar sem senha.** Todo acesso tem senha — não existe mais a
   opção "entrar sem senha" no cadastro do aluno. Um cadastro antigo que entrava
   só apertando o nome recebe, na primeira abertura desta versão, a senha de
-  fábrica (`ccb123`) e o aviso, em toda tela, para trocá-la;
+  fábrica (`CCB701040`) e o aviso, em toda tela, para trocá-la;
 - **não diz qual dos dois campos errou.** Usuário inexistente e senha errada
   dão exatamente a mesma resposta — senão bastaria chutar nomes para descobrir
   quem estuda aqui.
@@ -68,14 +69,51 @@ regras de `dados/permissoes` viram a referência do que cada perfil pode.
 
 ---
 
+## Quem entra sozinho e quem precisa ser liberado
+
+No primeiro acesso a pessoa diz quem é. **Aluno entra na hora** — o que ele
+alcança é o próprio estudo. **Instrutor, encarregado e ministério não entram
+sozinhos**: o cadastro vira um *pedido de acesso*, e só o **master** libera.
+O acesso deles alcança a turma inteira, e ninguém alcança a turma sem que
+alguém tenha deixado.
+
+A senha que a pessoa escolhe no pedido é a que vale no dia da liberação —
+não há senha para combinar por fora, nem senha provisória circulando por aí.
+
+Enquanto o pedido espera, quem tenta entrar ouve **"o seu pedido ainda está
+esperando a liberação"** em vez de "usuário ou senha incorretos" — mas só
+depois de digitar a senha que ele mesmo escolheu. Sem essa prova, a resposta é
+a de sempre: um chute não descobre que existe um pedido naquele nome.
+
+Os pedidos esperando aparecem no alto do painel do master, com o contato da
+pessoa e quem pode confirmar quem ela é. Liberar ou recusar é um botão; a
+recusa leva um motivo, que a pessoa lê ao tentar entrar.
+
 ## O que cada perfil alcança
 
-- **Instrutor** — painel com o quadro da turma, alertas, relatórios, métodos,
-  cadastro e edição de alunos, exportação (planilha e cópia de segurança),
-  importação e "abrir o app como este aluno" (que não pede a senha do aluno: quem
-  autoriza é a sessão de instrutor já aberta).
-- **Aluno** — trilhas, lições, jogos, avaliação, certificados, desempenho,
-  conquistas, histórico e a própria ficha.
+| | master | administrador | instrutor | encarregado | ministério | aluno |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
+| Liberar acesso de outra pessoa | ✔ | | | | | |
+| Cadastrar e editar alunos | ✔ | ✔ | ✔ | | | |
+| Ver a ficha e o contato da turma | ✔ | ✔ | ✔ | ✔ | | |
+| Ver relatórios e panorama | ✔ | ✔ | ✔ | ✔ | ✔ | |
+| Exportar, importar, apagar | ✔ | ✔ | | | | |
+| Estudar, e ver o próprio progresso | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+
+O **encarregado** acompanha os músicos da comum: vê a turma e os relatórios, e
+não mexe em cadastro. O **ministério** vê como o trabalho vai — o panorama e os
+relatórios — sem a ficha individual de ninguém: responder "como está o trabalho
+aqui?" não exige abrir o e-mail e o WhatsApp de cada músico.
+
+**O aluno não exporta nada.** A cópia de segurança leva o aparelho inteiro — a
+ficha, o contato e o progresso de toda a turma, e o resumo da senha de cada um.
+Ela é do administrador, e a tela de ajustes do aluno diz isso em vez de oferecer
+um botão. O que é dele, ele leva: os certificados, em *Meus certificados*.
+
+Esconder o botão vale para quem não sabe abrir o console — por isso cada ação
+sensível também **confere a permissão onde ela acontece**, lendo a mesma tabela
+de `dados/permissoes` que a tabela acima descreve. Não há regra paralela que um
+dia discorde dessa.
 
 Rota de aluno que aponte para o painel cai de volta em `#/` com um recado; rota
 qualquer sem sessão cai na tela de acesso.
@@ -93,6 +131,7 @@ esta página fora de um navegador seria testar outra coisa.
 | `test/acesso.test.mjs` | portaria: usuário e senha, perfis, troca de senha, o que cada um alcança |
 | `test/estudo.test.mjs` | lição, jogo, avaliação, certificado — e o que fica guardado |
 | `test/conteudo.test.mjs` | **todas** as variantes de **todos** os geradores de pergunta |
+| `test/perfis.test.mjs` | quem entra sozinho, quem espera liberação, e o que cada perfil alcança |
 | `test/dados.test.mjs` | cadastro, cópia de segurança, remoção e a subida de versão |
 | `test/hospedagem.test.mjs` | o que a Vercel serve, com que cabeçalhos, e o app abrindo sem internet |
 
@@ -151,8 +190,8 @@ vencesse, e ninguém saberia dizer quando.
 **Na tela de início.** Com o `manifest.webmanifest`, o celular oferece "adicionar
 à tela de início" e o app abre em tela cheia, com ícone próprio.
 
-**Antes de publicar**, lembre-se de trocar a senha de `admin` — o endereço da
-Vercel é público, e `ccb123` está escrito neste README.
+**Antes de publicar**, lembre-se de trocar a senha do `ADMIN` — o endereço da
+Vercel é público, e `CCB701040` está escrito neste README.
 
 ---
 

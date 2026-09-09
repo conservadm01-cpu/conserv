@@ -2,7 +2,7 @@
 
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirApp, autocadastrar } from './apoio.mjs';
+import { abrirApp, MASTER, autocadastrar } from './apoio.mjs';
 
 let app;
 before(async () => { app = await abrirApp(); });
@@ -18,25 +18,25 @@ test('a primeira tela pede usuário e senha, e não lista ninguém', async () =>
   assert.equal(await app.pagina.$$eval('.cartao-aluno', (e) => e.length), 0);
 });
 
-test('o administrador de fábrica é admin / ccb123', async () => {
-  await app.entrar('admin', 'ccb123');
+test('o acesso de fábrica é o master ADMIN / CCB701040', async () => {
+  await app.entrarComoMaster();
   assert.equal(await app.rota(), '#/instrutor');
   assert.deepEqual(await app.sessao(), { tipo: 'admin' });
-  assert.match(await app.texto(), /Painel do instrutor/);
+  assert.match(await app.texto(), /Painel do master/);
 });
 
 test('o login não diferencia maiúsculas nem espaços sobrando', async () => {
-  await app.entrar('  ADMIN ', 'ccb123');
+  await app.entrar(`  ${MASTER.usuario} `, MASTER.senha);
   assert.equal(await app.rota(), '#/instrutor');
 });
 
 test('a senha diferencia maiúsculas', async () => {
-  await app.entrar('admin', 'CCB123');
+  await app.entrar(MASTER.usuario, MASTER.senha.toLowerCase());
   assert.equal(await app.sessao(), null);
 });
 
 test('usuário que não existe e senha errada dão a mesma resposta', async () => {
-  await app.entrar('admin', 'chute');
+  await app.entrar(MASTER.usuario, 'chute');
   const comSenhaErrada = await app.texto();
   await app.entrar('ninguem-por-aqui', 'chute');
   const semUsuario = await app.texto();
@@ -68,25 +68,25 @@ test('sem sessão, qualquer rota cai na tela de acesso', async () => {
   }
 });
 
-test('o aluno não alcança o painel do instrutor', async () => {
+test('o aluno não alcança o painel da equipe', async () => {
   await autocadastrar(app);
   await app.ir('#/instrutor');
   assert.equal(await app.rota(), '#/');
-  assert.match(await app.texto(), /Esta área é do instrutor/);
+  assert.match(await app.texto(), /Esta área é da equipe/);
   assert.equal((await app.sessao()).tipo, 'aluno');
 });
 
 test('o aluno não abre o modo de demonstração', async () => {
   await autocadastrar(app);
   await app.ir('#/teste');
-  assert.match(await app.texto(), /modo de demonstração é do instrutor/);
+  assert.match(await app.texto(), /modo de demonstração é do administrador/);
   assert.equal(await app.pagina.evaluate(() => __modulos['armazenamento'].emModoTeste()), false);
 });
 
 test('a tecla Enter entra, sem precisar do botão', async () => {
   await app.ir('#/');
   await app.pagina.fill('#usuario', 'admin');
-  await app.pagina.fill('#senha', 'ccb123');
+  await app.pagina.fill('#senha', MASTER.senha);
   await app.pagina.press('#senha', 'Enter');
   await app.pagina.waitForTimeout(250);
   assert.equal(await app.rota(), '#/instrutor');
@@ -107,7 +107,7 @@ test('sair fecha a sessão, limpa o campo e volta para a portaria', async () => 
 });
 
 test('quem entra com a senha de fábrica é avisado e consegue trocá-la', async () => {
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   assert.match(await app.texto(), /senha ainda é a de fábrica/);
 
   await app.ir('#/senha');
@@ -118,7 +118,7 @@ test('quem entra com a senha de fábrica é avisado e consegue trocá-la', async
   await app.pagina.waitForTimeout(150);
   assert.match(await app.texto(), /senha atual não confere/i);
 
-  await app.pagina.fill('#senha-atual', 'ccb123');
+  await app.pagina.fill('#senha-atual', MASTER.senha);
   await app.pagina.fill('#senha', 'outrasenha');
   await app.pagina.fill('#senha2', 'outrasenha');
   await app.pagina.click('[data-acao="trocar-minha-senha"]');
@@ -126,24 +126,24 @@ test('quem entra com a senha de fábrica é avisado e consegue trocá-la', async
   assert.match(await app.texto(), /Senha alterada/);
 
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   assert.equal(await app.sessao(), null, 'a senha antiga não pode mais entrar');
-  await app.entrar('admin', 'outrasenha');
+  await app.entrar(MASTER.usuario, 'outrasenha');
   assert.equal(await app.rota(), '#/instrutor');
   assert.doesNotMatch(await app.texto(), /senha ainda é a de fábrica/);
 });
 
 test('a nova senha passa pela regra mínima e pela confirmação', async () => {
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir('#/senha');
-  await app.pagina.fill('#senha-atual', 'ccb123');
+  await app.pagina.fill('#senha-atual', MASTER.senha);
   await app.pagina.fill('#senha', 'ab');
   await app.pagina.fill('#senha2', 'ab');
   await app.pagina.click('[data-acao="trocar-minha-senha"]');
   await app.pagina.waitForTimeout(150);
   assert.match(await app.texto(), /pelo menos 4 caracteres/);
 
-  await app.pagina.fill('#senha-atual', 'ccb123');
+  await app.pagina.fill('#senha-atual', MASTER.senha);
   await app.pagina.fill('#senha', 'senhaboa');
   await app.pagina.fill('#senha2', 'senhaoutra');
   await app.pagina.click('[data-acao="trocar-minha-senha"]');
@@ -155,7 +155,7 @@ test('a senha nunca é guardada em texto — só o resumo com sal', async () => 
   await autocadastrar(app);
   const bruto = await app.pagina.evaluate(() => localStorage.getItem('msa.escola.v2'));
   assert.doesNotMatch(bruto, /ana123/);
-  assert.doesNotMatch(bruto, /ccb123/);
+  assert.doesNotMatch(bruto, new RegExp(MASTER.senha, 'i'));
   const acessos = await app.pagina.evaluate(() => __modulos['dados/repositorios'].usuarios.listar());
   for (const acesso of acessos) {
     assert.equal(acesso.senha, undefined);
@@ -194,7 +194,7 @@ test('um aluno não pode se chamar como um acesso que já existe', async () => {
 });
 
 test('com o autocadastro desligado, ninguém se cadastra sozinho', async () => {
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.pagina.uncheck('#autocadastro');
   await app.pagina.waitForTimeout(150);
   await app.sair();
@@ -207,7 +207,7 @@ test('com o autocadastro desligado, ninguém se cadastra sozinho', async () => {
 test('o instrutor abre o app como o aluno mesmo sem saber a senha dele', async () => {
   const id = await autocadastrar(app);
   await app.sair();
-  await app.entrar('admin', 'ccb123');
+  await app.entrarComoMaster();
   await app.ir(`#/instrutor/aluno/${id}`);
   await app.pagina.click('[data-acao="entrar-como"]');
   await app.pagina.waitForTimeout(250);
@@ -222,6 +222,37 @@ test('abrir como aluno é do instrutor: sem sessão de instrutor, recusa', async
     catch (erro) { return erro.message; }
   }, id);
   assert.match(recusa, /Só o instrutor/);
+});
+
+test('o aluno não exporta dado nenhum', async () => {
+  await autocadastrar(app);
+  // A cópia de segurança leva o aparelho inteiro: a ficha, o e-mail e o
+  // WhatsApp de toda a turma, e o resumo da senha de cada um.
+  await app.ir('#/sobre');
+  const ajustes = await app.texto();
+  assert.doesNotMatch(ajustes, /Exportar/i);
+  assert.match(ajustes, /cópia de segurança.*é feita pelo instrutor/is);
+  assert.equal(await app.pagina.$('[data-acao="exportar"]'), null);
+
+  for (const permissao of ['dados.exportar', 'dados.importar', 'dados.apagar']) {
+    assert.equal(await app.pagina.evaluate((p) => __modulos['armazenamento'].podeNaSessao(p), permissao),
+      false, `o aluno não deveria poder ${permissao}`);
+  }
+});
+
+test('e o clique também é recusado, não só o botão escondido', async () => {
+  await autocadastrar(app);
+  // Esconder o botão vale para quem não sabe abrir o console. A regra tem de
+  // estar onde a ação acontece.
+  const recusa = await app.pagina.evaluate(() => {
+    const botao = document.createElement('button');
+    botao.dataset.acao = 'exportar';
+    document.querySelector('#tela').appendChild(botao);
+    botao.click();
+    return document.querySelector('#tela').innerText;
+  });
+  await app.pagina.waitForTimeout(150);
+  assert.match(await app.texto(), /Esta ação é do instrutor/);
 });
 
 test('nada disso derrubou o aplicativo', () => {

@@ -43,5 +43,5 @@ http.createServer((req, res) => {
   res.end(fs.readFileSync(arquivo));
 }).listen(PORTA, () => {
   console.log(`Estudo Musical — MSA em http://localhost:${PORTA}`);
-  console.log('Instrutor: admin / ccb123');
+  console.log('Master: ADMIN / CCB701040');
 });
