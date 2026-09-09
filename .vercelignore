@@ -1,0 +1,20 @@
+# O que sobe para a Vercel é só o app de estudo (msa/publico). O resto do
+# repositório — o ERP, os testes, os bancos locais — não tem o que fazer lá.
+node_modules
+.git
+
+server
+web
+docs
+musica
+data
+*.db
+*.db-shm
+*.db-wal
+.env
+
+msa/node_modules
+msa/test
+msa/package.json
+msa/package-lock.json
+msa/README.md

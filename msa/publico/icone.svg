@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Estudo Musical">
+  <rect width="512" height="512" rx="112" fill="#2f9e6b"/>
+  <g fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round">
+    <path d="M118 176h276M118 224h276M118 272h276M118 320h276"/>
+  </g>
+  <g fill="#ffffff">
+    <ellipse cx="196" cy="320" rx="46" ry="34" transform="rotate(-20 196 320)"/>
+    <rect x="232" y="150" width="17" height="164" rx="8"/>
+    <path d="M249 150c58 22 84 50 84 84 0-58-30-84-84-104z"/>
+  </g>
+</svg>

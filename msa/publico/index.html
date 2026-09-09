@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2f9e6b">
+<meta name="description" content="Teoria do MSA e método do seu instrumento, fase a fase, com avaliação que nunca repete pergunta e certificado.">
+<meta name="color-scheme" content="light dark">
 <title>Estudo Musical — MSA</title>
+
+<!-- Estes três arquivos só existem quando o app está hospedado. Aberto direto
+     do aparelho (file://), o navegador não acha nenhum deles e nada quebra:
+     o app é a página, e a página já está toda aqui. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icone.svg">
 <style>
 /* Estudo Musical — MSA. Desenho pensado para o celular: alvo de toque grande,
    texto legível ao ar livre e contraste que sobrevive à tela do ônibus. */
@@ -12024,6 +12033,15 @@ window.addEventListener('DOMContentLoaded', desenhar);
 if (document.readyState !== 'loading') desenhar();
 
 if (window.MSA_MODO_TESTE) banco.ativarModoTeste();
+
+// Guarda a página para o app abrir sem internet. Só faz sentido servido por
+// https (ou em localhost); aberto como arquivo, o navegador nem oferece isto,
+// e a falha é silenciosa de propósito: nada aqui é necessário para estudar.
+if ('serviceWorker' in navigator && /^https?:$/.test(window.location.protocol)) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => undefined);
+  });
+}
 
 
 

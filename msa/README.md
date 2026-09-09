@@ -5,11 +5,22 @@ App de estudo de teoria musical e do método do instrumento. É **uma página s�
 não há build, não há dependência para rodar. Abrir o arquivo no celular basta.
 
 ```bash
-# rodar: abra msa/index.html no navegador, ou sirva a pasta
-python3 -m http.server 4321 --directory msa
+cd msa
+npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
+npm install && npx playwright install chromium && npm test   # 60 testes, num Chromium de verdade
+```
 
-# testar (Chromium de verdade, via Playwright)
-cd msa && npm install && npx playwright install chromium && npm test
+Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
+página — ela já está toda ali.
+
+```
+msa/
+  publico/            ← o que vai para o ar. Só isto.
+    index.html          o app inteiro: HTML, CSS, JavaScript e conteúdo
+    sw.js               guarda a página para abrir sem internet
+    manifest.webmanifest, icone.svg, icone-mascara.svg
+  servir.mjs          servidor local com os mesmos cabeçalhos da hospedagem
+  test/               os testes
 ```
 
 ---
@@ -83,6 +94,7 @@ esta página fora de um navegador seria testar outra coisa.
 | `test/estudo.test.mjs` | lição, jogo, avaliação, certificado — e o que fica guardado |
 | `test/conteudo.test.mjs` | **todas** as variantes de **todos** os geradores de pergunta |
 | `test/dados.test.mjs` | cadastro, cópia de segurança, remoção e a subida de versão |
+| `test/hospedagem.test.mjs` | o que a Vercel serve, com que cabeçalhos, e o app abrindo sem internet |
 
 O de conteúdo é o mais rendoso: passa por cada variante de cada gerador, de cada
 fase, para cada um dos 21 instrumentos do catálogo — mais de dez mil perguntas —
@@ -95,6 +107,52 @@ suíte, mesmo que a tela pareça certa.
 
 Se o Chromium já estiver instalado na máquina, aponte para ele com
 `MSA_CHROMIUM=/caminho/para/chrome npm test` em vez de baixar outro.
+
+---
+
+## Hospedar na Vercel
+
+Está tudo pronto no repositório: `vercel.json` na raiz e `.vercelignore` ao lado.
+Não há build — a Vercel só publica o conteúdo de `msa/publico/`.
+
+```bash
+npx vercel            # pré-visualização
+npx vercel --prod     # publica
+```
+
+Ou pelo painel: **Add New → Project**, importe o repositório e **Deploy**. Não
+mexa em nada na tela de configuração — o `vercel.json` já diz o que fazer:
+
+```json
+{ "framework": null, "installCommand": "", "buildCommand": "", "outputDirectory": "msa/publico" }
+```
+
+`installCommand` e `buildCommand` vazios são de propósito. Sem eles a Vercel
+acharia o `package.json` da raiz e rodaria o build do **ERP**, que não tem nada a
+ver com este app e derrubaria o deploy por um motivo que não é dele.
+
+**Os cabeçalhos** também vêm do `vercel.json`, e os testes usam exatamente os
+mesmos — um app que passa nos testes e quebra em produção porque a CSP barrou
+alguma coisa é um app que não foi testado.
+
+| Cabeçalho | Por quê |
+| --- | --- |
+| `Content-Security-Policy` | o app não busca nada fora do próprio endereço, e a política diz isso ao navegador: nenhum script, fonte ou imagem de fora entra |
+| `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` | o endereço do aparelho não vaza para lugar nenhum |
+| `Permissions-Policy` | câmera, microfone e localização ficam desligados — o app não usa nenhum deles |
+| `Cache-Control` na página e no `sw.js` | `max-age=0, must-revalidate`: uma correção publicada hoje chega ao aluno hoje |
+
+**Sem internet.** `sw.js` guarda a página no aparelho, com a estratégia de
+**rede primeiro**: quem está on-line sempre recebe a versão de agora, e o cache
+só entra quando a rede falha. Cache primeiro seria mais rápido e traria um
+problema pior — uma correção publicada hoje só chegaria quando o cache do aluno
+vencesse, e ninguém saberia dizer quando.
+
+**Na tela de início.** Com o `manifest.webmanifest`, o celular oferece "adicionar
+à tela de início" e o app abre em tela cheia, com ícone próprio.
+
+**Antes de publicar**, lembre-se de trocar a senha de `admin` — o endereço da
+Vercel é público, e `ccb123` está escrito neste README.
 
 ---
 

@@ -4,6 +4,11 @@
 // localStorage. Testá-lo fora de um navegador seria testar outra coisa — por
 // isso aqui há um Chromium de verdade, com localStorage de verdade, clicando
 // nos mesmos botões que o aluno clica.
+//
+// O servidor daqui serve a pasta `publico/` e devolve os MESMOS cabeçalhos que
+// a Vercel devolve — inclusive a Content-Security-Policy do `vercel.json`. Um
+// app que passa nos testes e quebra em produção porque a CSP barrou alguma
+// coisa é um app que não foi testado.
 
 import { chromium } from 'playwright';
 import http from 'node:http';
@@ -12,7 +17,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
-const PAGINA = path.join(AQUI, '..', 'index.html');
+const PUBLICO = path.join(AQUI, '..', 'publico');
+const CONFIG_DA_VERCEL = path.join(AQUI, '..', '..', 'vercel.json');
+
+const TIPOS = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json',
+};
+
+// Os cabeçalhos que valem para toda rota, lidos do próprio vercel.json — se
+// alguém apertar a CSP lá, os testes sentem aqui.
+function cabecalhosDaHospedagem() {
+  const config = JSON.parse(fs.readFileSync(CONFIG_DA_VERCEL, 'utf8'));
+  const regra = (config.headers || []).find((h) => h.source === '/(.*)');
+  return Object.fromEntries((regra ? regra.headers : []).map((h) => [h.key, h.value]));
+}
+
+export const CABECALHOS = cabecalhosDaHospedagem();
 
 // O navegador pode vir do Playwright ou de uma instalação já presente na
 // máquina (é o caso das imagens de CI que trazem o Chromium pronto).
@@ -28,11 +52,21 @@ function ondeEstaOChromium() {
 
 /** Sobe o app e devolve a página aberta na tela de acesso, já limpa. */
 export async function abrirApp() {
-  const html = fs.readFileSync(PAGINA);
+  const pedidos = [];
   const servidor = await new Promise((pronto) => {
     const s = http.createServer((req, res) => {
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(html);
+      const caminho = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+      pedidos.push(caminho);
+      const arquivo = path.join(PUBLICO, caminho === '/' ? 'index.html' : caminho);
+      // Fora da pasta pública ninguém entra, e o que não existe cai na página
+      // — é a mesma regra do `rewrites` do vercel.json.
+      const dentro = arquivo.startsWith(PUBLICO) && fs.existsSync(arquivo) && fs.statSync(arquivo).isFile();
+      const alvo = dentro ? arquivo : path.join(PUBLICO, 'index.html');
+      res.writeHead(dentro || caminho === '/' ? 200 : 404, {
+        ...CABECALHOS,
+        'content-type': TIPOS[path.extname(alvo)] || 'application/octet-stream',
+      });
+      res.end(fs.readFileSync(alvo));
     });
     s.listen(0, () => pronto(s));
   });
@@ -55,6 +89,8 @@ export async function abrirApp() {
     pagina,
     erros,
     endereco,
+    /** Os caminhos que o navegador pediu — para conferir o que a página busca. */
+    pedidos,
     /** O texto visível da tela — é por ele que os testes conferem o que a pessoa lê. */
     texto: () => pagina.innerText('#tela'),
     /** Vai para uma rota e espera o desenho. */

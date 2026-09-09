@@ -408,7 +408,10 @@ de música — trilha, fase, avaliação por objetivo com peso e boletim impress
 
 A pasta `msa/` guarda o **Estudo Musical — MSA**, o app de estudo do aluno: teoria do MSA e método
 do instrumento, fase a fase, com lições, jogos, avaliação que nunca repete pergunta e certificado.
-É **uma página só** (`msa/index.html`), sem servidor e sem build — abrir o arquivo no celular basta.
-A entrada é por usuário e senha; o acesso de fábrica do instrutor é `admin` / `ccb123`. Os testes
-rodam a página num Chromium de verdade: `cd msa && npm install && npm test`. As regras estão em
-[`msa/README.md`](msa/README.md).
+É **uma página só** (`msa/publico/index.html`), sem servidor e sem build — abrir o arquivo no celular
+basta. A entrada é por usuário e senha; o acesso de fábrica do instrutor é `admin` / `ccb123`.
+`cd msa && npm start` levanta o app em `localhost:4321`; `npm test` roda a página num Chromium de
+verdade. As regras estão em [`msa/README.md`](msa/README.md).
+
+O `vercel.json` da raiz e o `.vercelignore` ao lado existem para este app: a Vercel publica apenas
+`msa/publico/`, sem build. O ERP não sobe por ali — ele precisa de servidor e banco.

@@ -1,0 +1,17 @@
+{
+  "name": "Estudo Musical — MSA",
+  "short_name": "Estudo Musical",
+  "description": "Teoria do MSA e método do seu instrumento, fase a fase, com avaliação e certificado.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f4ef",
+  "theme_color": "#2f9e6b",
+  "icons": [
+    { "src": "./icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./icone-mascara.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
