@@ -11,12 +11,15 @@
 
 import { CHAVE_V1, CHAVE_V0, CHAVE_V2, PREFIXO_DE_BACKUP, depositoAtual } from './deposito.js';
 import { completarEstado, estadoVazio } from './esquema.js';
-import { normalizeAluno, normalizeCertificado, normalizeProgresso, normalizeResultado, normalizeUsuario } from './compatibilidade.js';
+import {
+  normalizeAluno, normalizeCertificado, normalizeMatricula, normalizeProgresso,
+  normalizeResultado, normalizeUsuario,
+} from './compatibilidade.js';
 import { idDoAcesso, idDoCertificado, idDoProgresso, novoId } from './ids.js';
 import { semear } from './semente.js';
 import { guardarSenha, LOGIN_INICIAL, SENHA_INICIAL } from './permissoes.js';
 
-export const VERSAO_DA_MIGRACAO = 2;
+export const VERSAO_DA_MIGRACAO = 3;
 export const MAXIMO_DE_BACKUPS = 5;
 
 const agora = () => new Date().toISOString();
@@ -228,6 +231,12 @@ export function converterV1(dadosV1, { instrumentos = [] } = {}) {
   estado.configuracoes = Object.entries({ autocadastro: config.autocadastro !== false, ...config })
     .map(([chave, valor]) => ({ chave, valor }));
 
+  // Cada aluno migrado ganha as suas matrículas, e o progresso que já existia
+  // é ligado a elas. Nenhuma linha é criada do nada: só se aponta o que já
+  // estava gravado para a matrícula a que ele pertence.
+  for (const aluno of estado.alunos) matricularNosMetodos(estado, aluno);
+  ligarRegistrosAsMatriculas(estado);
+
   // Sessão aberta: quem estava dentro continua dentro.
   if (antigo.sessao && antigo.sessao.tipo === 'admin') {
     estado.sessao = { usuarioId: 'admin', papel: 'ADMIN', alunoId: null };
@@ -242,6 +251,76 @@ export function converterV1(dadosV1, { instrumentos = [] } = {}) {
 
 // Devolve o estado do V2 pronto para uso, migrando se for preciso.
 // `migrado` diz se esta chamada converteu alguma coisa.
+
+// Uma matrícula por método que serve ao aluno. O aluno que estuda a teoria do
+// MSA e o método do seu instrumento tem duas matrículas — é o que permite que
+// amanhã ele estude um segundo instrumento sem misturar um progresso no outro.
+export function matricularNosMetodos(estado, aluno) {
+  const criadas = [];
+  const metodos = estado.metodos.filter((m) => m.ativo !== false
+    && (m.universal || (m.instrumentoIds || []).includes(aluno.instrumentoId)));
+
+  for (const metodo of metodos) {
+    const versoesDele = estado.versoes.filter((v) => v.metodoId === metodo.id)
+      .sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    const publicadas = versoesDele.filter((v) => v.situacao === 'publicada');
+    const versao = publicadas[publicadas.length - 1] || versoesDele[versoesDele.length - 1] || null;
+
+    const matricula = normalizeMatricula({
+      id: novoId('mt'),
+      alunoId: aluno.id,
+      instrumentoId: aluno.instrumentoId || '',
+      metodoId: metodo.id,
+      versaoId: versao ? versao.id : null,
+      dataInicio: aluno.criadoEm || agora(),
+      situacao: 'em_curso',
+    });
+    estado.matriculas.push(matricula);
+    criadas.push(matricula);
+  }
+  return criadas;
+}
+
+// A qual matrícula pertence uma fase: à do método dono daquela fase.
+function matriculaDaFase(estado, matriculasDoAluno, faseId) {
+  const fase = estado.fases.find((f) => f.id === String(faseId));
+  if (!fase) return matriculasDoAluno[0] || null;
+  return matriculasDoAluno.find((m) => m.metodoId === fase.metodoId) || matriculasDoAluno[0] || null;
+}
+
+// Liga progresso, resultados e certificados às matrículas recém-criadas.
+// Registro cuja fase não pertence a nenhum método conhecido fica sem matrícula:
+// não se apaga nada e o painel mostra como pendente de conferência.
+export function ligarRegistrosAsMatriculas(estado) {
+  for (const aluno of estado.alunos) {
+    const minhas = estado.matriculas.filter((m) => m.alunoId === aluno.id);
+    if (!minhas.length) continue;
+    const ligar = (linha) => {
+      if (linha.matriculaId) return;
+      const m = matriculaDaFase(estado, minhas, linha.faseId);
+      if (m) linha.matriculaId = m.id;
+    };
+    estado.progressos.filter((p) => p.alunoId === aluno.id).forEach(ligar);
+    estado.resultados.filter((r) => r.alunoId === aluno.id).forEach(ligar);
+    estado.certificados.filter((c) => c.alunoId === aluno.id).forEach(ligar);
+
+    // A fase atual da matrícula: a primeira ainda não aprovada, na ordem.
+    for (const matricula of minhas) {
+      const fases = estado.fases.filter((f) => f.metodoId === matricula.metodoId)
+        .sort((a, b) => a.ordem - b.ordem);
+      const aprovadas = new Set(estado.progressos
+        .filter((p) => p.alunoId === aluno.id && p.aprovadoEm).map((p) => p.faseId));
+      const pendente = fases.find((f) => !aprovadas.has(f.id));
+      matricula.faseAtualId = pendente ? pendente.id : (fases.length ? fases[fases.length - 1].id : null);
+      if (fases.length && !pendente) {
+        matricula.situacao = 'concluida';
+        matricula.dataFim = matricula.dataFim || agora();
+      }
+    }
+  }
+  return estado;
+}
+
 export function migrarDadosV1ParaV2(deposito = depositoAtual()) {
   const atual = deposito.ler();
 
@@ -265,9 +344,11 @@ export function migrarDadosV1ParaV2(deposito = depositoAtual()) {
   // versão da migração, sem converter nada de novo.
   if (!origem && atual) {
     const estado = completarEstado(atual);
+    const backupDaSubida = completarVersaoEMatriculas(estado, deposito);
     estado.migracao = { ...(estado.migracao || {}), versao: VERSAO_DA_MIGRACAO, migradoEm: agora() };
+    garantirAdmin(estado);
     deposito.gravar(estado);
-    return { estado, migrado: false, backup: null };
+    return { estado, migrado: Boolean(backupDaSubida), backup: backupDaSubida };
   }
 
   const backup = criarBackupAutomatico(deposito, 'migracao-v1-v2');
@@ -289,6 +370,33 @@ export function migrarDadosV1ParaV2(deposito = depositoAtual()) {
     console.warn('A migração foi feita em memória: não foi possível gravar no aparelho.');
   }
   return { estado, migrado: true, backup };
+}
+
+// Sobe um cadastro que já estava no V2 mas ainda não conhecia versões nem
+// matrículas. Roda uma vez só, faz cópia antes e não converte nada além disso.
+function completarVersaoEMatriculas(estado, deposito) {
+  const precisaDeVersoes = estado.metodos.length && !estado.versoes.length;
+  const precisaDeMatriculas = estado.alunos.length && !estado.matriculas.length;
+  if (!precisaDeVersoes && !precisaDeMatriculas) return null;
+
+  const backup = criarBackupAutomatico(deposito, 'subida-para-matriculas');
+
+  if (precisaDeVersoes) {
+    for (const metodo of estado.metodos) {
+      estado.versoes.push({
+        id: `${metodo.id}-1.0`, metodoId: metodo.id, rotulo: '1.0',
+        situacao: 'publicada', publicadaEm: null, notas: '', ordem: 1,
+      });
+    }
+    for (const fase of estado.fases) {
+      if (!fase.versaoId) fase.versaoId = `${fase.metodoId}-1.0`;
+    }
+  }
+  if (precisaDeMatriculas) {
+    for (const aluno of estado.alunos) matricularNosMetodos(estado, aluno);
+    ligarRegistrosAsMatriculas(estado);
+  }
+  return backup;
 }
 
 // A chave antiga NUNCA é apagada pela migração. Quem quiser liberar espaço

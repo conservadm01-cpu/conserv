@@ -20,7 +20,8 @@ export const ENTIDADES = {
   instrumentos: {
     nome: 'Instrumentos',
     chavePrimaria: 'id',
-    campos: ['id', 'nome', 'familia', 'familiaNome', 'claves', 'afinacao', 'transposicao', 'ativo'],
+    campos: ['id', 'nome', 'familia', 'familiaNome', 'claves', 'afinacao', 'transposicao',
+      'transpositor', 'tessitura', 'cordas', 'partes', 'arco', 'cuidado', 'descricao', 'ativo'],
     unicos: ['id', 'nome'],
   },
   metodos: {
@@ -32,19 +33,20 @@ export const ENTIDADES = {
   fases: {
     nome: 'Fases',
     chavePrimaria: 'id',
-    campos: ['id', 'metodoId', 'ordem', 'titulo', 'subtitulo', 'resumo', 'icone', 'cor', 'paginas', 'anteriorId', 'conteudoRef'],
+    campos: ['id', 'metodoId', 'versaoId', 'ordem', 'titulo', 'subtitulo', 'resumo', 'icone', 'cor',
+      'paginas', 'anteriorId', 'conteudoRef', 'notaMinima', 'ativo'],
     unicos: ['id'],
   },
   licoes: {
     nome: 'Lições',
     chavePrimaria: 'id',
-    campos: ['id', 'faseId', 'ordem', 'titulo', 'pagina', 'conteudoRef'],
+    campos: ['id', 'faseId', 'ordem', 'titulo', 'pagina', 'conteudoRef', 'corpo'],
     unicos: ['id'],
   },
   exercicios: {
     nome: 'Exercícios',
     chavePrimaria: 'id',
-    campos: ['id', 'licaoId', 'ordem', 'titulo', 'enunciado', 'tipo', 'conteudoRef'],
+    campos: ['id', 'licaoId', 'faseId', 'ordem', 'titulo', 'enunciado', 'tipo', 'conteudoRef', 'corpo'],
     unicos: ['id'],
   },
   jogos: {
@@ -81,19 +83,59 @@ export const ENTIDADES = {
   progressos: {
     nome: 'Progresso do aluno',
     chavePrimaria: 'id',
-    campos: ['id', 'alunoId', 'faseId', 'licoesLidas', 'jogos', 'usadas', 'melhorNota', 'aprovadoEm', 'xp', 'atualizadoEm'],
+    campos: ['id', 'alunoId', 'matriculaId', 'faseId', 'licoesLidas', 'jogos', 'usadas', 'melhorNota',
+      'aprovadoEm', 'iniciadoEm', 'xp', 'atualizadoEm'],
     unicos: ['id'],
   },
   resultados: {
     nome: 'Resultados de avaliação',
     chavePrimaria: 'id',
-    campos: ['id', 'alunoId', 'faseId', 'avaliacaoId', 'data', 'nota', 'acertos', 'total', 'aprovado', 'respostas'],
+    campos: ['id', 'alunoId', 'matriculaId', 'faseId', 'avaliacaoId', 'data', 'nota', 'acertos', 'total',
+      'aprovado', 'respostas', 'duracaoSegundos'],
     unicos: ['id'],
   },
   certificados: {
     nome: 'Certificados',
     chavePrimaria: 'id',
-    campos: ['id', 'alunoId', 'faseId', 'data', 'nota', 'codigo', 'titulo', 'trilha', 'aluno', 'numero'],
+    campos: ['id', 'alunoId', 'matriculaId', 'faseId', 'data', 'nota', 'codigo', 'titulo', 'trilha',
+      'aluno', 'numero', 'hash', 'retrato', 'responsavel'],
+    unicos: ['id'],
+  },
+  versoes: {
+    nome: 'Versões de método',
+    chavePrimaria: 'id',
+    campos: ['id', 'metodoId', 'rotulo', 'publicadaEm', 'situacao', 'notas', 'ordem'],
+    unicos: ['id'],
+  },
+  matriculas: {
+    nome: 'Matrículas',
+    chavePrimaria: 'id',
+    campos: ['id', 'alunoId', 'instrumentoId', 'metodoId', 'versaoId', 'dataInicio', 'dataFim',
+      'situacao', 'faseAtualId', 'observacao'],
+    unicos: ['id'],
+  },
+  eventos: {
+    nome: 'Eventos do aluno',
+    chavePrimaria: 'id',
+    campos: ['id', 'alunoId', 'matriculaId', 'tipo', 'titulo', 'detalhe', 'faseId', 'valor', 'dataHora'],
+    unicos: ['id'],
+  },
+  auditorias: {
+    nome: 'Auditoria',
+    chavePrimaria: 'id',
+    campos: ['id', 'usuarioId', 'papel', 'acao', 'entidade', 'entidadeId', 'dadosAntes', 'dadosDepois', 'dataHora'],
+    unicos: ['id'],
+  },
+  conquistas: {
+    nome: 'Conquistas',
+    chavePrimaria: 'id',
+    campos: ['id', 'alunoId', 'chave', 'titulo', 'descricao', 'icone', 'conquistadaEm'],
+    unicos: ['id'],
+  },
+  notificacoes: {
+    nome: 'Avisos',
+    chavePrimaria: 'id',
+    campos: ['id', 'alunoId', 'tipo', 'titulo', 'texto', 'destino', 'lidaEm', 'criadaEm'],
     unicos: ['id'],
   },
   configuracoes: {
@@ -108,7 +150,11 @@ export const NOMES_DAS_ENTIDADES = Object.keys(ENTIDADES);
 
 // -------------------------------------------------------------------- papéis
 
-export const PAPEIS = ['ADMIN', 'PROFESSOR', 'ALUNO'];
+// INSTRUTOR é o nome usado no aplicativo e na conversa com quem o usa.
+// PROFESSOR continua aceito porque existem cadastros gravados com ele: a
+// camada de compatibilidade traduz um no outro, e nenhum acesso se perde.
+export const PAPEIS = ['ADMIN', 'INSTRUTOR', 'ALUNO'];
+export const PAPEL_ANTIGO = { PROFESSOR: 'INSTRUTOR' };
 
 // ------------------------------------------------------------ estado inicial
 
@@ -287,6 +333,61 @@ export function validarUsuarios(usuarios, alunos = []) {
 }
 
 // Passa o estado inteiro pelas validações e devolve tudo o que estiver errado.
+
+export function validarVersoes(versoes, metodos = []) {
+  const problemas = [];
+  const existentes = new Set(metodos.map((m) => m.id));
+  for (const v of versoes) {
+    if (vazio(v.metodoId)) problemas.push(erro('versoes', v.id, 'Versão sem método.'));
+    else if (existentes.size && !existentes.has(v.metodoId)) {
+      problemas.push(erro('versoes', v.id, `Versão aponta para o método "${v.metodoId}", que não está cadastrado.`));
+    }
+    if (vazio(v.rotulo)) problemas.push(erro('versoes', v.id, 'Versão sem rótulo (por exemplo "1.0").', 'pendencia'));
+  }
+  for (const d of duplicados(versoes, 'id')) {
+    problemas.push(erro('versoes', d.linha.id, `Duplicidade de versões: já existe uma com id "${texto(d.linha.id)}".`));
+  }
+  return problemas;
+}
+
+export function validarMatriculas(matriculas, { alunos = [], instrumentos = [], metodos = [], versoes = [] } = {}) {
+  const problemas = [];
+  const temAluno = new Set(alunos.map((a) => a.id));
+  const temInstrumento = new Set(instrumentos.map((i) => i.id));
+  const temMetodo = new Set(metodos.map((m) => m.id));
+  const temVersao = new Set(versoes.map((v) => v.id));
+
+  for (const m of matriculas) {
+    if (vazio(m.alunoId)) problemas.push(erro('matriculas', m.id, 'Matrícula sem aluno.'));
+    else if (temAluno.size && !temAluno.has(m.alunoId)) {
+      problemas.push(erro('matriculas', m.id, `Matrícula aponta para o aluno "${m.alunoId}", que não está cadastrado.`));
+    }
+    if (vazio(m.metodoId)) problemas.push(erro('matriculas', m.id, 'Matrícula sem método.'));
+    else if (temMetodo.size && !temMetodo.has(m.metodoId)) {
+      problemas.push(erro('matriculas', m.id, `Matrícula aponta para o método "${m.metodoId}", que não está cadastrado.`));
+    }
+    // O instrumento é o que define a trilha; sem ele a matrícula fica pendente,
+    // não recusada, porque o aluno pode ser cadastrado antes de escolher.
+    if (vazio(m.instrumentoId)) problemas.push(erro('matriculas', m.id, 'Matrícula sem instrumento.', 'pendencia'));
+    else if (temInstrumento.size && !temInstrumento.has(m.instrumentoId)) {
+      problemas.push(erro('matriculas', m.id, `Matrícula aponta para o instrumento "${m.instrumentoId}", que não está cadastrado.`, 'pendencia'));
+    }
+    if (!vazio(m.versaoId) && temVersao.size && !temVersao.has(m.versaoId)) {
+      problemas.push(erro('matriculas', m.id, `Matrícula aponta para a versão "${m.versaoId}", que não está cadastrada.`));
+    }
+  }
+  // O mesmo aluno não se matricula duas vezes no mesmo método com o mesmo
+  // instrumento enquanto a primeira matrícula estiver em curso.
+  const vistas = new Map();
+  for (const m of matriculas.filter((x) => x.situacao === 'em_curso')) {
+    const chave = `${m.alunoId}#${m.metodoId}#${m.instrumentoId}`;
+    if (vistas.has(chave)) {
+      problemas.push(erro('matriculas', m.id, 'Já existe uma matrícula em curso deste aluno neste método e instrumento.'));
+    } else vistas.set(chave, m.id);
+  }
+  return problemas;
+}
+
 export function validarEstado(estado) {
   const e = completarEstado(estado);
   return [
@@ -300,5 +401,7 @@ export function validarEstado(estado) {
     ...validarQuestoes(e.questoes, e.avaliacoes),
     ...validarAlunos(e.alunos, e.instrumentos),
     ...validarUsuarios(e.usuarios, e.alunos),
+    ...validarVersoes(e.versoes, e.metodos),
+    ...validarMatriculas(e.matriculas, e),
   ];
 }

@@ -3,7 +3,7 @@
 
 import * as banco from './armazenamento.js';
 import { INSTRUMENTOS_POR_FAMILIA, instrumentoPorId } from './conteudo/instrumentos.js';
-import { TOTAL_DE_FASES_INSTRUMENTO, TOTAL_DE_FASES_MSA, faseporId, trilhasDoAluno } from './conteudo/trilhas.js';
+import { faseporId, trilhasDoAluno } from './conteudo/trilhas.js';
 import { totalDeVariantes } from './conteudo/geradores.js';
 import { NOTA_MINIMA, QUESTOES_POR_PROVA, corrigir, montarProva, perguntasIneditas } from './quiz.js';
 import { iniciarJogo, pararJogo } from './jogos.js';
@@ -421,18 +421,18 @@ function telaInicial() {
       <a href="#/sair" class="atalho">⎋ Sair</a>
     </nav>
 
-    <h2 class="titulo-secao">Teoria — Método Simplificado (MSA)</h2>
-    <div class="lista-fases">${t.msa.map(cartaoDeFase).join('')}</div>
-
-    <h2 class="titulo-secao">Método do instrumento</h2>
-    ${instrumento
-      ? `<p class="mini">Trilha montada para <b>${escapar(instrumento.nome)}</b> — ${escapar(instrumento.familiaNome)},
-         ${escapar(instrumento.claves.length > 1 ? 'claves' : 'clave')} de ${instrumento.claves.map((c) => c === 'sol' ? 'Sol' : c === 'fa' ? 'Fá' : 'Dó').join(' e ')},
-         em ${escapar(instrumento.afinacao)}.</p>
-         <div class="lista-fases">${t.instrumento.map(cartaoDeFase).join('')}</div>`
-      : `<div class="caixa-prova"><p>Escolha o seu instrumento para abrir esta trilha: são
-         ${TOTAL_DE_FASES_INSTRUMENTO} fases sobre o instrumento que você toca, com avaliação e certificado próprios.</p>
-         <a class="botao grande" href="#/sobre">Escolher instrumento</a></div>`}
+    ${t.trilhas.map((trilha) => `
+      <h2 class="titulo-secao">${escapar(trilha.metodo.porInstrumento && instrumento
+        ? `Método do instrumento — ${instrumento.nome}` : trilha.metodo.nome)}</h2>
+      ${trilha.metodo.porInstrumento && instrumento
+        ? `<p class="mini">Trilha montada para <b>${escapar(instrumento.nome)}</b> — ${escapar(instrumento.familiaNome)},
+           ${escapar(instrumento.claves.length > 1 ? 'claves' : 'clave')} de ${instrumento.claves.map((c) => c === 'sol' ? 'Sol' : c === 'fa' ? 'Fá' : 'Dó').join(' e ')},
+           em ${escapar(instrumento.afinacao)}.</p>`
+        : trilha.metodo.descricao ? `<p class="mini">${escapar(trilha.metodo.descricao)}</p>` : ''}
+      <div class="lista-fases">${trilha.fases.map(cartaoDeFase).join('')}</div>`).join('')}
+    ${instrumento ? '' : `<div class="caixa-prova"><p>Escolha o seu instrumento para abrir a trilha do
+       método que você toca — com lições, avaliação e certificado próprios.</p>
+       <a class="botao grande" href="#/sobre">Escolher instrumento</a></div>`}
 
     <p class="rodape">Teoria baseada no <b>Método Simplificado de Aprendizagem Musical</b> — Congregação Cristã no
     Brasil, 1ª edição (dez/2022). A trilha do instrumento segue a técnica padrão do instrumento e não substitui
@@ -469,7 +469,7 @@ function telaFase(id) {
         <span class="${t.aprovado ? 'ok' : 'nao'}">${t.nota}% — ${t.aprovado ? 'aprovado' : 'não atingiu a nota'}</span></div>`).join('')}</div>`
     : '';
 
-  return `${cabecalho(`Fase ${fase.numero} · ${fase.trilha === 'msa' ? 'MSA' : 'instrumento'}`)}
+  return `${cabecalho(`Fase ${fase.numero} · ${escapar(fase.nomeTrilha)}`)}
     <section class="capa-fase" style="--cor:${fase.cor}">
       <div class="icone-grande">${fase.icone}</div>
       <span class="etiqueta-trilha">${escapar(fase.nomeTrilha)}</span>
@@ -615,9 +615,9 @@ function telaResultado(fase) {
     }
   }
 
-  const trilha = trilhas();
-  const lista = fase.trilha === 'msa' ? trilha.msa : trilha.instrumento;
-  const proxima = lista.find((f) => f.numero === fase.numero + 1);
+  const daMesmaTrilha = trilhas().trilhas.find((t) => t.metodo.id === fase.metodoId);
+  const lista = daMesmaTrilha ? daMesmaTrilha.fases : [];
+  const proxima = lista.find((f) => f.anteriorId === fase.id);
   const erradas = resultado.detalhes.filter((d) => !d.certa);
 
   return `${cabecalho('Resultado', `#/fase/${fase.id}`)}

@@ -34,18 +34,23 @@ export const PERMISSOES = {
     'ver.painel',
     'aluno.cadastrar', 'aluno.editar', 'aluno.remover', 'aluno.ver.todos',
     'acesso.criar', 'acesso.editar', 'acesso.remover',
-    'metodo.cadastrar', 'metodo.editar',
+    'metodo.cadastrar', 'metodo.editar', 'metodo.importar', 'metodo.publicar',
     'instrumento.cadastrar', 'instrumento.editar',
     'fase.cadastrar', 'fase.editar',
+    'matricula.criar', 'matricula.editar', 'matricula.encerrar',
     'configuracao.editar',
+    'auditoria.ver',
+    'relatorio.ver',
     'dados.exportar', 'dados.importar', 'dados.apagar',
     'estudar',
   ],
-  PROFESSOR: [
+  INSTRUTOR: [
     'ver.painel',
     'aluno.cadastrar', 'aluno.editar', 'aluno.ver.todos',
     'acesso.criar', 'acesso.editar',
+    'matricula.criar', 'matricula.editar',
     'dados.exportar',
+    'relatorio.ver',
     'estudar',
   ],
   ALUNO: [
@@ -65,17 +70,21 @@ export function pode(papel, permissao) {
 // Quem cadastra quem. O aluno não cadastra ninguém; o professor cadastra
 // alunos; só o administrador cria outro administrador ou professor.
 export const PAPEIS_QUE_CONCEDE = {
-  ADMIN: ['ALUNO', 'PROFESSOR', 'ADMIN'],
-  PROFESSOR: ['ALUNO'],
+  ADMIN: ['ALUNO', 'INSTRUTOR', 'ADMIN'],
+  INSTRUTOR: ['ALUNO'],
   ALUNO: [],
 };
 
 export const papeisQuePodeConceder = (papel) => (PAPEIS_QUE_CONCEDE[papel] || []).slice();
 
+export const NOME_DO_PAPEL = { ADMIN: 'administrador', INSTRUTOR: 'instrutor', ALUNO: 'aluno' };
+
 export function motivoDaRecusa(papelDeQuemCadastra, papelPretendido) {
   if (!PAPEIS.includes(papelPretendido)) return `Perfil desconhecido: "${papelPretendido}".`;
   if (!papeisQuePodeConceder(papelDeQuemCadastra).includes(papelPretendido)) {
-    return `Quem tem o perfil ${papelDeQuemCadastra.toLowerCase()} não pode cadastrar um ${papelPretendido.toLowerCase()}.`;
+    const quem = NOME_DO_PAPEL[papelDeQuemCadastra] || String(papelDeQuemCadastra).toLowerCase();
+    const alvo = NOME_DO_PAPEL[papelPretendido] || papelPretendido.toLowerCase();
+    return `Quem tem o perfil ${quem} não pode cadastrar um ${alvo}.`;
   }
   return null;
 }

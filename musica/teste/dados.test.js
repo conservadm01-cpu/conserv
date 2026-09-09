@@ -12,11 +12,11 @@ const semente = await import('../js/dados/semente.js');
 
 const recomecar = () => R.usarDeposito(criarDepositoEmMemoria());
 
-test('o esquema descreve as catorze entidades', () => {
-  assert.equal(esquema.NOMES_DAS_ENTIDADES.length, 14);
-  for (const nome of ['instrumentos', 'metodos', 'fases', 'licoes', 'exercicios', 'jogos',
-    'avaliacoes', 'questoes', 'alunos', 'usuarios', 'progressos', 'resultados',
-    'certificados', 'configuracoes']) {
+test('o esquema descreve as vinte entidades', () => {
+  assert.equal(esquema.NOMES_DAS_ENTIDADES.length, 20);
+  for (const nome of ['instrumentos', 'metodos', 'versoes', 'fases', 'licoes', 'exercicios', 'jogos',
+    'avaliacoes', 'questoes', 'alunos', 'usuarios', 'matriculas', 'progressos', 'resultados',
+    'certificados', 'eventos', 'auditorias', 'conquistas', 'notificacoes', 'configuracoes']) {
     assert.ok(esquema.ENTIDADES[nome], `falta a entidade ${nome}`);
   }
 });
@@ -95,17 +95,17 @@ test('senha em texto puro não entra no cadastro de acesso', () => {
 
 test('cada perfil tem as suas permissões', () => {
   assert.ok(permissoes.pode('ADMIN', 'dados.apagar'));
-  assert.ok(!permissoes.pode('PROFESSOR', 'dados.apagar'));
-  assert.ok(permissoes.pode('PROFESSOR', 'aluno.cadastrar'));
+  assert.ok(!permissoes.pode('INSTRUTOR', 'dados.apagar'));
+  assert.ok(permissoes.pode('INSTRUTOR', 'aluno.cadastrar'));
   assert.ok(!permissoes.pode('ALUNO', 'ver.painel'));
   assert.ok(permissoes.pode('ALUNO', 'estudar'));
 });
 
 test('quem cadastra quem', () => {
   assert.deepEqual(permissoes.papeisQuePodeConceder('ALUNO'), []);
-  assert.deepEqual(permissoes.papeisQuePodeConceder('PROFESSOR'), ['ALUNO']);
-  assert.equal(permissoes.motivoDaRecusa('ADMIN', 'PROFESSOR'), null);
-  assert.match(permissoes.motivoDaRecusa('PROFESSOR', 'ADMIN'), /não pode cadastrar/);
+  assert.deepEqual(permissoes.papeisQuePodeConceder('INSTRUTOR'), ['ALUNO']);
+  assert.equal(permissoes.motivoDaRecusa('ADMIN', 'INSTRUTOR'), null);
+  assert.match(permissoes.motivoDaRecusa('INSTRUTOR', 'ADMIN'), /não pode cadastrar/);
   assert.match(permissoes.motivoDaRecusa('ADMIN', 'REITOR'), /desconhecido/);
 });
 
