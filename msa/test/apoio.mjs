@@ -111,7 +111,10 @@ export async function abrirApp() {
     async sair() { await app.ir('#/sair'); },
     /** Zera o aparelho: sem dados guardados e de volta à tela de acesso. */
     async reiniciar() {
-      await pagina.evaluate(() => {
+      // Os PDFs das turmas moram fora do localStorage: zerar o aparelho tem de
+      // alcançá-los também, senão um teste herdaria o material do anterior.
+      await pagina.evaluate(async () => {
+        await __modulos['arquivos'].apagarTudo().catch(() => undefined);
         localStorage.clear();
         window.location.hash = '#/';
       });

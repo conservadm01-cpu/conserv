@@ -392,6 +392,41 @@ select.campo { appearance: none; background-image: linear-gradient(45deg, transp
 .perfil span { display: grid; gap: 2px; }
 .perfil small { color: var(--tinta-fraca); font-size: 12px; }
 
+/* Turmas: a lista, o material anexado e a turma vista pelo aluno. */
+.lista-turmas { display: grid; gap: 8px; }
+.cartao-turma {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--papel); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra);
+}
+.cartao-turma.encerrada { opacity: .62; }
+.corpo-turma { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.corpo-turma strong { font-size: 17px; }
+.corpo-turma .mini { margin: 0; }
+.cartao-turma .seta { color: var(--tinta-fraca); font-size: 24px; }
+
+.materiais { display: grid; gap: 8px; margin: 10px 0 4px; }
+.material {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--papel); border-radius: 12px; padding: 10px 12px; box-shadow: var(--sombra);
+}
+.icone-material { font-size: 22px; }
+.dados-material { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.dados-material strong { font-size: 15px; word-break: break-word; }
+.dados-material small { color: var(--tinta-fraca); font-size: 12px; }
+.botao.estreito { width: auto; padding: 8px 12px; font-size: 13px; margin: 0; flex: 0 0 auto; }
+
+.minha-turma {
+  background: var(--papel); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra);
+  margin-bottom: 14px; border-left: 4px solid var(--marca);
+}
+.minha-turma strong { display: block; font-size: 17px; margin-bottom: 8px; }
+.selo-turma {
+  flex: 0 0 auto; align-self: flex-start;
+  background: var(--linha); color: var(--tinta-fraca); font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.selo-turma.ok { background: var(--acerto); color: #fff; }
+
 .pedidos { display: grid; gap: 10px; margin-bottom: 18px; }
 .pedido {
   background: var(--papel); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra);
@@ -5430,6 +5465,87 @@ function baixarCertificado(c) {
 return { dataPorExtenso, montarCertificado, svgDoCertificado, imprimirCertificado, baixarCertificado };
 })();
 
+__modulos['arquivos'] = (function () {
+// Onde os PDFs ficam.
+//
+// O resto do aplicativo mora no localStorage, e é o lugar certo para o que
+// ele guarda: texto pequeno, lido inteiro a cada abertura. Um método em PDF
+// não é nada disso. O localStorage do navegador tem por volta de 5 MB para
+// TUDO, e guarda texto — um PDF entraria em base64, um terço maior do que já
+// é. Um método de 8 MB não caberia; e, ao tentar, derrubaria a gravação do
+// progresso de todo mundo junto, porque o depósito grava o estado inteiro de
+// uma vez. Dado grande e dado pequeno com ciclos de vida diferentes não
+// dividem gaveta.
+//
+// Então os bytes ficam no IndexedDB, que guarda Blob de verdade e tem espaço
+// na casa das centenas de MB, e o cadastro da turma guarda só a ficha do
+// arquivo: nome, tipo, tamanho e o identificador daqui.
+
+const BANCO = 'msa.arquivos';
+const LOJA = 'materiais';
+
+const indexado = () => (typeof indexedDB === 'undefined' ? null : indexedDB);
+
+function abrir() {
+  return new Promise((pronto, falhou) => {
+    const idb = indexado();
+    if (!idb) { falhou(new Error('Este navegador não guarda arquivos.')); return; }
+    const pedido = idb.open(BANCO, 1);
+    pedido.onupgradeneeded = () => {
+      const bd = pedido.result;
+      if (!bd.objectStoreNames.contains(LOJA)) bd.createObjectStore(LOJA);
+    };
+    pedido.onsuccess = () => pronto(pedido.result);
+    pedido.onerror = () => falhou(pedido.error || new Error('Não foi possível abrir o guardador de arquivos.'));
+  });
+}
+
+function transacao(modo, trabalho) {
+  return abrir().then((bd) => new Promise((pronto, falhou) => {
+    const t = bd.transaction(LOJA, modo);
+    const pedido = trabalho(t.objectStore(LOJA));
+    pedido.onsuccess = () => pronto(pedido.result);
+    pedido.onerror = () => falhou(pedido.error || new Error('Não foi possível ler ou gravar o arquivo.'));
+    t.oncomplete = () => bd.close();
+  }));
+}
+
+const disponivel = () => Boolean(indexado());
+
+/** Guarda o conteúdo de um arquivo sob um identificador. */
+const guardar = (id, blob) => transacao('readwrite', (loja) => loja.put(blob, id));
+
+/** Devolve o conteúdo guardado, ou null quando não há nada com esse id. */
+const ler = (id) => transacao('readonly', (loja) => loja.get(id)).then((v) => v || null);
+
+const remover = (id) => transacao('readwrite', (loja) => loja.delete(id));
+
+const identificadores = () => transacao('readonly', (loja) => loja.getAllKeys());
+
+/**
+ * Apaga tudo o que não estiver mais na lista de arquivos em uso. É o que
+ * impede o guardador de virar um sótão: remover a turma remove o material
+ * do cadastro, e a faxina leva os bytes junto.
+ */
+async function faxina(emUso = []) {
+  const usados = new Set(emUso);
+  const guardados = await identificadores();
+  const sobrando = guardados.filter((id) => !usados.has(id));
+  for (const id of sobrando) await remover(id);
+  return sobrando.length;
+}
+
+/** Um endereço temporário para abrir o arquivo numa aba ou num visualizador. */
+async function endereco(id) {
+  const blob = await ler(id);
+  return blob ? URL.createObjectURL(blob) : null;
+}
+
+const apagarTudo = () => transacao('readwrite', (loja) => loja.clear());
+
+return { disponivel, guardar, ler, remover, identificadores, faxina, endereco, apagarTudo };
+})();
+
 __modulos['dados/deposito'] = (function () {
 // Depósito: a única porta por onde os dados entram e saem.
 //
@@ -5763,6 +5879,13 @@ const ENTIDADES = {
     campos: ['id', 'alunoId', 'tipo', 'titulo', 'texto', 'destino', 'lidaEm', 'criadaEm'],
     unicos: ['id'],
   },
+  turmas: {
+    nome: 'Turmas',
+    chavePrimaria: 'id',
+    campos: ['id', 'nome', 'metodoId', 'comum', 'responsavel', 'observacao', 'alunoIds',
+      'criterio', 'materiais', 'situacao', 'criadaEm', 'encerradaEm'],
+    unicos: ['id'],
+  },
   solicitacoes: {
     nome: 'Pedidos de acesso',
     chavePrimaria: 'id',
@@ -5794,6 +5917,17 @@ const PAPEL_ANTIGO = { PROFESSOR: 'INSTRUTOR' };
 // não pede: ele se cadastra e estuda.
 const PAPEIS_QUE_PEDEM = ['INSTRUTOR', 'ENCARREGADO', 'MINISTERIO'];
 const SITUACOES_DA_SOLICITACAO = ['pendente', 'aprovada', 'recusada'];
+const SITUACOES_DA_TURMA = ['ativa', 'encerrada'];
+
+// O critério de aprovação da turma. Cada campo responde a uma pergunta que a
+// escola faz de verdade, e todos são conferidos contra o que está gravado —
+// nenhum deles é digitado à mão sobre o aluno.
+const CRITERIO_PADRAO = {
+  notaMinima: 70,        // nota de cada avaliação, para a fase contar
+  fasesParaConcluir: 0,  // quantas fases do método fecham a turma (0 = todas)
+  licoesObrigatorias: true, // as lições da fase precisam estar lidas
+  mediaMinima: 0,        // média das fases concluídas (0 = não cobra média)
+};
 
 // ------------------------------------------------------------ estado inicial
 
@@ -5955,6 +6089,39 @@ function validarAlunos(alunos, instrumentos = []) {
   return problemas;
 }
 
+function validarTurmas(turmas, estado = {}) {
+  const problemas = [];
+  const metodos = new Set((estado.metodos || []).map((m) => m.id));
+  const alunos = new Set((estado.alunos || []).map((a) => a.id));
+  for (const t of turmas) {
+    if (vazio(t.nome)) problemas.push(erro('turmas', t.id, 'Turma sem nome.'));
+    if (vazio(t.metodoId)) problemas.push(erro('turmas', t.id, 'Turma sem método.'));
+    else if (metodos.size && !metodos.has(t.metodoId)) {
+      problemas.push(erro('turmas', t.id, `Turma aponta para o método "${t.metodoId}", que não está cadastrado.`));
+    }
+    if (!SITUACOES_DA_TURMA.includes(t.situacao)) {
+      problemas.push(erro('turmas', t.id, `Situação inválida: "${t.situacao}".`));
+    }
+    const nota = Number((t.criterio || {}).notaMinima);
+    if (!(nota >= 1 && nota <= 100)) {
+      problemas.push(erro('turmas', t.id, 'A nota mínima da turma precisa estar entre 1 e 100.'));
+    }
+    const media = Number((t.criterio || {}).mediaMinima);
+    if (!(media >= 0 && media <= 100)) {
+      problemas.push(erro('turmas', t.id, 'A média mínima da turma precisa estar entre 0 e 100.'));
+    }
+    for (const alunoId of t.alunoIds || []) {
+      if (alunos.size && !alunos.has(alunoId)) {
+        problemas.push(erro('turmas', t.id, `Turma tem um aluno que não está cadastrado: "${alunoId}".`, 'pendencia'));
+      }
+    }
+  }
+  for (const d of duplicados(turmas, 'nome')) {
+    problemas.push(erro('turmas', d.linha.id, `Já existe uma turma chamada "${texto(d.linha.nome)}".`));
+  }
+  return problemas;
+}
+
 // O pedido de acesso guarda a senha que a pessoa escolheu — em resumo, como
 // qualquer outra. É o que faz a senha continuar valendo no dia em que o master
 // aprovar, sem ninguém ter de combinar uma senha por fora.
@@ -6071,12 +6238,13 @@ function validarEstado(estado) {
     ...validarAlunos(e.alunos, e.instrumentos),
     ...validarUsuarios(e.usuarios, e.alunos),
     ...validarSolicitacoes(e.solicitacoes, e.usuarios),
+    ...validarTurmas(e.turmas, e),
     ...validarVersoes(e.versoes, e.metodos),
     ...validarMatriculas(e.matriculas, e),
   ];
 }
 
-return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, validarSolicitacoes, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
+return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, SITUACOES_DA_TURMA, CRITERIO_PADRAO, validarSolicitacoes, validarTurmas, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
 })();
 
 __modulos['dados/ids'] = (function () {
@@ -6104,7 +6272,7 @@ __modulos['dados/compatibilidade'] = (function () {
 // Regra desta camada: ela COMPLETA, nunca inventa. Um campo que não existia
 // no dado antigo vira vazio, nulo ou zero — jamais um valor plausível.
 
-const { PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO } = __modulos['dados/esquema'];
+const { PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, SITUACOES_DA_TURMA, CRITERIO_PADRAO } = __modulos['dados/esquema'];
 
 const texto = (valor) => String(valor === undefined || valor === null ? '' : valor).trim();
 const lista = (valor) => (Array.isArray(valor) ? valor.slice() : []);
@@ -6394,8 +6562,43 @@ function normalizeSolicitacao(bruto = {}) {
   };
 }
 
+// A turma. O critério entra completo mesmo que o arquivo traga só um pedaço:
+// um critério pela metade seria uma regra de aprovação com buraco no meio.
+// Os materiais guardam só a ficha do arquivo — os bytes do PDF ficam fora do
+// depósito, no armazenamento de arquivos do navegador.
+function normalizeTurma(bruto = {}) {
+  const criterio = { ...CRITERIO_PADRAO, ...(bruto.criterio || {}) };
+  return {
+    id: texto(bruto.id),
+    nome: texto(bruto.nome),
+    metodoId: texto(bruto.metodoId),
+    comum: texto(bruto.comum),
+    responsavel: texto(bruto.responsavel),
+    observacao: texto(bruto.observacao),
+    alunoIds: [...new Set(lista(bruto.alunoIds).map(texto).filter(Boolean))],
+    criterio: {
+      notaMinima: numero(criterio.notaMinima, CRITERIO_PADRAO.notaMinima),
+      fasesParaConcluir: Math.max(0, numero(criterio.fasesParaConcluir, 0)),
+      licoesObrigatorias: criterio.licoesObrigatorias !== false,
+      mediaMinima: Math.max(0, numero(criterio.mediaMinima, 0)),
+    },
+    materiais: lista(bruto.materiais).map((m) => ({
+      id: texto(m.id),
+      nome: texto(m.nome),
+      tipo: texto(m.tipo) || 'application/pdf',
+      tamanho: numero(m.tamanho, 0),
+      adicionadoEm: texto(m.adicionadoEm) || new Date().toISOString(),
+      adicionadoPor: texto(m.adicionadoPor),
+    })).filter((m) => m.id),
+    situacao: SITUACOES_DA_TURMA.includes(bruto.situacao) ? bruto.situacao : 'ativa',
+    criadaEm: texto(bruto.criadaEm) || new Date().toISOString(),
+    encerradaEm: bruto.encerradaEm ? texto(bruto.encerradaEm) : null,
+  };
+}
+
 const NORMALIZADORES = {
   alunos: normalizeAluno,
+  turmas: normalizeTurma,
   solicitacoes: normalizeSolicitacao,
   usuarios: normalizeUsuario,
   instrumentos: normalizeInstrumento,
@@ -6412,7 +6615,7 @@ const NORMALIZADORES = {
   notificacoes: normalizeNotificacao,
 };
 
-return { normalizeAluno, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeSolicitacao, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
+return { normalizeAluno, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeSolicitacao, normalizeTurma, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
 })();
 
 __modulos['dados/permissoes'] = (function () {
@@ -6466,6 +6669,7 @@ const DO_ADMIN = [
   'instrumento.cadastrar', 'instrumento.editar',
   'fase.cadastrar', 'fase.editar',
   'matricula.criar', 'matricula.editar', 'matricula.encerrar',
+  'turma.ver', 'turma.criar', 'turma.editar', 'turma.remover', 'turma.material',
   'configuracao.editar',
   'auditoria.ver',
   'relatorio.ver',
@@ -6496,6 +6700,9 @@ const PERMISSOES = {
     'aluno.cadastrar', 'aluno.editar', 'aluno.ver.todos',
     'acesso.criar', 'acesso.editar',
     'matricula.criar', 'matricula.editar',
+    // O instrutor é quem monta a turma, anexa o método e define o critério:
+    // é ele que ensina, e o critério é decisão de quem ensina.
+    'turma.ver', 'turma.criar', 'turma.editar', 'turma.material',
     'dados.exportar',
     'relatorio.ver',
     'estudar',
@@ -6506,6 +6713,7 @@ const PERMISSOES = {
   ENCARREGADO: [
     'ver.painel',
     'aluno.ver.todos',
+    'turma.ver',
     'relatorio.ver',
     'estudar',
   ],
@@ -6514,6 +6722,7 @@ const PERMISSOES = {
   // sem abrir o e-mail e o WhatsApp de cada músico.
   MINISTERIO: [
     'ver.painel',
+    'turma.ver',
     'relatorio.ver',
     'estudar',
   ],
@@ -7227,7 +7436,7 @@ const {
   ENTIDADES, completarEstado, impedimentos, pendencias,
   validarAlunos, validarAvaliacoes, validarExercicios, validarFases, validarInstrumentos,
   validarJogos, validarLicoes, validarMetodos, validarQuestoes, validarUsuarios,
-  validarMatriculas, validarSolicitacoes, validarVersoes,
+  validarMatriculas, validarSolicitacoes, validarTurmas, validarVersoes,
 } = __modulos['dados/esquema'];
 const { NORMALIZADORES } = __modulos['dados/compatibilidade'];
 const { migrarDadosV1ParaV2 } = __modulos['dados/migracao'];
@@ -7305,6 +7514,7 @@ const VALIDADORES = {
   alunos: (e) => validarAlunos(e.alunos, e.instrumentos),
   usuarios: (e) => validarUsuarios(e.usuarios, e.alunos),
   solicitacoes: (e) => validarSolicitacoes(e.solicitacoes, e.usuarios),
+  turmas: (e) => validarTurmas(e.turmas, e),
   versoes: (e) => validarVersoes(e.versoes, e.metodos),
   matriculas: (e) => validarMatriculas(e.matriculas, e),
 };
@@ -7440,6 +7650,7 @@ const questoes = criarRepositorio('questoes', { prefixo: 'q' });
 const alunos = criarRepositorio('alunos', { prefixo: 'u' });
 const usuarios = criarRepositorio('usuarios', { prefixo: 'ac' });
 const solicitacoes = criarRepositorio('solicitacoes', { prefixo: 'sol' });
+const turmas = criarRepositorio('turmas', { prefixo: 'tu' });
 const progressos = criarRepositorio('progressos', { prefixo: 'p', validar: false });
 const resultados = criarRepositorio('resultados', { prefixo: 'r', validar: false });
 const certificados = criarRepositorio('certificados', { prefixo: 'c', validar: false });
@@ -7459,6 +7670,11 @@ const notificacoes = criarRepositorio('notificacoes', { prefixo: 'nt', validar: 
 const solicitacoesPendentes = () => solicitacoes
   .listar((s) => s.situacao === 'pendente')
   .sort((a, b) => String(a.criadaEm).localeCompare(String(b.criadaEm)));
+
+// As turmas em que um aluno está. Um aluno pode estar em mais de uma — a de
+// teoria e a do instrumento, por exemplo —, e é por isso que a busca devolve
+// uma lista, e não uma turma só.
+const turmasDoAluno = (alunoId) => turmas.listar((t) => (t.alunoIds || []).includes(alunoId));
 
 // As fases de um método, na ordem. É por aqui que um método com 10, 16 ou 20
 // fases funciona sem mudar código: a quantidade vem do dado.
@@ -7590,7 +7806,7 @@ function fecharSessao() {
   gravar();
 }
 
-return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, solicitacoes, solicitacoesPendentes, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
+return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, solicitacoes, solicitacoesPendentes, turmas, turmasDoAluno, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
 })();
 
 __modulos['servicos/catalogo'] = (function () {
@@ -7877,9 +8093,21 @@ const { NOTA_MINIMA } = __modulos['quiz'];
 
 const porcentagem = (parte, total) => (total > 0 ? Math.round((parte / total) * 100) : 0);
 
-// A nota mínima que vale para uma fase: a da própria fase, se ela declarar
-// uma; senão a do método; senão a do aplicativo.
-function notaMinimaDaFase(fase) {
+// A nota mínima que vale para uma fase, na ordem em que se pergunta:
+//
+//   1. a da TURMA do aluno naquele método — o critério de aprovação é decisão
+//      de quem ensina a turma, e por isso vem antes de tudo;
+//   2. a da própria fase, quando ela declara uma;
+//   3. a da avaliação da fase;
+//   4. a do aplicativo.
+//
+// Sem o aluno na pergunta não há turma para consultar, e a ordem começa no 2 —
+// é o que acontece quando alguém olha uma fase sem olhar um aluno.
+function notaMinimaDaFase(fase, alunoId = null) {
+  if (alunoId && fase && fase.metodoId) {
+    const turma = __modulos['servicos/turmas'].turmaDoAlunoNoMetodo(alunoId, fase.metodoId);
+    if (turma && turma.criterio.notaMinima) return turma.criterio.notaMinima;
+  }
   if (fase && fase.notaMinima) return fase.notaMinima;
   const avaliacao = fase ? R.avaliacaoDaFase(fase.id) : null;
   if (avaliacao && avaliacao.notaMinima) return avaliacao.notaMinima;
@@ -8529,14 +8757,14 @@ function montar(fase, usadas = [], { quantidade = null, semente = novaSemente() 
 // Quantas questões a prova desta fase tem, e quantas ainda estão inéditas
 // para este aluno. Serve à tela da fase, que antes anunciava sempre "10
 // questões" e "70%" — números do MSA que não valem para um método importado.
-function combinacaoDaFase(fase, usadas = []) {
+function combinacaoDaFase(fase, usadas = [], alunoId = null) {
   const avaliacao = R.avaliacaoDaFase(fase.id);
   const quantidade = avaliacao ? avaliacao.quantidadeDeQuestoes : 10;
 
   if (temGeradores(fase.id, fase.contexto)) {
     return {
       quantidade,
-      notaMinima: notaMinimaDaFase(fase),
+      notaMinima: notaMinimaDaFase(fase, alunoId),
       total: totalDeVariantes(fase.id, fase.contexto),
       ineditas: perguntasIneditas(fase.id, usadas, fase.contexto),
       origem: 'geradores',
@@ -8547,17 +8775,18 @@ function combinacaoDaFase(fase, usadas = []) {
   const jaVistas = new Set(usadas);
   return {
     quantidade: Math.min(quantidade, banco.length) || quantidade,
-    notaMinima: notaMinimaDaFase(fase),
+    notaMinima: notaMinimaDaFase(fase, alunoId),
     total: banco.length,
     ineditas: banco.filter((q) => !jaVistas.has(q.id)).length,
     origem: 'cadastradas',
   };
 }
 
-function corrigir(prova, respostas, fase = null) {
+function corrigir(prova, respostas, fase = null, alunoId = null) {
   const resultado = corrigirProva(prova, respostas);
-  // A nota mínima é da fase, não do aplicativo: um método pode exigir mais.
-  const minima = fase ? notaMinimaDaFase(fase) : 70;
+  // A nota mínima é da turma do aluno, ou da fase: um método pode exigir mais
+  // que o aplicativo, e uma turma pode exigir mais que o método.
+  const minima = fase ? notaMinimaDaFase(fase, alunoId) : 70;
   return { ...resultado, notaMinima: minima, aprovado: resultado.nota >= minima };
 }
 
@@ -9045,6 +9274,215 @@ function situacaoDoAluno(alunoId, { agora = new Date().toISOString() } = {}) {
 }
 
 return { DIAS_PARADO, TENTATIVAS_TRAVADO, GRAVIDADE, doAluno, doInstrutor, situacaoDoAluno };
+})();
+
+__modulos['servicos/turmas'] = (function () {
+// A turma: um grupo de alunos estudando um método, com o material que o
+// instrutor anexou e o critério pelo qual eles são aprovados.
+//
+// O critério é a parte que importa. Ele não é um bilhete que alguém escreve
+// sobre o aluno: é conferido contra o que já está gravado — a nota de cada
+// avaliação, as lições lidas, as fases concluídas. Mexeu no critério, a
+// situação de todo mundo muda junto, e a escola sabe explicar por quê.
+
+const R = __modulos['dados/repositorios'];
+const { novoId } = __modulos['dados/ids'];
+const { CRITERIO_PADRAO } = __modulos['dados/esquema'];
+const arquivos = __modulos['arquivos'];
+
+const MATERIAL_MAXIMO = 40 * 1024 * 1024; // 40 MB por arquivo
+const TIPOS_ACEITOS = ['application/pdf'];
+
+const turmas = (filtro = null) => R.turmas.listar(filtro)
+  .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+const turmaPorId = (id) => R.turmas.buscar(id);
+
+// A turma ativa de um aluno num método. É ela que manda na nota mínima das
+// fases daquele método — e é por isso que a busca é por método, e não "a
+// turma do aluno": um aluno pode estar na turma de teoria e na do instrumento.
+function turmaDoAlunoNoMetodo(alunoId, metodoId) {
+  return R.turmasDoAluno(alunoId)
+    .find((t) => t.situacao === 'ativa' && t.metodoId === metodoId) || null;
+}
+
+function criarTurma(dados = {}) {
+  const nome = String(dados.nome || '').trim();
+  if (!nome) throw new Error('A turma precisa de um nome.');
+  if (!String(dados.metodoId || '').trim()) throw new Error('Escolha o método da turma.');
+  return R.turmas.criar({
+    id: novoId('tu'),
+    nome,
+    metodoId: dados.metodoId,
+    comum: dados.comum,
+    responsavel: dados.responsavel,
+    observacao: dados.observacao,
+    alunoIds: dados.alunoIds || [],
+    criterio: { ...CRITERIO_PADRAO, ...(dados.criterio || {}) },
+    materiais: [],
+    situacao: 'ativa',
+    criadaEm: new Date().toISOString(),
+  });
+}
+
+const atualizarTurma = (id, mudancas) => R.turmas.atualizar(id, mudancas);
+
+function definirCriterio(id, criterio = {}) {
+  const turma = turmaPorId(id);
+  if (!turma) throw new Error('Turma não encontrada.');
+  return R.turmas.atualizar(id, { criterio: { ...turma.criterio, ...criterio } });
+}
+
+function encerrarTurma(id) {
+  return R.turmas.atualizar(id, { situacao: 'encerrada', encerradaEm: new Date().toISOString() });
+}
+
+const reabrirTurma = (id) => R.turmas.atualizar(id, { situacao: 'ativa', encerradaEm: null });
+
+function matricular(id, alunoId) {
+  const turma = turmaPorId(id);
+  if (!turma) throw new Error('Turma não encontrada.');
+  if (!R.alunos.buscar(alunoId)) throw new Error('Aluno não encontrado.');
+  if (turma.alunoIds.includes(alunoId)) return turma;
+  return R.turmas.atualizar(id, { alunoIds: [...turma.alunoIds, alunoId] });
+}
+
+function desmatricular(id, alunoId) {
+  const turma = turmaPorId(id);
+  if (!turma) throw new Error('Turma não encontrada.');
+  return R.turmas.atualizar(id, { alunoIds: turma.alunoIds.filter((x) => x !== alunoId) });
+}
+
+// Remover a turma leva o material junto: os bytes ficam fora do cadastro, e
+// sem esta linha eles continuariam ocupando espaço sem ninguém para apontá-los.
+async function removerTurma(id) {
+  const turma = turmaPorId(id);
+  if (!turma) return false;
+  for (const material of turma.materiais) await arquivos.remover(material.id).catch(() => undefined);
+  R.turmas.remover(id);
+  return true;
+}
+
+// ------------------------------------------------------------------ material
+
+async function anexarMaterial(id, arquivo, { adicionadoPor = '' } = {}) {
+  const turma = turmaPorId(id);
+  if (!turma) throw new Error('Turma não encontrada.');
+  if (!arquivo) throw new Error('Escolha um arquivo.');
+  if (!TIPOS_ACEITOS.includes(arquivo.type)) throw new Error('O material precisa ser um arquivo PDF.');
+  if (arquivo.size > MATERIAL_MAXIMO) {
+    throw new Error(`O arquivo tem ${Math.round(arquivo.size / 1024 / 1024)} MB. O limite é ${MATERIAL_MAXIMO / 1024 / 1024} MB.`);
+  }
+  if (!arquivos.disponivel()) throw new Error('Este navegador não guarda arquivos neste aparelho.');
+
+  const idDoMaterial = novoId('mat');
+  await arquivos.guardar(idDoMaterial, arquivo);
+  const ficha = {
+    id: idDoMaterial,
+    nome: arquivo.name,
+    tipo: arquivo.type,
+    tamanho: arquivo.size,
+    adicionadoEm: new Date().toISOString(),
+    adicionadoPor,
+  };
+  R.turmas.atualizar(id, { materiais: [...turma.materiais, ficha] });
+  return ficha;
+}
+
+async function removerMaterial(id, idDoMaterial) {
+  const turma = turmaPorId(id);
+  if (!turma) throw new Error('Turma não encontrada.');
+  await arquivos.remover(idDoMaterial).catch(() => undefined);
+  return R.turmas.atualizar(id, { materiais: turma.materiais.filter((m) => m.id !== idDoMaterial) });
+}
+
+/** Todo material de todas as turmas — o material que um aluno pode abrir. */
+const materiaisDoAluno = (alunoId) => R.turmasDoAluno(alunoId)
+  .flatMap((turma) => turma.materiais.map((material) => ({ ...material, turma })));
+
+// Os identificadores que ainda têm dono, para a faxina do guardador.
+const materiaisEmUso = () => R.turmas.listar().flatMap((t) => t.materiais.map((m) => m.id));
+
+// -------------------------------------------------------- critério e situação
+
+/**
+ * Como um aluno está diante do critério da turma. Cada linha diz o que se
+ * pede, o que ele tem e se cumpre — para a tela poder mostrar o motivo, e não
+ * só um carimbo de aprovado ou reprovado.
+ */
+function situacaoNaTurma(turma, alunoId) {
+  const criterio = turma.criterio;
+  const fases = R.fasesDoMetodo(turma.metodoId);
+  const progresso = fases.map((fase) => ({
+    fase,
+    linha: R.progressoDoAluno(alunoId, fase.id),
+  }));
+
+  const aprovadas = progresso.filter(({ linha }) => Boolean(linha.aprovadoEm)
+    && Number(linha.melhorNota || 0) >= criterio.notaMinima);
+  const notas = aprovadas.map(({ linha }) => Number(linha.melhorNota || 0));
+  const media = notas.length ? Math.round(notas.reduce((a, b) => a + b, 0) / notas.length) : 0;
+
+  const exigidas = criterio.fasesParaConcluir > 0
+    ? Math.min(criterio.fasesParaConcluir, fases.length)
+    : fases.length;
+
+  // Lições em dia: só se cobra das fases que contam para concluir a turma.
+  const paraConferir = progresso.slice(0, exigidas);
+  const licoesPendentes = criterio.licoesObrigatorias
+    ? paraConferir.filter(({ fase, linha }) =>
+      linha.licoesLidas.length < R.licoesDaFase(fase.id).length).length
+    : 0;
+
+  const itens = [
+    {
+      chave: 'fases',
+      pede: `${exigidas} ${exigidas === 1 ? 'fase concluída' : 'fases concluídas'} com ${criterio.notaMinima}% ou mais`,
+      tem: `${aprovadas.length} de ${exigidas}`,
+      cumpre: aprovadas.length >= exigidas,
+    },
+  ];
+  if (criterio.licoesObrigatorias) {
+    itens.push({
+      chave: 'licoes',
+      pede: 'todas as lições dessas fases lidas',
+      tem: licoesPendentes ? `${licoesPendentes} ${licoesPendentes === 1 ? 'fase' : 'fases'} com lição por ler` : 'em dia',
+      cumpre: licoesPendentes === 0,
+    });
+  }
+  if (criterio.mediaMinima > 0) {
+    itens.push({
+      chave: 'media',
+      pede: `média de ${criterio.mediaMinima}% nas fases concluídas`,
+      tem: notas.length ? `${media}%` : 'sem avaliação ainda',
+      cumpre: notas.length > 0 && media >= criterio.mediaMinima,
+    });
+  }
+
+  return {
+    alunoId,
+    aluno: R.alunos.buscar(alunoId),
+    aprovado: itens.every((i) => i.cumpre),
+    concluidas: aprovadas.length,
+    exigidas,
+    media,
+    itens,
+    percentual: exigidas > 0 ? Math.min(100, Math.round((aprovadas.length / exigidas) * 100)) : 0,
+  };
+}
+
+const quadroDaTurma = (turma) => turma.alunoIds
+  .map((alunoId) => situacaoNaTurma(turma, alunoId))
+  .filter((linha) => linha.aluno)
+  .sort((a, b) => a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
+
+return {
+  MATERIAL_MAXIMO, TIPOS_ACEITOS,
+  turmas, turmaPorId, turmaDoAlunoNoMetodo, criarTurma, atualizarTurma, definirCriterio,
+  encerrarTurma, reabrirTurma, removerTurma, matricular, desmatricular,
+  anexarMaterial, removerMaterial, materiaisDoAluno, materiaisEmUso,
+  situacaoNaTurma, quadroDaTurma,
+};
 })();
 
 __modulos['servicos/relatorios'] = (function () {
@@ -10123,6 +10561,9 @@ function resumoDoAluno(id) {
 function apagarTudo() {
   const deposito = depositoAtual();
   deposito.remover();
+  // Os PDFs das turmas ficam fora do depósito: apagar tudo tem de alcançá-los
+  // também, senão sobrariam megabytes sem nenhum cadastro para apontá-los.
+  __modulos['arquivos'].apagarTudo().catch(() => undefined);
   if (deposito.removerChave) {
     deposito.removerChave(CHAVE_V1);
     deposito.removerChave(CHAVE_V0);
@@ -10794,6 +11235,7 @@ const { NOTA_MINIMA, QUESTOES_POR_PROVA, corrigir, montarProva, perguntasInedita
 const { iniciarJogo, pararJogo } = __modulos['jogos'];
 const { baixarCertificado, dataPorExtenso, imprimirCertificado, montarCertificado, svgDoCertificado } = __modulos['certificado'];
 const { salvarArquivo } = __modulos['download'];
+const arquivos = __modulos['arquivos'];
 const { validarSenha } = __modulos['senha'];
 const { NOME_DO_PAPEL } = __modulos['dados/permissoes'];
 const { CAMPOS_DA_FICHA, CAMPOS_DO_MINISTERIO, camposFaltando, fichaCompleta, formatarWhatsapp, primeiroErro, validarFicha } = __modulos['ficha'];
@@ -10809,6 +11251,8 @@ const relatorios = __modulos['servicos/relatorios'];
 const importacao = __modulos['servicos/importacao'];
 const certificadosServico = __modulos['servicos/certificados'];
 const avaliacoesServico = __modulos['servicos/avaliacoes'];
+const turmasServico = __modulos['servicos/turmas'];
+const { CRITERIO_PADRAO } = __modulos['dados/esquema'];
 
 const tela = () => document.getElementById('tela');
 const escapar = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -10948,6 +11392,34 @@ const valoresDaFicha = () => {
   for (const campo of CAMPOS_DA_FICHA) dados[campo.id] = valor(`campo-${campo.id}`);
   return dados;
 };
+
+const numeroDoCampo = (id, padrao = 0) => {
+  const bruto = Number(valor(id));
+  return Number.isFinite(bruto) ? bruto : padrao;
+};
+
+const valoresDaTurma = () => ({
+  nome: valor('turma-nome').trim(),
+  metodoId: valor('turma-metodo'),
+  comum: valor('turma-comum').trim(),
+  responsavel: valor('turma-responsavel').trim(),
+  criterio: {
+    notaMinima: Math.min(100, Math.max(1, numeroDoCampo('criterio-nota', NOTA_MINIMA))),
+    fasesParaConcluir: Math.max(0, numeroDoCampo('criterio-fases', 0)),
+    licoesObrigatorias: marcado('criterio-licoes'),
+    mediaMinima: Math.min(100, Math.max(0, numeroDoCampo('criterio-media', 0))),
+  },
+});
+
+// Abrir um PDF guardado: o endereço temporário vale enquanto a aba viver, e é
+// solto depois — um endereço de blob esquecido segura o arquivo na memória.
+function abrirMaterial(idDoMaterial) {
+  arquivos.endereco(idDoMaterial).then((endereco) => {
+    if (!endereco) { avisar('Este material não está mais guardado neste aparelho.', 'erro'); desenhar(); return; }
+    window.open(endereco, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(endereco), 60000);
+  }).catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+}
 
 const valoresDoPedido = () => {
   const dados = {};
@@ -11312,6 +11784,7 @@ function telaAdmin() {
 
     <div class="acoes">
       ${podeCadastrar ? '<a class="botao grande" href="#/instrutor/novo">+ Cadastrar aluno</a>' : ''}
+      ${banco.podeNaSessao('turma.ver') ? '<a class="botao secundario" href="#/instrutor/turmas">🎓 Turmas</a>' : ''}
       ${banco.podeNaSessao('relatorio.ver') ? '<a class="botao secundario" href="#/instrutor/relatorios">📊 Relatórios</a>' : ''}
       ${banco.podeNaSessao('metodo.cadastrar') ? '<a class="botao secundario" href="#/instrutor/metodos">📚 Métodos</a>' : ''}
       <a class="botao secundario" href="#/senha">Trocar a minha senha</a>
@@ -11339,6 +11812,188 @@ function telaAdmin() {
     e-mail e WhatsApp — ficam guardadas apenas aqui, e as senhas em resumo (hash). Esta é uma portaria de
     organização, não uma proteção contra quem sabe abrir o código da página; a cópia de segurança exportada
     contém dados pessoais e deve ser guardada com o mesmo cuidado de uma lista de presença.</p>`;
+}
+
+// ------------------------------------------------------------------ turmas
+
+// Um método de 8 MB e um anexo de 40 KB não se leem na mesma unidade.
+function tamanhoLegivel(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} bytes`;
+}
+
+function telaTurmas() {
+  const lista = turmasServico.turmas();
+  const podeCriar = banco.podeNaSessao('turma.criar');
+  return `${cabecalho('Turmas', '#/instrutor')}
+    ${mostrarRecado()}
+    <p>A turma junta um grupo de alunos em torno de um método, guarda o material que você anexa
+    e diz <b>o que é preciso para ser aprovado</b> nela. O critério não é um bilhete sobre o aluno:
+    é conferido contra o que ele fez — a nota de cada avaliação, as lições lidas, as fases concluídas.</p>
+    ${lista.length ? `<div class="lista-turmas">${lista.map((turma) => {
+      const metodo = banco.dados.metodos.buscar(turma.metodoId);
+      const quadro = turmasServico.quadroDaTurma(turma);
+      const aprovados = quadro.filter((l) => l.aprovado).length;
+      return `<a class="cartao-turma ${turma.situacao}" href="#/instrutor/turma/${escapar(turma.id)}">
+        <div class="corpo-turma">
+          <span class="etiqueta-trilha">${escapar(metodo ? metodo.nome : 'método removido')}${
+            turma.situacao === 'encerrada' ? ' · encerrada' : ''}</span>
+          <strong>${escapar(turma.nome)}</strong>
+          <span class="mini">${quadro.length} ${quadro.length === 1 ? 'aluno' : 'alunos'} ·
+          ${aprovados} ${aprovados === 1 ? 'aprovado' : 'aprovados'} ·
+          ${turma.materiais.length} ${turma.materiais.length === 1 ? 'material' : 'materiais'}</span>
+          <span class="mini">Aprovação: ${turma.criterio.notaMinima}% em cada avaliação</span>
+        </div>
+        <span class="seta" aria-hidden="true">›</span>
+      </a>`;
+    }).join('')}</div>` : '<p class="aviso">Nenhuma turma criada ainda.</p>'}
+    ${podeCriar ? '<div class="acoes"><a class="botao grande" href="#/instrutor/turmas/nova">+ Criar turma</a></div>' : ''}`;
+}
+
+function camposDaTurma(dados = {}, erros = {}) {
+  const metodos = banco.dados.metodos.listar().filter((m) => m.ativo !== false);
+  const criterio = { ...CRITERIO_PADRAO, ...(dados.criterio || {}) };
+  return `<h2 class="titulo-grupo">A turma</h2>
+    <label for="turma-nome">Nome da turma</label>
+    <input id="turma-nome" type="text" class="campo${erros.nome ? ' com-erro' : ''}"
+      value="${escapar(dados.nome || '')}" maxlength="60" placeholder="Teoria — 2026, turma da quinta">
+    ${erros.nome ? `<p class="erro-campo">${escapar(erros.nome)}</p>` : ''}
+
+    <label for="turma-metodo">Método</label>
+    <select id="turma-metodo" class="campo">
+      ${metodos.map((m) => `<option value="${escapar(m.id)}" ${m.id === dados.metodoId ? 'selected' : ''}>
+        ${escapar(m.nome)}</option>`).join('')}
+    </select>
+    <p class="mini">São as fases deste método que o critério conta, e é a nota mínima daqui que passa a valer
+    para elas — no lugar dos ${NOTA_MINIMA}% padrão do aplicativo.</p>
+
+    <label for="turma-comum">Comum-congregação</label>
+    <input id="turma-comum" type="text" class="campo" value="${escapar(dados.comum || '')}" maxlength="60">
+
+    <label for="turma-responsavel">Instrutor responsável</label>
+    <input id="turma-responsavel" type="text" class="campo" value="${escapar(dados.responsavel || '')}" maxlength="60">
+
+    <h2 class="titulo-grupo">Critério de aprovação</h2>
+    <p class="mini">O que é preciso para um aluno ser aprovado nesta turma. Cada linha é conferida
+    contra o que está gravado — mexeu aqui, a situação de todo mundo muda junto.</p>
+
+    <label for="criterio-nota">Nota mínima em cada avaliação (%)</label>
+    <input id="criterio-nota" type="number" class="campo" min="1" max="100"
+      inputmode="numeric" value="${criterio.notaMinima}">
+    <p class="mini">Vale para quem estiver nesta turma, nas fases deste método.</p>
+
+    <label for="criterio-fases">Fases para concluir a turma</label>
+    <input id="criterio-fases" type="number" class="campo" min="0" max="99"
+      inputmode="numeric" value="${criterio.fasesParaConcluir}">
+    <p class="mini">Deixe <b>0</b> para exigir todas as fases do método.</p>
+
+    <label class="opcao"><input type="checkbox" id="criterio-licoes"
+      ${criterio.licoesObrigatorias ? 'checked' : ''}> Exigir as lições dessas fases lidas</label>
+
+    <label for="criterio-media">Média mínima nas fases concluídas (%)</label>
+    <input id="criterio-media" type="number" class="campo" min="0" max="100"
+      inputmode="numeric" value="${criterio.mediaMinima}">
+    <p class="mini">Deixe <b>0</b> para não cobrar média — a nota de cada avaliação já é conferida acima.</p>`;
+}
+
+function telaTurmaNova() {
+  const dados = rascunho || { metodoId: (banco.dados.metodos.listar()[0] || {}).id };
+  return `${cabecalho('Criar turma', '#/instrutor/turmas')}
+    <section class="formulario">
+      ${mostrarRecado()}
+      ${camposDaTurma(dados, dados.erros || {})}
+      <button class="botao grande" data-acao="criar-turma">Criar turma</button>
+      <a class="botao secundario" href="#/instrutor/turmas">Cancelar</a>
+    </section>`;
+}
+
+function blocoDeMaterial(turma) {
+  const podeMexer = banco.podeNaSessao('turma.material') && turma.situacao === 'ativa';
+  return `<h2 class="titulo-secao">Material do método</h2>
+    <p class="mini">O método em PDF fica guardado neste aparelho e abre para os alunos desta turma.
+    Os arquivos não passam pela internet.</p>
+    ${turma.materiais.length ? `<div class="materiais">${turma.materiais.map((material) => `
+      <div class="material">
+        <span class="icone-material" aria-hidden="true">📄</span>
+        <div class="dados-material">
+          <strong>${escapar(material.nome)}</strong>
+          <small>${tamanhoLegivel(material.tamanho)} · anexado em ${data(material.adicionadoEm)}</small>
+        </div>
+        <button class="botao secundario estreito" data-acao="abrir-material"
+          data-id="${escapar(material.id)}">Abrir</button>
+        ${podeMexer ? `<button class="botao perigo estreito" data-acao="remover-material"
+          data-id="${escapar(material.id)}" data-turma="${escapar(turma.id)}">Remover</button>` : ''}
+      </div>`).join('')}</div>` : '<p class="aviso">Nenhum material anexado.</p>'}
+    ${podeMexer ? `<div class="acoes">
+      <button class="botao secundario" data-acao="escolher-material" data-turma="${escapar(turma.id)}">
+        📎 Anexar método em PDF</button>
+      </div>
+      <input type="file" id="arquivo-material" accept="application/pdf" hidden
+        data-turma="${escapar(turma.id)}" aria-label="Método em PDF">
+      <p class="mini">Somente PDF, até ${turmasServico.MATERIAL_MAXIMO / 1024 / 1024} MB por arquivo.</p>` : ''}`;
+}
+
+function telaTurma(id) {
+  const turma = turmasServico.turmaPorId(id);
+  if (!turma) return telaTurmas();
+  const metodo = banco.dados.metodos.buscar(turma.metodoId);
+  const quadro = turmasServico.quadroDaTurma(turma);
+  const podeEditar = banco.podeNaSessao('turma.editar') && turma.situacao === 'ativa';
+  const foraDaTurma = banco.usuarios().filter((a) => !turma.alunoIds.includes(a.id));
+
+  return `${cabecalho(turma.nome, '#/instrutor/turmas')}
+    ${mostrarRecado()}
+    <p class="mini">${escapar(metodo ? metodo.nome : 'método removido')}
+    ${turma.comum ? ` · ${escapar(turma.comum)}` : ''}
+    ${turma.responsavel ? ` · ${escapar(turma.responsavel)}` : ''}
+    ${turma.situacao === 'encerrada' ? ' · <b>turma encerrada</b>' : ''}</p>
+
+    <section class="resumo-topo">
+      <div><strong>${quadro.length}</strong><span>alunos</span></div>
+      <div><strong>${quadro.filter((l) => l.aprovado).length}</strong><span>aprovados</span></div>
+      <div><strong>${turma.criterio.notaMinima}%</strong><span>nota mínima</span></div>
+    </section>
+
+    <h2 class="titulo-secao">Quem já cumpre o critério</h2>
+    ${quadro.length ? `<div class="lista-alunos">${quadro.map((linha) => `
+      <div class="cartao-aluno painel ${linha.aprovado ? 'aprovado' : ''}">
+        <span class="inicial" aria-hidden="true">${escapar(linha.aluno.nome.trim().charAt(0).toUpperCase())}</span>
+        <span class="dados">
+          <strong>${escapar(linha.aluno.nome)}</strong>
+          ${barra(linha.percentual, `progresso de ${linha.aluno.nome} na turma`)}
+          <small>${linha.itens.map((item) =>
+            `${item.cumpre ? '✔' : '•'} ${escapar(item.pede)} — ${escapar(item.tem)}`).join('<br>')}</small>
+        </span>
+        <span class="selo-turma ${linha.aprovado ? 'ok' : ''}">${linha.aprovado ? 'aprovado' : `${linha.concluidas}/${linha.exigidas}`}</span>
+        ${podeEditar ? `<button class="botao secundario estreito" data-acao="tirar-da-turma"
+          data-id="${escapar(turma.id)}" data-aluno="${escapar(linha.aluno.id)}">Tirar</button>` : ''}
+      </div>`).join('')}</div>`
+      : '<p class="aviso">Nenhum aluno nesta turma ainda.</p>'}
+
+    ${podeEditar && foraDaTurma.length ? `<div class="filtros">
+      <label for="aluno-para-turma">Colocar um aluno na turma</label>
+      <select id="aluno-para-turma" class="campo">
+        ${foraDaTurma.map((a) => `<option value="${escapar(a.id)}">${escapar(a.nome)}</option>`).join('')}
+      </select>
+      <button class="botao secundario" data-acao="por-na-turma" data-id="${escapar(turma.id)}">Adicionar</button>
+    </div>` : ''}
+
+    ${blocoDeMaterial(turma)}
+
+    ${podeEditar ? `<h2 class="titulo-secao">Turma e critério</h2>
+      <section class="formulario">
+        ${camposDaTurma(turma, {})}
+        <button class="botao grande" data-acao="salvar-turma" data-id="${escapar(turma.id)}">Salvar</button>
+      </section>` : ''}
+
+    ${banco.podeNaSessao('turma.editar') ? `<div class="acoes">
+      ${turma.situacao === 'ativa'
+        ? `<button class="botao secundario" data-acao="encerrar-turma" data-id="${escapar(turma.id)}">Encerrar turma</button>`
+        : `<button class="botao secundario" data-acao="reabrir-turma" data-id="${escapar(turma.id)}">Reabrir turma</button>`}
+      ${banco.podeNaSessao('turma.remover')
+        ? `<button class="botao perigo" data-acao="remover-turma" data-id="${escapar(turma.id)}">Remover turma</button>` : ''}
+    </div>` : ''}`;
 }
 
 // -------------------------------------------------------- relatórios
@@ -11557,6 +12212,30 @@ function cartaoDeSituacao(aluno) {
   </section>`;
 }
 
+// A turma do aluno, do ponto de vista dele: o que se pede para ser aprovado,
+// quanto ele já cumpriu, e o método em PDF para abrir. Saber o critério é
+// direito de quem está sendo avaliado por ele.
+function blocoDaTurmaDoAluno(aluno) {
+  const minhas = banco.dados.turmasDoAluno(aluno.id).filter((t) => t.situacao === 'ativa');
+  if (!minhas.length) return '';
+  return minhas.map((turma) => {
+    const situacao = turmasServico.situacaoNaTurma(turma, aluno.id);
+    return `<section class="minha-turma">
+      <span class="etiqueta-trilha">Minha turma</span>
+      <strong>${escapar(turma.nome)}</strong>
+      ${barra(situacao.percentual, `progresso na turma ${turma.nome}`)}
+      <p class="mini">${situacao.aprovado
+        ? 'Você já cumpre o critério desta turma.'
+        : `Para ser aprovado nesta turma:`}</p>
+      ${situacao.aprovado ? '' : `<ul class="lista-chave">${situacao.itens.map((item) =>
+        `<li>${item.cumpre ? '✔' : '○'} ${escapar(item.pede)} — <b>${escapar(item.tem)}</b></li>`).join('')}</ul>`}
+      ${turma.materiais.length ? `<div class="materiais">${turma.materiais.map((material) => `
+        <button class="botao secundario" data-acao="abrir-material" data-id="${escapar(material.id)}">
+          📄 ${escapar(material.nome)}</button>`).join('')}</div>` : ''}
+    </section>`;
+  }).join('');
+}
+
 function telaInicial() {
   const aluno = banco.alunoAtual();
   if (!aluno) return telaEntrada();
@@ -11572,6 +12251,7 @@ function telaInicial() {
     ${mostrarRecado()}
     ${avisoDeSenhaDeFabrica()}
     ${cartaoDeSituacao(aluno)}
+    ${blocoDaTurmaDoAluno(aluno)}
     ${banco.emModoTeste() ? `<p class="faixa-teste">Modo de demonstração: todas as fases já estão abertas,
       é só entrar e experimentar.</p>` : ''}
     ${banco.fichaDoAlunoFaltando().length ? `<p class="recado alerta">A sua ficha está incompleta —
@@ -11615,7 +12295,7 @@ function telaFase(id) {
   const dados = banco.faseDoAluno(fase.id);
   // Quantidade de questões, nota mínima e repertório vêm da avaliação DESTA
   // fase — um método importado pode ter três questões e exigir 60%.
-  const prova = avaliacoesServico.combinacaoDaFase(fase, banco.usadasDaFase(fase.id));
+  const prova = avaliacoesServico.combinacaoDaFase(fase, banco.usadasDaFase(fase.id), (banco.alunoAtual() || {}).id);
 
   const licoes = fase.licoes.map((licao, i) => `<a class="item-licao ${dados.licoesLidas.includes(i) ? 'lida' : ''}"
       href="#/fase/${fase.id}/licao/${i}">
@@ -11806,11 +12486,12 @@ function blocoDeOndeErrou(resultado) {
 
 function telaResultado(fase) {
   const prova = provaEmCurso;
-  const resultado = avaliacoesServico.corrigir(prova, prova.respostas, fase);
+  const aluno = banco.alunoAtual();
+  // A correção conhece o aluno porque a nota mínima pode ser da turma dele.
+  const resultado = avaliacoesServico.corrigir(prova, prova.respostas, fase, aluno ? aluno.id : null);
 
   if (!prova.registrada) {
     prova.registrada = true;
-    const aluno = banco.alunoAtual();
     // Um lugar só grava tudo: resultado com o detalhe de cada questão,
     // histórico de perguntas usadas, progresso da fase, evento e matrícula.
     avaliacoesServico.registrarTentativa({
@@ -12152,6 +12833,9 @@ function desenhar() {
     else if (partes[1] === 'aluno') html = telaAdminAluno(partes[2]);
     else if (partes[1] === 'relatorios') html = telaRelatorios();
     else if (partes[1] === 'metodos') html = telaMetodos();
+    else if (partes[1] === 'turmas' && partes[2] === 'nova') html = telaTurmaNova();
+    else if (partes[1] === 'turmas') html = telaTurmas();
+    else if (partes[1] === 'turma') html = telaTurma(partes[2]);
     else html = telaAdmin();
   } else if (banco.ehDaEquipe()) { ir('#/instrutor'); return; }
   else if (!plataforma.integrado() && !banco.fichaDoAlunoLiberada() && partes[0] !== 'ficha') { ir('#/ficha'); return; }
@@ -12233,6 +12917,64 @@ function acoes(evento) {
       banco.trocarMinhaSenha(valor('senha-atual'), valor('senha'));
       avisar('Senha alterada.');
       ir(banco.ehDaEquipe() ? '#/instrutor' : '#/');
+    } else if (acao === 'criar-turma' || acao === 'salvar-turma') {
+      exigirPermissao(acao === 'criar-turma' ? 'turma.criar' : 'turma.editar');
+      const dados = valoresDaTurma();
+      if (!dados.nome) {
+        rascunho = { ...dados, erros: { nome: 'A turma precisa de um nome.' } };
+        avisar('A turma precisa de um nome.', 'erro');
+        desenhar();
+        return;
+      }
+      if (acao === 'criar-turma') {
+        const criada = turmasServico.criarTurma(dados);
+        rascunho = null;
+        avisar(`Turma "${escapar(criada.nome)}" criada.`);
+        ir(`#/instrutor/turma/${criada.id}`);
+      } else {
+        turmasServico.atualizarTurma(id, dados);
+        avisar('Turma salva.');
+        desenhar();
+      }
+    } else if (acao === 'por-na-turma') {
+      exigirPermissao('turma.editar');
+      turmasServico.matricular(id, valor('aluno-para-turma'));
+      avisar('Aluno colocado na turma.');
+      desenhar();
+    } else if (acao === 'tirar-da-turma') {
+      exigirPermissao('turma.editar');
+      turmasServico.desmatricular(id, botao.dataset.aluno);
+      avisar('Aluno tirado da turma. O progresso dele não foi tocado.');
+      desenhar();
+    } else if (acao === 'encerrar-turma') {
+      exigirPermissao('turma.editar');
+      turmasServico.encerrarTurma(id);
+      avisar('Turma encerrada.');
+      desenhar();
+    } else if (acao === 'reabrir-turma') {
+      exigirPermissao('turma.editar');
+      turmasServico.reabrirTurma(id);
+      avisar('Turma reaberta.');
+      desenhar();
+    } else if (acao === 'remover-turma') {
+      exigirPermissao('turma.remover');
+      const turma = turmasServico.turmaPorId(id);
+      if (!window.confirm(`Remover a turma "${turma.nome}" e o material dela? O progresso dos alunos não é tocado.`)) return;
+      turmasServico.removerTurma(id).then(() => {
+        avisar('Turma removida.');
+        ir('#/instrutor/turmas');
+      }).catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    } else if (acao === 'escolher-material') {
+      exigirPermissao('turma.material');
+      document.getElementById('arquivo-material').click();
+    } else if (acao === 'remover-material') {
+      exigirPermissao('turma.material');
+      turmasServico.removerMaterial(botao.dataset.turma, id).then(() => {
+        avisar('Material removido.');
+        desenhar();
+      }).catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    } else if (acao === 'abrir-material') {
+      abrirMaterial(id);
     } else if (acao === 'pedir-acesso') {
       const perfil = perfilEscolhido();
       const pedido = valoresDoPedido();
@@ -12431,6 +13173,16 @@ function mudancas(evento) {
     if (area) area.hidden = evento.target.checked;
     return;
   }
+  if (evento.target.id === 'arquivo-material') {
+    const escolhido = evento.target.files[0];
+    const turmaId = evento.target.dataset.turma;
+    evento.target.value = '';
+    if (!escolhido) return;
+    turmasServico.anexarMaterial(turmaId, escolhido, { adicionadoPor: banco.loginDaSessao() })
+      .then((material) => { avisar(`"${escapar(material.nome)}" anexado.`); desenhar(); })
+      .catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    return;
+  }
   if (evento.target.id === 'arquivo-metodo') {
     const escolhido = evento.target.files[0];
     if (!escolhido) return;
@@ -12492,6 +13244,13 @@ document.addEventListener('input', (evento) => {
 // cadastro antigo que entrava só apertando o nome recebe aqui a senha de
 // fábrica, e o app avisa, assim que a pessoa entra, para trocá-la.
 banco.prepararAcessos();
+
+// Faxina do guardador de arquivos: apaga o PDF que perdeu o dono. Acontece
+// quando uma cópia de segurança é importada por cima (a turma daquele material
+// deixou de existir) ou quando alguém limpa os dados do site pelo navegador,
+// que leva o cadastro e não leva os arquivos. Melhor esforço e em silêncio:
+// nada aqui é necessário para estudar.
+arquivos.faxina(turmasServico.materiaisEmUso()).catch(() => undefined);
 
 // A identidade é adotada antes do primeiro desenho: quando a página é servida
 // pela plataforma, o aluno já entra logado, sem passar por tela de acesso.

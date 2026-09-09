@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 80 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 97 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
@@ -95,6 +95,8 @@ recusa leva um motivo, que a pessoa lê ao tentar entrar.
 | --- | :-: | :-: | :-: | :-: | :-: | :-: |
 | Liberar acesso de outra pessoa | ✔ | | | | | |
 | Cadastrar e editar alunos | ✔ | ✔ | ✔ | | | |
+| Criar turma, anexar método, definir critério | ✔ | ✔ | ✔ | | | |
+| Ver as turmas | ✔ | ✔ | ✔ | ✔ | ✔ | |
 | Ver a ficha e o contato da turma | ✔ | ✔ | ✔ | ✔ | | |
 | Ver relatórios e panorama | ✔ | ✔ | ✔ | ✔ | ✔ | |
 | Exportar, importar, apagar | ✔ | ✔ | | | | |
@@ -120,6 +122,51 @@ qualquer sem sessão cai na tela de acesso.
 
 ---
 
+## Turmas
+
+A turma junta um grupo de alunos em torno de um método, guarda o **método em
+PDF** e diz **o que é preciso para ser aprovado** nela. Está no painel, em
+**🎓 Turmas**.
+
+### O critério de aprovação
+
+Quatro perguntas, e cada uma é conferida contra o que o aluno **fez** — não há
+campo em que alguém escreva "aprovado":
+
+| Critério | O que é conferido |
+| --- | --- |
+| Nota mínima em cada avaliação | a melhor nota gravada de cada fase |
+| Fases para concluir a turma | quantas fases do método já passaram dessa nota (0 = todas) |
+| Lições dessas fases lidas | as lições que o aluno abriu, fase a fase |
+| Média mínima nas fases concluídas | a média das notas que contaram |
+
+Mexeu no critério, a situação de todo mundo muda junto — e a escola sabe
+explicar linha a linha por quê. O aluno vê o mesmo quadro na tela dele: saber o
+que se pede é direito de quem está sendo avaliado por isso.
+
+A **nota mínima da turma passa a valer para as fases daquele método**, no lugar
+dos 70% padrão. A ordem em que a pergunta é feita: a turma do aluno, depois a
+fase, depois a avaliação, depois o aplicativo. Turma encerrada não decide mais
+nada.
+
+### O método em PDF
+
+O PDF vai para o **IndexedDB**, e não para o localStorage onde mora o resto.
+Não é preciosismo: o localStorage tem por volta de 5 MB para *tudo* e guarda
+texto — um PDF entraria em base64, um terço maior do que já é. Um método de
+8 MB não caberia; e, ao tentar, derrubaria a gravação do progresso de todo mundo
+junto, porque o depósito grava o estado inteiro de uma vez. Dado grande e dado
+pequeno com ciclos de vida diferentes não dividem gaveta.
+
+O cadastro da turma guarda só a ficha do arquivo — nome, tipo, tamanho e o
+identificador. Remover o material ou a turma leva os bytes junto, e o app faz
+uma faxina na abertura: um PDF que perdeu o dono (uma cópia importada por cima,
+por exemplo) é apagado.
+
+**A cópia de segurança não leva os PDFs.** Ela é um arquivo de texto com o
+cadastro; os métodos ficam no aparelho e são anexados de novo depois de uma
+restauração.
+
 ## Os testes
 
 `npm test` sobe o app num servidor local e o abre num Chromium de verdade — com
@@ -132,6 +179,7 @@ esta página fora de um navegador seria testar outra coisa.
 | `test/estudo.test.mjs` | lição, jogo, avaliação, certificado — e o que fica guardado |
 | `test/conteudo.test.mjs` | **todas** as variantes de **todos** os geradores de pergunta |
 | `test/perfis.test.mjs` | quem entra sozinho, quem espera liberação, e o que cada perfil alcança |
+| `test/turmas.test.mjs` | a turma, o método em PDF e o critério de aprovação conferido item a item |
 | `test/dados.test.mjs` | cadastro, cópia de segurança, remoção e a subida de versão |
 | `test/hospedagem.test.mjs` | o que a Vercel serve, com que cabeçalhos, e o app abrindo sem internet |
 
