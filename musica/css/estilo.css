@@ -83,7 +83,7 @@ p { margin: 0 0 12px; }
 
 /* --------------------------------------------------------------- início */
 .resumo-topo {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px;
   background: var(--papel); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra);
 }
 .resumo-topo div { text-align: center; }
@@ -397,4 +397,238 @@ select.campo { appearance: none; background-image: linear-gradient(45deg, transp
   body > *:not(#area-impressao) { display: none !important; }
   #area-impressao { display: block; }
   @page { size: A4 landscape; margin: 8mm; }
+}
+
+/* ===================================================================== */
+/* Plataforma: painel do aluno, acompanhamento do instrutor, relatórios.  */
+/* ===================================================================== */
+
+/* Acessibilidade de base ---------------------------------------------- */
+
+/* Rótulo que só o leitor de tela lê. Um campo de busca com ícone e sem
+   rótulo visível continua precisando de rótulo. */
+.oculto-visual {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Foco visível em tudo o que recebe foco, e não só nos campos de texto.
+   :focus-visible não aparece no clique de mouse, só na navegação por teclado. */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--marca);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Quem pediu menos movimento no sistema recebe menos movimento. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.como-link {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--marca-escura); text-decoration: underline; cursor: pointer;
+}
+
+/* Painel do aluno ------------------------------------------------------ */
+
+.painel-aluno {
+  background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 16px; margin: 12px 0; box-shadow: var(--sombra); display: grid; gap: 10px;
+}
+
+.onde-estou { display: grid; gap: 3px; }
+.onde-estou span { font-size: 15px; }
+
+.proxima-atividade {
+  display: grid; gap: 3px; position: relative;
+  background: color-mix(in srgb, var(--marca) 10%, var(--papel));
+  border: 1px solid color-mix(in srgb, var(--marca) 35%, var(--linha));
+  border-radius: var(--raio); padding: 14px 40px 14px 14px;
+  color: inherit; text-decoration: none;
+}
+.proxima-atividade:hover { background: color-mix(in srgb, var(--marca) 16%, var(--papel)); }
+.proxima-atividade strong { font-size: 17px; }
+.proxima-atividade .etiqueta {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--marca-escura); font-weight: 700;
+}
+.proxima-atividade .seta {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 26px; color: var(--marca-escura);
+}
+
+.indicadores { display: flex; gap: 8px; text-align: center; }
+.indicadores > div {
+  flex: 1; background: var(--fundo); border-radius: 10px; padding: 10px 6px;
+  display: grid; gap: 2px;
+}
+.indicadores strong { font-size: 20px; }
+.indicadores span { font-size: 11px; color: var(--tinta-fraca); line-height: 1.25; }
+
+/* Desempenho ----------------------------------------------------------- */
+
+.recomendacao {
+  background: var(--papel); border-left: 4px solid var(--marca);
+  border-radius: var(--raio); padding: 14px; margin: 12px 0;
+  display: grid; gap: 6px; box-shadow: var(--sombra);
+}
+.recomendacao .etiqueta {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--marca-escura); font-weight: 700;
+}
+.recomendacao .botao { justify-self: start; margin-top: 4px; }
+
+.lista-assuntos { display: grid; gap: 10px; margin: 8px 0; }
+.linha-assunto {
+  background: var(--papel); border: 1px solid var(--linha); border-radius: 10px;
+  padding: 10px 12px; display: grid; gap: 6px;
+}
+.linha-assunto .rotulo { display: grid; gap: 1px; }
+.linha-assunto .rotulo small { color: var(--tinta-fraca); font-size: 12px; }
+.linha-assunto .numero { font-weight: 700; font-size: 15px; }
+.linha-assunto .numero small { font-weight: 400; color: var(--tinta-fraca); font-size: 12px; }
+
+.onde-errou { margin: 14px 0; }
+
+/* Conquistas ----------------------------------------------------------- */
+
+.lista-conquistas { display: grid; gap: 8px; margin: 8px 0; }
+.cartao-conquista {
+  display: flex; gap: 12px; align-items: center;
+  background: var(--papel); border: 1px solid var(--linha);
+  border-radius: 10px; padding: 12px;
+}
+.cartao-conquista.ganha { border-color: color-mix(in srgb, var(--acerto) 45%, var(--linha)); }
+.cartao-conquista.pendente { opacity: .72; }
+.cartao-conquista .icone { font-size: 26px; line-height: 1; }
+.cartao-conquista div { display: grid; gap: 1px; }
+.cartao-conquista small { color: var(--tinta-fraca); font-size: 12px; }
+.cartao-conquista small.ok { color: var(--acerto); }
+.conquistas-novas { margin: 14px 0; display: grid; gap: 8px; }
+
+/* Linha do tempo ------------------------------------------------------- */
+
+.linha-do-tempo { display: grid; gap: 16px; margin: 12px 0; }
+.linha-do-tempo .dia h3 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--tinta-fraca); margin: 0 0 6px;
+}
+.linha-do-tempo .evento {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 0; border-left: 2px solid var(--linha); padding-left: 12px; margin-left: 6px;
+}
+.linha-do-tempo .evento .icone { font-size: 17px; line-height: 1.3; }
+.linha-do-tempo .evento div { display: grid; gap: 1px; }
+.linha-do-tempo .evento small { color: var(--tinta-fraca); font-size: 12px; }
+
+/* Alertas e lista do instrutor ----------------------------------------- */
+
+.lista-alertas { display: grid; gap: 8px; margin: 8px 0; }
+.cartao-alerta {
+  display: grid; gap: 3px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--linha); border-left-width: 4px;
+  background: var(--papel); color: inherit; text-decoration: none;
+}
+.cartao-alerta .etiqueta {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+}
+.cartao-alerta.atencao { border-left-color: var(--erro); }
+.cartao-alerta.atencao .etiqueta { color: var(--erro); }
+.cartao-alerta.aviso { border-left-color: #b8860b; }
+.cartao-alerta.aviso .etiqueta { color: #8a6508; }
+.cartao-alerta.boa { border-left-color: var(--acerto); }
+.cartao-alerta.boa .etiqueta { color: var(--acerto); }
+
+/* A situação nunca é dada só pela cor: o ícone vem acompanhado da palavra. */
+.situacao { display: grid; gap: 2px; justify-items: center; min-width: 66px; text-align: center; }
+.situacao span { font-size: 16px; }
+.situacao small { font-size: 10px; line-height: 1.2; color: var(--tinta-fraca); }
+.situacao.atencao small { color: var(--erro); font-weight: 600; }
+
+.filtros { display: grid; gap: 8px; margin: 8px 0 12px; }
+.fileira-filtros { display: flex; gap: 8px; }
+.fileira-filtros select { flex: 1; min-width: 0; }
+
+/* Relatórios ----------------------------------------------------------- */
+
+.resumo-topo.largo { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+
+.cartao-relatorio {
+  background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 14px; margin: 8px 0; display: grid; gap: 5px; box-shadow: var(--sombra);
+}
+.cartao-relatorio > small { color: var(--tinta-fraca); font-size: 12px; }
+.alerta-texto { color: var(--erro); }
+
+.mapa-fases { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.mapa-fases .celula {
+  display: grid; place-items: center; min-width: 34px; padding: 4px 2px;
+  border: 1px solid var(--linha); border-radius: 6px; background: var(--fundo); font-size: 11px;
+}
+.mapa-fases .celula.com-alunos {
+  background: color-mix(in srgb, var(--marca) 22%, var(--papel));
+  border-color: color-mix(in srgb, var(--marca) 45%, var(--linha)); font-weight: 700;
+}
+.mapa-fases .celula small { color: var(--tinta-fraca); font-size: 10px; }
+
+/* Prévia da importação de método --------------------------------------- */
+
+.previa {
+  border: 2px solid var(--marca); border-radius: var(--raio); padding: 14px;
+  margin: 12px 0; background: var(--papel); display: grid; gap: 10px;
+}
+.previa.com-erro { border-color: var(--erro); }
+.previa h3 { margin: 0; }
+.previa h4 { margin: 6px 0 0; font-size: 14px; }
+.previa details summary { cursor: pointer; padding: 4px 0; }
+.lista-chave.erros li { color: var(--erro); }
+
+/* Responsividade ------------------------------------------------------- */
+
+/* Até aqui o desenho era só para o celular. Em tela larga o conteúdo não
+   deve virar uma coluna estreita perdida no meio: as listas ganham colunas
+   e o painel aproveita a largura. */
+/* Colunas que se ajustam à largura real, em vez de um número fixo por faixa.
+   Assim um cartão nunca fica estreito demais para o seu conteúdo — foi o que
+   aconteceu ao fixar três colunas: o nome do aluno quebrava em três linhas. */
+@media (min-width: 640px) {
+  .lista-alunos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .lista-alertas { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+  .lista-conquistas { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .lista-assuntos { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .lista-fases { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+  .lista-certificados { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .fileira-filtros { max-width: 560px; }
+}
+
+@media (min-width: 1000px) {
+  body { max-width: 1040px; }
+  .painel-aluno { grid-template-columns: 1fr 1fr; align-items: start; }
+  .painel-aluno .onde-estou,
+  .painel-aluno .barra,
+  .painel-aluno .proxima-atividade { grid-column: 1 / -1; }
+}
+
+/* O cartão do aluno na lista do instrutor: o nome respira, e a situação fica
+   com largura própria em vez de espremer o resto. */
+.cartao-aluno.painel { align-items: flex-start; gap: 10px; }
+.cartao-aluno.painel .dados { min-width: 0; flex: 1; }
+.cartao-aluno.painel .dados strong { line-height: 1.25; }
+.cartao-aluno.painel .situacao { flex: 0 0 auto; min-width: 72px; }
+
+
+
+/* Alvo de toque: nada clicável abaixo de 44px de altura no celular, que é o
+   mínimo para o dedo acertar sem ampliar. */
+@media (pointer: coarse) {
+  .botao, .atalho, .alternativa, .item-licao, .item-jogo,
+  .cartao-aluno, .cartao-alerta, select.campo, input.campo { min-height: 44px; }
 }

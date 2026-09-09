@@ -15,7 +15,8 @@
 import * as R from '../dados/repositorios.js';
 import { corrigir as corrigirProva, montarProva } from '../quiz.js';
 import { criarAleatorio, embaralhar, novaSemente } from '../aleatorio.js';
-import { geradoresDaFase } from '../conteudo/geradores.js';
+import { geradoresDaFase, totalDeVariantes } from '../conteudo/geradores.js';
+import { perguntasIneditas } from '../quiz.js';
 import { notaMinimaDaFase } from './progresso.js';
 import * as eventos from './eventos.js';
 
@@ -65,6 +66,34 @@ export function montar(fase, usadas = [], { quantidade = null, semente = novaSem
     return montarProva(fase.id, usadas, { quantidade: quantas, semente, contexto: fase.contexto });
   }
   return provaDeQuestoesCadastradas(fase, usadas, { quantidade: quantas, semente });
+}
+
+// Quantas questões a prova desta fase tem, e quantas ainda estão inéditas
+// para este aluno. Serve à tela da fase, que antes anunciava sempre "10
+// questões" e "70%" — números do MSA que não valem para um método importado.
+export function combinacaoDaFase(fase, usadas = []) {
+  const avaliacao = R.avaliacaoDaFase(fase.id);
+  const quantidade = avaliacao ? avaliacao.quantidadeDeQuestoes : 10;
+
+  if (temGeradores(fase.id, fase.contexto)) {
+    return {
+      quantidade,
+      notaMinima: notaMinimaDaFase(fase),
+      total: totalDeVariantes(fase.id, fase.contexto),
+      ineditas: perguntasIneditas(fase.id, usadas, fase.contexto),
+      origem: 'geradores',
+    };
+  }
+
+  const banco = avaliacao ? R.questoesDaAvaliacao(avaliacao.id).filter((q) => q.status !== 'rascunho') : [];
+  const jaVistas = new Set(usadas);
+  return {
+    quantidade: Math.min(quantidade, banco.length) || quantidade,
+    notaMinima: notaMinimaDaFase(fase),
+    total: banco.length,
+    ineditas: banco.filter((q) => !jaVistas.has(q.id)).length,
+    origem: 'cadastradas',
+  };
 }
 
 export function corrigir(prova, respostas, fase = null) {
