@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 97 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 115 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
@@ -95,6 +95,7 @@ recusa leva um motivo, que a pessoa lê ao tentar entrar.
 | --- | :-: | :-: | :-: | :-: | :-: | :-: |
 | Liberar acesso de outra pessoa | ✔ | | | | | |
 | Cadastrar e editar alunos | ✔ | ✔ | ✔ | | | |
+| Cadastrar, editar e excluir método | ✔ | ✔ | | | | |
 | Criar turma, anexar método, definir critério | ✔ | ✔ | ✔ | | | |
 | Ver as turmas | ✔ | ✔ | ✔ | ✔ | ✔ | |
 | Ver a ficha e o contato da turma | ✔ | ✔ | ✔ | ✔ | | |
@@ -121,6 +122,51 @@ Rota de aluno que aponte para o painel cai de volta em `#/` com um recado; rota
 qualquer sem sessão cai na tela de acesso.
 
 ---
+
+## Métodos
+
+Em **📚 Métodos**, no painel, ficam os métodos cadastrados — os que vêm com o
+aplicativo e os que o instrutor cria. Cada um pode ser **inserido, editado ou
+excluído**, e há dois caminhos para cadastrar um:
+
+**Pelo aplicativo** — *Cadastrar método*. Você dá nome, descrição e fonte,
+anexa o **PDF** que os alunos vão ler, e escreve as **fases** (com as páginas
+do PDF em que cada uma está) e as **lições** de cada fase. É o caminho para
+quem tem o método impresso na mão.
+
+**Por arquivo** — *Importar de um arquivo*. Um JSON com fases, lições, jogos e
+as questões da avaliação, conferido antes de gravar. É o caminho para quem já
+tem o método estruturado.
+
+Uma coisa que o aplicativo **não** faz, e é melhor dizer: ele não lê o PDF.
+Transformar um livro em fases, lições e questões é trabalho de quem conhece o
+método — o app roda no aparelho, sem servidor e sem internet, e inventar esse
+conteúdo seria produzir método que ninguém escreveu. O que ele faz é guardar o
+PDF para o aluno abrir e deixar o instrutor dizer, fase a fase, em que página
+está cada assunto.
+
+Por isso também: uma fase cadastrada aqui nasce **sem questões**, e a avaliação
+dela não abre para o aluno até que existam — a tela diz isso em vez de servir
+uma prova de zero perguntas. As questões entram pelo arquivo JSON.
+
+### O que não se edita
+
+O MSA e o método do instrumento vêm com o aplicativo: o texto das lições deles
+é código que desenha pentagramas e monta tabelas, e a fase cadastrada só aponta
+para ele. Editar essas lições pela tela seria mentir — o que a tela mostrasse
+não seria o que o aluno leria. Deles se edita o nome, a descrição, a fonte e o
+PDF; e nenhum dos dois é removido.
+
+Um método criado no app também não é removido enquanto houver aluno matriculado
+ou turma aberta nele. Remover leva junto as fases, as lições, as avaliações e o
+PDF.
+
+### Matrícula
+
+Um método criado hoje não alcança sozinho quem já estava cadastrado ontem: a
+matrícula é feita quando o aluno entra. O botão **Matricular os alunos neste
+método** fecha essa distância, e é explícito de propósito — matricular a turma
+inteira sem ninguém pedir seria decidir pelo instrutor.
 
 ## Turmas
 
@@ -151,7 +197,8 @@ nada.
 
 ### O método em PDF
 
-O PDF vai para o **IndexedDB**, e não para o localStorage onde mora o resto.
+O PDF — o da turma e o do método — vai para o **IndexedDB**, e não para o
+localStorage onde mora o resto.
 Não é preciosismo: o localStorage tem por volta de 5 MB para *tudo* e guarda
 texto — um PDF entraria em base64, um terço maior do que já é. Um método de
 8 MB não caberia; e, ao tentar, derrubaria a gravação do progresso de todo mundo
@@ -180,6 +227,7 @@ esta página fora de um navegador seria testar outra coisa.
 | `test/conteudo.test.mjs` | **todas** as variantes de **todos** os geradores de pergunta |
 | `test/perfis.test.mjs` | quem entra sozinho, quem espera liberação, e o que cada perfil alcança |
 | `test/turmas.test.mjs` | a turma, o método em PDF e o critério de aprovação conferido item a item |
+| `test/metodos.test.mjs` | cadastrar, editar e excluir método, o PDF, as fases e as lições |
 | `test/dados.test.mjs` | cadastro, cópia de segurança, remoção e a subida de versão |
 | `test/hospedagem.test.mjs` | o que a Vercel serve, com que cabeçalhos, e o app abrindo sem internet |
 

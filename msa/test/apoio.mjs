@@ -95,7 +95,13 @@ export async function abrirApp() {
     texto: () => pagina.innerText('#tela'),
     /** Vai para uma rota e espera o desenho. */
     async ir(rota) {
-      await pagina.evaluate((r) => { window.location.hash = r; }, rota);
+      await pagina.evaluate((r) => {
+        // Ir para a rota em que já se está não dispara hashchange, e a tela
+        // ficaria como estava — o app resolve isso por dentro, e o teste
+        // precisa da mesma garantia para não conferir um desenho velho.
+        if (window.location.hash === r) window.dispatchEvent(new HashChangeEvent('hashchange'));
+        else window.location.hash = r;
+      }, rota);
       await pagina.waitForTimeout(120);
     },
     /** Entra pela portaria, como qualquer pessoa faria. */

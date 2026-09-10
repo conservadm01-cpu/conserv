@@ -5768,7 +5768,7 @@ const ENTIDADES = {
   metodos: {
     nome: 'Métodos',
     chavePrimaria: 'id',
-    campos: ['id', 'nome', 'descricao', 'instrumentoIds', 'universal', 'porInstrumento', 'ordem', 'fonte', 'ativo'],
+    campos: ['id', 'nome', 'descricao', 'instrumentoIds', 'universal', 'porInstrumento', 'ordem', 'fonte', 'materiais', 'ativo'],
     unicos: ['id', 'nome'],
   },
   fases: {
@@ -6344,6 +6344,9 @@ function normalizeMetodo(bruto = {}) {
     porInstrumento: Boolean(bruto.porInstrumento),
     ordem: numero(bruto.ordem, 0),
     fonte: texto(bruto.fonte),
+    // O método impresso, em PDF. Como no material da turma, aqui fica só a
+    // ficha do arquivo — os bytes moram no guardador de arquivos.
+    materiais: lista(bruto.materiais).map(fichaDeArquivo).filter((m) => m.id),
     ativo: bruto.ativo === undefined ? true : Boolean(bruto.ativo),
   };
 }
@@ -6562,6 +6565,18 @@ function normalizeSolicitacao(bruto = {}) {
   };
 }
 
+// A ficha de um arquivo anexado — o PDF de um método ou de uma turma. Os
+// bytes não passam por aqui: o depósito guarda o nome, o tipo, o tamanho e o
+// identificador com que o guardador de arquivos encontra o conteúdo.
+const fichaDeArquivo = (m = {}) => ({
+  id: texto(m.id),
+  nome: texto(m.nome),
+  tipo: texto(m.tipo) || 'application/pdf',
+  tamanho: numero(m.tamanho, 0),
+  adicionadoEm: texto(m.adicionadoEm) || new Date().toISOString(),
+  adicionadoPor: texto(m.adicionadoPor),
+});
+
 // A turma. O critério entra completo mesmo que o arquivo traga só um pedaço:
 // um critério pela metade seria uma regra de aprovação com buraco no meio.
 // Os materiais guardam só a ficha do arquivo — os bytes do PDF ficam fora do
@@ -6582,14 +6597,7 @@ function normalizeTurma(bruto = {}) {
       licoesObrigatorias: criterio.licoesObrigatorias !== false,
       mediaMinima: Math.max(0, numero(criterio.mediaMinima, 0)),
     },
-    materiais: lista(bruto.materiais).map((m) => ({
-      id: texto(m.id),
-      nome: texto(m.nome),
-      tipo: texto(m.tipo) || 'application/pdf',
-      tamanho: numero(m.tamanho, 0),
-      adicionadoEm: texto(m.adicionadoEm) || new Date().toISOString(),
-      adicionadoPor: texto(m.adicionadoPor),
-    })).filter((m) => m.id),
+    materiais: lista(bruto.materiais).map(fichaDeArquivo).filter((m) => m.id),
     situacao: SITUACOES_DA_TURMA.includes(bruto.situacao) ? bruto.situacao : 'ativa',
     criadaEm: texto(bruto.criadaEm) || new Date().toISOString(),
     encerradaEm: bruto.encerradaEm ? texto(bruto.encerradaEm) : null,
@@ -6857,6 +6865,7 @@ function metodosDaSemente() {
       porInstrumento: false,
       ordem: 1,
       fonte: FONTE_MSA,
+      materiais: [],
       ativo: true,
     },
     {
@@ -6868,6 +6877,7 @@ function metodosDaSemente() {
       porInstrumento: true, // o conteúdo é apresentado conforme o instrumento
       ordem: 2,
       fonte: FONTE_INSTRUMENTO,
+      materiais: [],
       ativo: true,
     },
   ];
@@ -9276,6 +9286,304 @@ function situacaoDoAluno(alunoId, { agora = new Date().toISOString() } = {}) {
 return { DIAS_PARADO, TENTATIVAS_TRAVADO, GRAVIDADE, doAluno, doInstrutor, situacaoDoAluno };
 })();
 
+__modulos['servicos/metodos'] = (function () {
+// Cadastrar um método pela tela, sem arquivo nenhum.
+//
+// O aplicativo já sabia importar um método de um JSON com tudo dentro. Isso
+// serve a quem tem o método já estruturado — e não serve a quem tem o método
+// impresso na mão. Este arquivo é o outro caminho: o instrutor cria o método,
+// anexa o PDF que os alunos vão ler, e escreve as fases e as lições dizendo
+// em que página de cada uma está.
+//
+// O que este módulo NÃO faz, e é bom dizer: ele não lê o PDF. Transformar um
+// livro em fases, lições e questões é trabalho de quem conhece o método — o
+// aplicativo roda no aparelho, sem servidor e sem internet, e inventar esse
+// conteúdo seria produzir método que ninguém escreveu.
+
+const R = __modulos['dados/repositorios'];
+const { novoId } = __modulos['dados/ids'];
+const arquivos = __modulos['arquivos'];
+
+const MATERIAL_MAXIMO = 40 * 1024 * 1024;
+const NOTA_MINIMA_PADRAO = 70;
+
+const metodos = () => R.metodos.listar().sort((a, b) => (a.ordem || 0) - (b.ordem || 0)
+  || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+const metodoPorId = (id) => R.metodos.buscar(id);
+
+// O MSA e o método do instrumento vêm com o aplicativo: o texto das lições
+// deles é código que desenha pentagramas e monta tabelas, e a fase cadastrada
+// só aponta para ele. Editar essas lições por aqui seria mentir — o que a tela
+// mostraria não é o que o aluno leria. Daí a pergunta existir.
+//
+// A pergunta certa não é "tem conteudoRef?" — toda fase tem, porque o padrão é
+// o próprio id. É "esse apelido encontra conteúdo no código?", e quem sabe
+// responder é o catálogo.
+const ehDoAplicativo = (metodoId) => R.fasesDoMetodo(metodoId)
+  .some((f) => __modulos['servicos/catalogo'].temConteudoEmCodigo(f.conteudoRef));
+
+// Quem já está estudando o método. Um método com gente dentro não é removido.
+const alunosNoMetodo = (metodoId) => R.matriculas.listar((m) => m.metodoId === metodoId).length;
+
+function criarMetodo(dados = {}) {
+  const nome = String(dados.nome || '').trim();
+  if (!nome) throw new Error('O método precisa de um nome.');
+  const id = novoId('me');
+  const metodo = R.metodos.criar({
+    id,
+    nome,
+    descricao: dados.descricao,
+    fonte: dados.fonte,
+    instrumentoIds: dados.instrumentoIds || [],
+    universal: dados.universal === undefined ? true : Boolean(dados.universal),
+    porInstrumento: false,
+    ordem: metodos().length + 1,
+    materiais: [],
+    ativo: true,
+  });
+  // Todo método precisa de uma versão publicada: é ela que congela o conteúdo
+  // e para onde o histórico do aluno aponta.
+  R.versoes.criar({
+    id: `${id}-1`,
+    metodoId: id,
+    rotulo: '1.0',
+    situacao: 'publicada',
+    ordem: 1,
+    publicadaEm: new Date().toISOString(),
+    notas: dados.fonte || '',
+  });
+  return metodo;
+}
+
+const editarMetodo = (id, mudancas) => R.metodos.atualizar(id, mudancas);
+
+/** Remove o método, as fases, as lições, as avaliações e o PDF. */
+async function removerMetodo(id) {
+  const metodo = metodoPorId(id);
+  if (!metodo) return false;
+  if (ehDoAplicativo(id)) throw new Error('Este método vem com o aplicativo e não pode ser removido.');
+  const emUso = alunosNoMetodo(id);
+  if (emUso) {
+    throw new Error(`${emUso} ${emUso === 1 ? 'aluno está matriculado' : 'alunos estão matriculados'} neste método. Encerre as matrículas antes de removê-lo.`);
+  }
+  const turmas = R.turmas.listar((t) => t.metodoId === id).length;
+  if (turmas) throw new Error(`${turmas} ${turmas === 1 ? 'turma usa' : 'turmas usam'} este método.`);
+
+  for (const material of metodo.materiais) await arquivos.remover(material.id).catch(() => undefined);
+  for (const fase of R.fasesDoMetodo(id)) removerFase(fase.id);
+  for (const versao of R.versoesDoMetodo(id)) R.versoes.remover(versao.id);
+  R.metodos.remover(id);
+  return true;
+}
+
+/**
+ * Matricula no método os alunos que ele serve e que ainda não estão nele.
+ *
+ * Um método criado hoje não alcança sozinho quem já estava cadastrado ontem:
+ * a matrícula é feita quando o aluno entra. Isto é o botão que fecha essa
+ * distância, e é explícito de propósito — matricular a turma inteira sem
+ * ninguém pedir seria decidir pelo instrutor.
+ */
+function matricularAlunos(metodoId) {
+  const metodo = metodoPorId(metodoId);
+  if (!metodo) throw new Error('Método não encontrado.');
+  const versao = R.versaoVigente(metodoId);
+  let criadas = 0;
+  for (const aluno of R.alunos.listar((a) => a.ativo !== false)) {
+    const serve = metodo.universal || (metodo.instrumentoIds || []).includes(aluno.instrumentoId);
+    if (!serve) continue;
+    if (R.matriculasDoAluno(aluno.id).some((m) => m.metodoId === metodoId)) continue;
+    R.matriculas.criar({
+      id: novoId('mt'),
+      alunoId: aluno.id,
+      instrumentoId: aluno.instrumentoId || '',
+      metodoId,
+      versaoId: versao ? versao.id : null,
+      dataInicio: new Date().toISOString(),
+      situacao: 'em_curso',
+    });
+    criadas++;
+  }
+  return criadas;
+}
+
+// ------------------------------------------------------------------- fases
+
+function criarFase(metodoId, dados = {}) {
+  const metodo = metodoPorId(metodoId);
+  if (!metodo) throw new Error('Método não encontrado.');
+  if (ehDoAplicativo(metodoId)) throw new Error('As fases deste método vêm com o aplicativo.');
+  const titulo = String(dados.titulo || '').trim();
+  if (!titulo) throw new Error('A fase precisa de um título.');
+
+  const existentes = R.fasesDoMetodo(metodoId);
+  const anterior = existentes[existentes.length - 1] || null;
+  const versao = R.versaoVigente(metodoId);
+  const id = novoId('fa');
+
+  const fase = R.fases.criar({
+    id,
+    metodoId,
+    versaoId: versao ? versao.id : `${metodoId}-1`,
+    ordem: existentes.length + 1,
+    titulo,
+    subtitulo: dados.subtitulo,
+    resumo: dados.resumo,
+    icone: dados.icone || '📘',
+    cor: dados.cor || '#2f9e6b',
+    paginas: dados.paginas || null,
+    anteriorId: anterior ? anterior.id : null,
+    conteudoRef: '',
+    notaMinima: Number(dados.notaMinima) || NOTA_MINIMA_PADRAO,
+    ativo: true,
+  });
+  // A avaliação nasce junto, vazia. Sem ela a fase não teria onde guardar as
+  // questões que o instrutor escrever depois.
+  R.avaliacoes.criar({
+    id: `av-${id}`,
+    faseId: id,
+    titulo: `Avaliação — ${titulo}`,
+    quantidadeDeQuestoes: 10,
+    notaMinima: Number(dados.notaMinima) || NOTA_MINIMA_PADRAO,
+    geradorRef: '',
+  });
+  return fase;
+}
+
+function editarFase(faseId, mudancas = {}) {
+  const fase = R.fases.buscar(faseId);
+  if (!fase) throw new Error('Fase não encontrada.');
+  if (__modulos['servicos/catalogo'].temConteudoEmCodigo(fase.conteudoRef)) {
+    throw new Error('Esta fase vem com o aplicativo.');
+  }
+  const atualizada = R.fases.atualizar(faseId, mudancas);
+  const avaliacao = R.avaliacaoDaFase(faseId);
+  if (avaliacao && mudancas.notaMinima !== undefined) {
+    R.avaliacoes.atualizar(avaliacao.id, { notaMinima: atualizada.notaMinima });
+  }
+  return atualizada;
+}
+
+/**
+ * Remove a fase, as lições e a avaliação dela, e costura a corrente: a fase
+ * seguinte passa a apontar para a anterior da removida, senão ficaria trancada
+ * atrás de uma fase que não existe mais.
+ */
+function removerFase(faseId) {
+  const fase = R.fases.buscar(faseId);
+  if (!fase) return false;
+  const seguinte = R.fases.listar((f) => f.anteriorId === faseId);
+  for (const licao of R.licoesDaFase(faseId)) R.licoes.remover(licao.id);
+  const avaliacao = R.avaliacaoDaFase(faseId);
+  if (avaliacao) {
+    for (const questao of R.questoesDaAvaliacao(avaliacao.id)) R.questoes.remover(questao.id);
+    R.avaliacoes.remover(avaliacao.id);
+  }
+  R.fases.remover(faseId);
+  for (const f of seguinte) R.fases.atualizar(f.id, { anteriorId: fase.anteriorId });
+  renumerar(fase.metodoId);
+  return true;
+}
+
+// A ordem é o número que o aluno vê ("Fase 3"). Depois de remover uma fase do
+// meio, deixar um buraco na numeração confundiria a turma inteira.
+function renumerar(metodoId) {
+  R.fasesDoMetodo(metodoId).forEach((fase, i) => {
+    if (fase.ordem !== i + 1) R.fases.atualizar(fase.id, { ordem: i + 1 });
+  });
+}
+
+// ------------------------------------------------------------------ lições
+
+function criarLicao(faseId, dados = {}) {
+  const fase = R.fases.buscar(faseId);
+  if (!fase) throw new Error('Fase não encontrada.');
+  if (__modulos['servicos/catalogo'].temConteudoEmCodigo(fase.conteudoRef)) {
+    throw new Error('As lições desta fase vêm com o aplicativo.');
+  }
+  const titulo = String(dados.titulo || '').trim();
+  if (!titulo) throw new Error('A lição precisa de um título.');
+  const existentes = R.licoesDaFase(faseId);
+  return R.licoes.criar({
+    id: novoId('li'),
+    faseId,
+    ordem: existentes.length + 1,
+    titulo,
+    pagina: dados.pagina === undefined || dados.pagina === '' ? null : dados.pagina,
+    corpo: dados.corpo || '',
+    conteudoRef: '',
+  });
+}
+
+const editarLicao = (licaoId, mudancas) => R.licoes.atualizar(licaoId, mudancas);
+
+function removerLicao(licaoId) {
+  const licao = R.licoes.buscar(licaoId);
+  if (!licao) return false;
+  R.licoes.remover(licaoId);
+  R.licoesDaFase(licao.faseId).forEach((l, i) => {
+    if (l.ordem !== i + 1) R.licoes.atualizar(l.id, { ordem: i + 1 });
+  });
+  return true;
+}
+
+// ---------------------------------------------------------------- o PDF
+
+async function anexarMaterial(metodoId, arquivo, { adicionadoPor = '' } = {}) {
+  const metodo = metodoPorId(metodoId);
+  if (!metodo) throw new Error('Método não encontrado.');
+  if (!arquivo) throw new Error('Escolha um arquivo.');
+  if (arquivo.type !== 'application/pdf') throw new Error('O método precisa ser um arquivo PDF.');
+  if (arquivo.size > MATERIAL_MAXIMO) {
+    throw new Error(`O arquivo tem ${Math.round(arquivo.size / 1024 / 1024)} MB. O limite é ${MATERIAL_MAXIMO / 1024 / 1024} MB.`);
+  }
+  if (!arquivos.disponivel()) throw new Error('Este navegador não guarda arquivos neste aparelho.');
+
+  const id = novoId('mat');
+  await arquivos.guardar(id, arquivo);
+  const ficha = {
+    id, nome: arquivo.name, tipo: arquivo.type, tamanho: arquivo.size,
+    adicionadoEm: new Date().toISOString(), adicionadoPor,
+  };
+  R.metodos.atualizar(metodoId, { materiais: [...metodo.materiais, ficha] });
+  return ficha;
+}
+
+async function removerMaterial(metodoId, idDoMaterial) {
+  const metodo = metodoPorId(metodoId);
+  if (!metodo) throw new Error('Método não encontrado.');
+  await arquivos.remover(idDoMaterial).catch(() => undefined);
+  return R.metodos.atualizar(metodoId, { materiais: metodo.materiais.filter((m) => m.id !== idDoMaterial) });
+}
+
+const materiaisEmUso = () => R.metodos.listar().flatMap((m) => (m.materiais || []).map((x) => x.id));
+
+/** O PDF dos métodos em que o aluno está matriculado. */
+const materiaisDoAluno = (alunoId) => R.matriculasDoAluno(alunoId)
+  .map((matricula) => metodoPorId(matricula.metodoId))
+  .filter(Boolean)
+  .flatMap((metodo) => (metodo.materiais || []).map((material) => ({ ...material, metodo })));
+
+// Quantas questões a fase tem para avaliar. Zero significa que o instrutor
+// ainda não escreveu nenhuma — e a tela precisa dizer isso em vez de abrir uma
+// avaliação sem perguntas.
+function questoesDaFase(faseId) {
+  const avaliacao = R.avaliacaoDaFase(faseId);
+  if (!avaliacao) return [];
+  return R.questoesDaAvaliacao(avaliacao.id).filter((q) => q.status !== 'rascunho');
+}
+
+return {
+  MATERIAL_MAXIMO, NOTA_MINIMA_PADRAO,
+  metodos, metodoPorId, ehDoAplicativo, alunosNoMetodo,
+  criarMetodo, editarMetodo, removerMetodo, matricularAlunos,
+  criarFase, editarFase, removerFase,
+  criarLicao, editarLicao, removerLicao,
+  anexarMaterial, removerMaterial, materiaisEmUso, materiaisDoAluno, questoesDaFase,
+};
+})();
+
 __modulos['servicos/turmas'] = (function () {
 // A turma: um grupo de alunos estudando um método, com o material que o
 // instrutor anexou e o critério pelo qual eles são aprovados.
@@ -11252,6 +11560,7 @@ const importacao = __modulos['servicos/importacao'];
 const certificadosServico = __modulos['servicos/certificados'];
 const avaliacoesServico = __modulos['servicos/avaliacoes'];
 const turmasServico = __modulos['servicos/turmas'];
+const metodosServico = __modulos['servicos/metodos'];
 const { CRITERIO_PADRAO } = __modulos['dados/esquema'];
 
 const tela = () => document.getElementById('tela');
@@ -11397,6 +11706,14 @@ const numeroDoCampo = (id, padrao = 0) => {
   const bruto = Number(valor(id));
   return Number.isFinite(bruto) ? bruto : padrao;
 };
+
+const valoresDaFase = () => ({
+  titulo: valor('fase-titulo').trim(),
+  subtitulo: valor('fase-subtitulo').trim(),
+  resumo: valor('fase-resumo').trim(),
+  paginas: valor('fase-paginas').trim(),
+  notaMinima: Math.min(100, Math.max(1, numeroDoCampo('fase-nota', NOTA_MINIMA))),
+});
 
 const valoresDaTurma = () => ({
   nome: valor('turma-nome').trim(),
@@ -12048,37 +12365,6 @@ function telaRelatorios() {
 // (analisar) que precisa sobreviver até o passo seguinte (confirmar).
 let previaDeImportacao = null;
 
-function telaMetodos() {
-  const metodos = banco.dados.metodos.listar();
-  return `${cabecalho('Métodos', '#/instrutor')}
-    ${mostrarRecado()}
-    ${previaDeImportacao ? blocoDePrevia(previaDeImportacao) : ''}
-    <h2 class="titulo-secao">Métodos cadastrados</h2>
-    ${metodos.map((m) => {
-      const versoes = banco.dados.versoesDoMetodo(m.id);
-      const fases = banco.dados.fasesDoMetodo(m.id);
-      return `<section class="cartao-relatorio">
-        <strong>${escapar(m.nome)}</strong>
-        <small>${fases.length} fases · ${versoes.map((v) => `versão ${escapar(v.rotulo)} (${escapar(v.situacao)})`).join(', ') || 'sem versão'}</small>
-        ${m.descricao ? `<p class="mini">${escapar(m.descricao)}</p>` : ''}
-        <small class="mini">${m.universal ? 'Serve a todos os instrumentos.'
-          : `Serve a ${m.instrumentoIds.length} ${m.instrumentoIds.length === 1 ? 'instrumento' : 'instrumentos'}.`}</small>
-        ${m.fonte ? `<p class="mini"><i>${escapar(m.fonte)}</i></p>` : ''}
-      </section>`;
-    }).join('')}
-    <h2 class="titulo-secao">Importar um método</h2>
-    <section class="sobre">
-      <p>Um método de ensino pode ser cadastrado a partir de um arquivo JSON com as fases, lições,
-      jogos e avaliações. O arquivo é <b>conferido antes</b>: você vê o que ele vai criar e só então
-      confirma. Nada é gravado enquanto você não confirmar.</p>
-      <div class="acoes">
-        <button class="botao" data-acao="escolher-metodo">Escolher arquivo do método</button>
-        <button class="botao secundario" data-acao="modelo-metodo">Baixar um modelo de arquivo</button>
-      </div>
-    </section>
-    <input type="file" id="arquivo-metodo" accept="application/json" hidden aria-label="Arquivo do método a importar">`;
-}
-
 function blocoDePrevia(analise) {
   const { previa, problemas, valido } = analise;
   const porGravidade = (g) => problemas.filter((p) => p.gravidade === g);
@@ -12106,6 +12392,247 @@ function blocoDePrevia(analise) {
       <button class="botao secundario" data-acao="cancelar-metodo">Cancelar</button>
     </div>
   </section>`;
+}
+
+function blocoDeMateriaisDoMetodo(metodo) {
+  const podeMexer = banco.podeNaSessao('metodo.editar');
+  // Um método gravado por uma versão anterior não tem a lista: ela entra vazia
+  // em vez de derrubar a tela.
+  const materiais = metodo.materiais || [];
+  return `<h2 class="titulo-secao">O método em PDF</h2>
+    <p class="mini">O arquivo fica guardado neste aparelho e abre para quem estuda este método.
+    É por ele que o aluno lê o conteúdo; as fases e as lições abaixo dizem em que página está cada assunto.</p>
+    ${materiais.length ? `<div class="materiais">${materiais.map((material) => `
+      <div class="material">
+        <span class="icone-material" aria-hidden="true">📄</span>
+        <div class="dados-material">
+          <strong>${escapar(material.nome)}</strong>
+          <small>${tamanhoLegivel(material.tamanho)} · anexado em ${data(material.adicionadoEm)}</small>
+        </div>
+        <button class="botao secundario estreito" data-acao="abrir-material" data-id="${escapar(material.id)}">Abrir</button>
+        ${podeMexer ? `<button class="botao perigo estreito" data-acao="remover-pdf-metodo"
+          data-id="${escapar(material.id)}" data-metodo="${escapar(metodo.id)}">Remover</button>` : ''}
+      </div>`).join('')}</div>` : '<p class="aviso">Nenhum PDF anexado a este método.</p>'}
+    ${podeMexer ? `<div class="acoes">
+        <button class="botao secundario" data-acao="escolher-pdf-metodo" data-metodo="${escapar(metodo.id)}">
+          📎 Anexar o método em PDF</button>
+      </div>
+      <input type="file" id="arquivo-pdf-metodo" accept="application/pdf" hidden
+        data-metodo="${escapar(metodo.id)}" aria-label="Método em PDF">
+      <p class="mini">Somente PDF, até ${metodosServico.MATERIAL_MAXIMO / 1024 / 1024} MB por arquivo.</p>` : ''}`;
+}
+
+function camposDoMetodo(dados = {}, erros = {}) {
+  return `<label for="metodo-nome">Nome do método</label>
+    <input id="metodo-nome" type="text" class="campo${erros.nome ? ' com-erro' : ''}"
+      value="${escapar(dados.nome || '')}" maxlength="80" placeholder="Método de trompete — 1ª parte">
+    ${erros.nome ? `<p class="erro-campo">${escapar(erros.nome)}</p>` : ''}
+
+    <label for="metodo-descricao">Descrição</label>
+    <input id="metodo-descricao" type="text" class="campo" maxlength="160"
+      value="${escapar(dados.descricao || '')}" placeholder="o que este método ensina, em uma linha">
+
+    <label for="metodo-fonte">Fonte</label>
+    <input id="metodo-fonte" type="text" class="campo" maxlength="200"
+      value="${escapar(dados.fonte || '')}" placeholder="autor, editora, edição e ano">
+    <p class="mini">De onde o conteúdo vem. Aparece para o aluno, e é o que separa um método de um resumo.</p>`;
+}
+
+function telaMetodos() {
+  const lista = metodosServico.metodos();
+  const podeCriar = banco.podeNaSessao('metodo.cadastrar');
+  return `${cabecalho('Métodos', '#/instrutor')}
+    ${mostrarRecado()}
+    ${previaDeImportacao ? blocoDePrevia(previaDeImportacao) : ''}
+    <h2 class="titulo-secao">Métodos cadastrados</h2>
+    ${lista.map((m) => {
+      const fases = banco.dados.fasesDoMetodo(m.id);
+      const doApp = metodosServico.ehDoAplicativo(m.id);
+      const alunos = metodosServico.alunosNoMetodo(m.id);
+      return `<section class="cartao-relatorio">
+        <strong>${escapar(m.nome)}</strong>
+        <small>${fases.length} ${fases.length === 1 ? 'fase' : 'fases'} ·
+        ${alunos} ${alunos === 1 ? 'aluno' : 'alunos'} ·
+        ${(m.materiais || []).length ? `${m.materiais.length} PDF` : 'sem PDF'}
+        ${doApp ? ' · vem com o aplicativo' : ''}</small>
+        ${m.descricao ? `<p class="mini">${escapar(m.descricao)}</p>` : ''}
+        ${m.fonte ? `<p class="mini"><i>${escapar(m.fonte)}</i></p>` : ''}
+        ${banco.podeNaSessao('metodo.editar')
+          ? `<div class="acoes"><a class="botao secundario" href="#/instrutor/metodo/${escapar(m.id)}">
+             ${doApp ? 'Abrir' : 'Editar'}</a></div>` : ''}
+      </section>`;
+    }).join('')}
+    ${podeCriar ? `<div class="acoes">
+      <a class="botao grande" href="#/instrutor/metodos/novo">+ Cadastrar método</a>
+    </div>` : ''}
+
+    ${podeCriar ? `<h2 class="titulo-secao">Importar de um arquivo</h2>
+    <section class="sobre">
+      <p>Já tem o método estruturado num arquivo JSON — com fases, lições, jogos e as questões da
+      avaliação? Ele entra por aqui. O arquivo é <b>conferido antes</b>: você vê o que ele vai criar e
+      só então confirma. Nada é gravado enquanto você não confirmar.</p>
+      <p class="mini">Para cadastrar a partir do método impresso, use <b>Cadastrar método</b> acima:
+      você anexa o PDF e escreve as fases na tela, sem precisar montar arquivo nenhum.</p>
+      <div class="acoes">
+        <button class="botao secundario" data-acao="escolher-metodo">Escolher arquivo JSON</button>
+        <button class="botao secundario" data-acao="modelo-metodo">Baixar um modelo de arquivo</button>
+      </div>
+    </section>
+    <input type="file" id="arquivo-metodo" accept="application/json" hidden aria-label="Arquivo do método a importar">` : ''}`;
+}
+
+function telaMetodoNovo() {
+  const dados = rascunho || {};
+  return `${cabecalho('Cadastrar método', '#/instrutor/metodos')}
+    <section class="formulario">
+      ${mostrarRecado()}
+      <p>Cadastre o método que você tem na mão. Depois de criado, você anexa o <b>PDF</b> que os
+      alunos vão ler e escreve as <b>fases</b> — cada uma apontando para as páginas do arquivo.</p>
+      ${camposDoMetodo(dados, dados.erros || {})}
+      <button class="botao grande" data-acao="criar-metodo">Criar método</button>
+      <a class="botao secundario" href="#/instrutor/metodos">Cancelar</a>
+    </section>`;
+}
+
+function telaMetodo(id) {
+  const metodo = metodosServico.metodoPorId(id);
+  if (!metodo) return telaMetodos();
+  const doApp = metodosServico.ehDoAplicativo(id);
+  const materiais = metodo.materiais || [];
+  const fases = banco.dados.fasesDoMetodo(id);
+  const alunos = metodosServico.alunosNoMetodo(id);
+  const podeEditar = banco.podeNaSessao('metodo.editar');
+
+  return `${cabecalho(metodo.nome, '#/instrutor/metodos')}
+    ${mostrarRecado()}
+    ${doApp ? `<p class="recado alerta">Este método vem com o aplicativo: o texto das lições dele é
+      parte do programa, e por isso as fases e as lições não se editam aqui. O nome, a descrição, a
+      fonte e o PDF, sim.</p>` : ''}
+
+    <section class="resumo-topo">
+      <div><strong>${fases.length}</strong><span>${fases.length === 1 ? 'fase' : 'fases'}</span></div>
+      <div><strong>${alunos}</strong><span>${alunos === 1 ? 'aluno' : 'alunos'}</span></div>
+      <div><strong>${materiais.length}</strong><span>${materiais.length === 1 ? 'PDF' : 'PDFs'}</span></div>
+    </section>
+
+    ${blocoDeMateriaisDoMetodo(metodo)}
+
+    <h2 class="titulo-secao">Fases</h2>
+    ${fases.length ? `<div class="lista-turmas">${fases.map((fase) => {
+      const licoes = banco.dados.licoesDaFase(fase.id);
+      const questoes = metodosServico.questoesDaFase(fase.id).length;
+      return `<div class="cartao-turma">
+        <div class="corpo-turma">
+          <span class="etiqueta-trilha">Fase ${fase.ordem}</span>
+          <strong>${escapar(fase.titulo)}</strong>
+          <span class="mini">${licoes.length} ${licoes.length === 1 ? 'lição' : 'lições'} ·
+          ${questoes ? `${questoes} ${questoes === 1 ? 'questão' : 'questões'}` : 'sem questões'}
+          ${fase.paginas ? ` · páginas ${escapar(fase.paginas)}` : ''}</span>
+        </div>
+        ${!doApp && podeEditar
+          ? `<a class="botao secundario estreito" href="#/instrutor/fase/${escapar(fase.id)}">Editar</a>` : ''}
+      </div>`;
+    }).join('')}</div>` : '<p class="aviso">Este método ainda não tem fases.</p>'}
+
+    ${!doApp && podeEditar ? `<section class="formulario">
+      <h2 class="titulo-grupo">Nova fase</h2>
+      <label for="fase-titulo">Título</label>
+      <input id="fase-titulo" type="text" class="campo" maxlength="80" placeholder="Os primeiros sons">
+      <label for="fase-subtitulo">Subtítulo</label>
+      <input id="fase-subtitulo" type="text" class="campo" maxlength="80" placeholder="embocadura e respiração">
+      <label for="fase-paginas">Páginas do PDF</label>
+      <input id="fase-paginas" type="text" class="campo" maxlength="20" placeholder="9 a 18">
+      <label for="fase-nota">Nota mínima da avaliação (%)</label>
+      <input id="fase-nota" type="number" class="campo" min="1" max="100" inputmode="numeric"
+        value="${metodosServico.NOTA_MINIMA_PADRAO}">
+      <button class="botao" data-acao="criar-fase" data-id="${escapar(id)}">Acrescentar fase</button>
+    </section>` : ''}
+
+    ${podeEditar && banco.podeNaSessao('matricula.criar') ? `<div class="acoes">
+      <button class="botao secundario" data-acao="matricular-no-metodo" data-id="${escapar(id)}">
+        Matricular os alunos neste método</button>
+      </div>
+      <p class="mini">Um método criado hoje não alcança sozinho quem já estava cadastrado ontem:
+      a matrícula é feita quando o aluno entra. Quem já está no método não entra duas vezes.</p>` : ''}
+
+    ${podeEditar ? `<h2 class="titulo-secao">Dados do método</h2>
+      <section class="formulario">
+        ${camposDoMetodo(metodo, {})}
+        <button class="botao grande" data-acao="salvar-metodo" data-id="${escapar(id)}">Salvar</button>
+      </section>` : ''}
+
+    ${!doApp && podeEditar ? `<div class="acoes">
+      <button class="botao perigo" data-acao="remover-metodo" data-id="${escapar(id)}">Remover método</button>
+    </div>
+    <p class="mini">Um método com aluno matriculado ou turma aberta não é removido — encerre antes.</p>` : ''}`;
+}
+
+function telaFaseDoMetodo(faseId) {
+  const fase = banco.dados.fases.buscar(faseId);
+  if (!fase) return telaMetodos();
+  const metodo = metodosServico.metodoPorId(fase.metodoId);
+  const licoes = banco.dados.licoesDaFase(faseId);
+  const questoes = metodosServico.questoesDaFase(faseId).length;
+
+  return `${cabecalho(`Fase ${fase.ordem}`, `#/instrutor/metodo/${escapar(fase.metodoId)}`)}
+    ${mostrarRecado()}
+    <p class="mini">${escapar(metodo ? metodo.nome : 'método')}</p>
+
+    <section class="formulario">
+      <h2 class="titulo-grupo">A fase</h2>
+      <label for="fase-titulo">Título</label>
+      <input id="fase-titulo" type="text" class="campo" maxlength="80" value="${escapar(fase.titulo)}">
+      <label for="fase-subtitulo">Subtítulo</label>
+      <input id="fase-subtitulo" type="text" class="campo" maxlength="80" value="${escapar(fase.subtitulo)}">
+      <label for="fase-resumo">Resumo</label>
+      <input id="fase-resumo" type="text" class="campo" maxlength="200" value="${escapar(fase.resumo)}">
+      <label for="fase-paginas">Páginas do PDF</label>
+      <input id="fase-paginas" type="text" class="campo" maxlength="20" value="${escapar(fase.paginas || '')}">
+      <label for="fase-nota">Nota mínima da avaliação (%)</label>
+      <input id="fase-nota" type="number" class="campo" min="1" max="100" inputmode="numeric"
+        value="${fase.notaMinima || metodosServico.NOTA_MINIMA_PADRAO}">
+      <button class="botao grande" data-acao="salvar-fase" data-id="${escapar(faseId)}">Salvar fase</button>
+    </section>
+
+    <h2 class="titulo-secao">Lições</h2>
+    ${licoes.length ? `<div class="materiais">${licoes.map((licao) => `
+      <div class="material">
+        <span class="icone-material" aria-hidden="true">📖</span>
+        <div class="dados-material">
+          <strong>${escapar(licao.titulo)}</strong>
+          <small>${licao.pagina ? `pág. ${escapar(licao.pagina)}` : 'sem página'} ·
+          ${licao.corpo ? `${String(licao.corpo).length} caracteres de texto` : 'só a referência do PDF'}</small>
+        </div>
+        <button class="botao perigo estreito" data-acao="remover-licao" data-id="${escapar(licao.id)}">Remover</button>
+      </div>`).join('')}</div>` : '<p class="aviso">Esta fase ainda não tem lições.</p>'}
+
+    <section class="formulario">
+      <h2 class="titulo-grupo">Nova lição</h2>
+      <label for="licao-titulo">Título</label>
+      <input id="licao-titulo" type="text" class="campo" maxlength="80" placeholder="Como segurar o instrumento">
+      <label for="licao-pagina">Página do PDF</label>
+      <input id="licao-pagina" type="text" class="campo" maxlength="12" placeholder="12">
+      <label for="licao-corpo">Texto da lição</label>
+      <textarea id="licao-corpo" class="campo" rows="6"
+        placeholder="Opcional. O que o aluno lê no aplicativo antes de abrir o PDF na página indicada.
+Separe parágrafos com uma linha em branco."></textarea>
+      <button class="botao" data-acao="criar-licao" data-id="${escapar(faseId)}">Acrescentar lição</button>
+    </section>
+
+    <h2 class="titulo-secao">Avaliação</h2>
+    <section class="sobre">
+      <p>${questoes
+        ? `Esta fase tem <b>${questoes} ${questoes === 1 ? 'questão' : 'questões'}</b>.`
+        : 'Esta fase <b>ainda não tem questões</b>, e por isso a avaliação dela não abre para o aluno.'}</p>
+      <p class="mini">As questões de um método cadastrado aqui entram pelo arquivo JSON, em
+      <a href="#/instrutor/metodos">Métodos → Importar de um arquivo</a>. O aplicativo não inventa
+      pergunta: quem conhece o método é quem as escreve.</p>
+    </section>
+
+    <div class="acoes">
+      <button class="botao perigo" data-acao="remover-fase" data-id="${escapar(faseId)}"
+        data-metodo="${escapar(fase.metodoId)}">Remover esta fase</button>
+    </div>`;
 }
 
 function telaAdminAluno(id) {
@@ -12212,6 +12739,31 @@ function cartaoDeSituacao(aluno) {
   </section>`;
 }
 
+// O método impresso, para o aluno abrir. Vem do método em que ele está
+// matriculado — e é por ele que se estuda um método que o aplicativo não
+// traz por dentro.
+function blocoDoMetodoEmPdf(aluno) {
+  const materiais = metodosServico.materiaisDoAluno(aluno.id);
+  if (!materiais.length) return '';
+  // Agrupado por método: com dois métodos em PDF, saber de qual é cada arquivo
+  // é a diferença entre uma lista útil e uma lista de nomes de arquivo.
+  const porMetodo = new Map();
+  for (const material of materiais) {
+    if (!porMetodo.has(material.metodo.id)) porMetodo.set(material.metodo.id, { metodo: material.metodo, arquivos: [] });
+    porMetodo.get(material.metodo.id).arquivos.push(material);
+  }
+  return `<section class="minha-turma">
+    <span class="etiqueta-trilha">${porMetodo.size === 1 ? 'Meu método' : 'Meus métodos'}</span>
+    ${[...porMetodo.values()].map(({ metodo, arquivos }) => `
+      <strong>${escapar(metodo.nome)}</strong>
+      ${metodo.fonte ? `<p class="mini"><i>${escapar(metodo.fonte)}</i></p>` : ''}
+      <div class="materiais">${arquivos.map((material) => `
+        <button class="botao secundario" data-acao="abrir-material" data-id="${escapar(material.id)}">
+          📄 ${escapar(material.nome)}</button>`).join('')}</div>`).join('')}
+    <p class="mini">O arquivo está guardado neste aparelho e abre sem internet.</p>
+  </section>`;
+}
+
 // A turma do aluno, do ponto de vista dele: o que se pede para ser aprovado,
 // quanto ele já cumpriu, e o método em PDF para abrir. Saber o critério é
 // direito de quem está sendo avaliado por ele.
@@ -12251,6 +12803,7 @@ function telaInicial() {
     ${mostrarRecado()}
     ${avisoDeSenhaDeFabrica()}
     ${cartaoDeSituacao(aluno)}
+    ${blocoDoMetodoEmPdf(aluno)}
     ${blocoDaTurmaDoAluno(aluno)}
     ${banco.emModoTeste() ? `<p class="faixa-teste">Modo de demonstração: todas as fases já estão abertas,
       é só entrar e experimentar.</p>` : ''}
@@ -12329,6 +12882,10 @@ function telaFase(id) {
     <h2 class="titulo-secao">Exercícios lúdicos</h2>
     <div class="lista-jogos">${jogos}</div>
     <h2 class="titulo-secao">Avaliação da fase</h2>
+    ${prova.total === 0 ? `<div class="caixa-prova">
+      <p>Esta fase <b>ainda não tem questões</b>. O instrutor precisa cadastrá-las antes de a avaliação abrir.</p>
+      <p class="mini">Você pode ler as lições e o método enquanto isso — o que já está feito fica guardado.</p>
+    </div>` : `
     <div class="caixa-prova">
       <p>${prova.quantidade} ${prova.quantidade === 1 ? 'questão' : 'questões'} de múltipla escolha.
       Aprovação a partir de <b>${prova.notaMinima}%</b>.</p>
@@ -12340,7 +12897,7 @@ function telaFase(id) {
       <button class="botao grande" data-acao="iniciar-prova" data-fase="${fase.id}">
         ${dados.aprovadoEm ? 'Fazer uma nova avaliação' : 'Iniciar avaliação'}</button>
       ${dados.aprovadoEm ? `<a class="botao secundario" href="#/certificado/${fase.id}">Ver certificado</a>` : ''}
-    </div>
+    </div>`}
     ${historico}`;
 }
 
@@ -12399,18 +12956,26 @@ function montarJogo(faseId, indice) {
 
 // ---------------------------------------------------------------- avaliação
 // Monta a prova e a deixa em curso. Não navega: quem chama decide isso.
+// Devolve false quando não há prova para montar — uma fase de método cadastrado
+// à mão pode ainda não ter questão nenhuma, e uma avaliação de zero questões
+// daria nota "0 de 0" a quem não respondeu nada.
 function prepararProva(fase) {
   if (!fase) return false;
   // Pelo serviço: a prova sai dos geradores quando a fase tem geradores, e do
   // banco de questões quando é um método cadastrado por arquivo.
   const prova = avaliacoesServico.montar(fase, banco.usadasDaFase(fase.id));
+  if (!prova.questoes.length) return false;
   provaEmCurso = { ...prova, respostas: [], atual: 0, comecouEm: Date.now() };
   return true;
 }
 
 function iniciarProva(faseId) {
   const fase = faseporId(faseId, (banco.alunoAtual() || {}).instrumento);
-  if (!prepararProva(fase)) return;
+  if (!prepararProva(fase)) {
+    avisar('Esta fase ainda não tem questões para avaliar.', 'erro');
+    desenhar();
+    return;
+  }
   ir(`#/fase/${fase.id}/prova`);
 }
 
@@ -12421,7 +12986,10 @@ function telaProva(faseId) {
   // recarregada no meio da avaliação. Monta uma agora e desenha a primeira
   // questão, em vez de deixar a tela parada em "preparando".
   if (!provaEmCurso || provaEmCurso.faseId !== fase.id) {
-    if (!prepararProva(fase)) return telaFase(faseId);
+    if (!prepararProva(fase)) {
+      avisar('Esta fase ainda não tem questões para avaliar.', 'erro');
+      return telaFase(faseId);
+    }
   }
   const prova = provaEmCurso;
   if (prova.atual >= prova.questoes.length) return telaResultado(fase);
@@ -12832,7 +13400,10 @@ function desenhar() {
     else if (partes[1] === 'senha') html = telaTrocarMinhaSenha();
     else if (partes[1] === 'aluno') html = telaAdminAluno(partes[2]);
     else if (partes[1] === 'relatorios') html = telaRelatorios();
+    else if (partes[1] === 'metodos' && partes[2] === 'novo') html = telaMetodoNovo();
     else if (partes[1] === 'metodos') html = telaMetodos();
+    else if (partes[1] === 'metodo') html = telaMetodo(partes[2]);
+    else if (partes[1] === 'fase') html = telaFaseDoMetodo(partes[2]);
     else if (partes[1] === 'turmas' && partes[2] === 'nova') html = telaTurmaNova();
     else if (partes[1] === 'turmas') html = telaTurmas();
     else if (partes[1] === 'turma') html = telaTurma(partes[2]);
@@ -12917,6 +13488,82 @@ function acoes(evento) {
       banco.trocarMinhaSenha(valor('senha-atual'), valor('senha'));
       avisar('Senha alterada.');
       ir(banco.ehDaEquipe() ? '#/instrutor' : '#/');
+    } else if (acao === 'criar-metodo' || acao === 'salvar-metodo') {
+      exigirPermissao(acao === 'criar-metodo' ? 'metodo.cadastrar' : 'metodo.editar');
+      const dados = {
+        nome: valor('metodo-nome').trim(),
+        descricao: valor('metodo-descricao').trim(),
+        fonte: valor('metodo-fonte').trim(),
+      };
+      if (!dados.nome) {
+        rascunho = { ...dados, erros: { nome: 'O método precisa de um nome.' } };
+        avisar('O método precisa de um nome.', 'erro');
+        desenhar();
+        return;
+      }
+      if (acao === 'criar-metodo') {
+        const criado = metodosServico.criarMetodo(dados);
+        rascunho = null;
+        avisar(`Método "${escapar(criado.nome)}" criado. Anexe o PDF e escreva as fases.`);
+        ir(`#/instrutor/metodo/${criado.id}`);
+      } else {
+        metodosServico.editarMetodo(id, dados);
+        avisar('Método salvo.');
+        desenhar();
+      }
+    } else if (acao === 'remover-metodo') {
+      exigirPermissao('metodo.editar');
+      const metodo = metodosServico.metodoPorId(id);
+      if (!window.confirm(`Remover o método "${metodo.nome}", as fases e o PDF dele? Isto não tem volta.`)) return;
+      metodosServico.removerMetodo(id).then(() => {
+        avisar('Método removido.');
+        ir('#/instrutor/metodos');
+      }).catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    } else if (acao === 'matricular-no-metodo') {
+      exigirPermissao('matricula.criar');
+      const quantas = metodosServico.matricularAlunos(id);
+      avisar(quantas
+        ? `${quantas} ${quantas === 1 ? 'aluno matriculado' : 'alunos matriculados'} neste método.`
+        : 'Todos os alunos que este método serve já estão nele.');
+      desenhar();
+    } else if (acao === 'escolher-pdf-metodo') {
+      exigirPermissao('metodo.editar');
+      document.getElementById('arquivo-pdf-metodo').click();
+    } else if (acao === 'remover-pdf-metodo') {
+      exigirPermissao('metodo.editar');
+      metodosServico.removerMaterial(botao.dataset.metodo, id)
+        .then(() => { avisar('PDF removido.'); desenhar(); })
+        .catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    } else if (acao === 'criar-fase') {
+      exigirPermissao('fase.cadastrar');
+      metodosServico.criarFase(id, valoresDaFase());
+      avisar('Fase acrescentada.');
+      desenhar();
+    } else if (acao === 'salvar-fase') {
+      exigirPermissao('fase.editar');
+      metodosServico.editarFase(id, valoresDaFase());
+      avisar('Fase salva.');
+      desenhar();
+    } else if (acao === 'remover-fase') {
+      exigirPermissao('fase.editar');
+      if (!window.confirm('Remover esta fase, as lições e a avaliação dela?')) return;
+      metodosServico.removerFase(id);
+      avisar('Fase removida.');
+      ir(`#/instrutor/metodo/${botao.dataset.metodo}`);
+    } else if (acao === 'criar-licao') {
+      exigirPermissao('fase.editar');
+      metodosServico.criarLicao(id, {
+        titulo: valor('licao-titulo').trim(),
+        pagina: valor('licao-pagina').trim(),
+        corpo: valor('licao-corpo'),
+      });
+      avisar('Lição acrescentada.');
+      desenhar();
+    } else if (acao === 'remover-licao') {
+      exigirPermissao('fase.editar');
+      metodosServico.removerLicao(id);
+      avisar('Lição removida.');
+      desenhar();
     } else if (acao === 'criar-turma' || acao === 'salvar-turma') {
       exigirPermissao(acao === 'criar-turma' ? 'turma.criar' : 'turma.editar');
       const dados = valoresDaTurma();
@@ -13173,6 +13820,16 @@ function mudancas(evento) {
     if (area) area.hidden = evento.target.checked;
     return;
   }
+  if (evento.target.id === 'arquivo-pdf-metodo') {
+    const escolhido = evento.target.files[0];
+    const metodoId = evento.target.dataset.metodo;
+    evento.target.value = '';
+    if (!escolhido) return;
+    metodosServico.anexarMaterial(metodoId, escolhido, { adicionadoPor: banco.loginDaSessao() })
+      .then((material) => { avisar(`"${escapar(material.nome)}" anexado ao método.`); desenhar(); })
+      .catch((erro) => { avisar(erro.message, 'erro'); desenhar(); });
+    return;
+  }
   if (evento.target.id === 'arquivo-material') {
     const escolhido = evento.target.files[0];
     const turmaId = evento.target.dataset.turma;
@@ -13250,7 +13907,8 @@ banco.prepararAcessos();
 // deixou de existir) ou quando alguém limpa os dados do site pelo navegador,
 // que leva o cadastro e não leva os arquivos. Melhor esforço e em silêncio:
 // nada aqui é necessário para estudar.
-arquivos.faxina(turmasServico.materiaisEmUso()).catch(() => undefined);
+arquivos.faxina([...turmasServico.materiaisEmUso(), ...metodosServico.materiaisEmUso()])
+  .catch(() => undefined);
 
 // A identidade é adotada antes do primeiro desenho: quando a página é servida
 // pela plataforma, o aluno já entra logado, sem passar por tela de acesso.
