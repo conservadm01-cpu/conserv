@@ -958,7 +958,6 @@ __modulos['musica'] = (function () {
 // Método Simplificado de Aprendizagem Musical (MSA).
 
 const LETRAS = ['Dó', 'Ré', 'Mi', 'Fá', 'Sol', 'Lá', 'Si'];
-const CIFRAS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const SEMITONS_DA_LETRA = [0, 2, 4, 5, 7, 9, 11];
 
 const SINAIS = { '-2': '𝄫', '-1': '♭', 0: '', 1: '♯', 2: '𝄪' };
@@ -1176,7 +1175,7 @@ const PROPRIEDADES_DO_SOM = [
   { nome: 'timbre', artigo: 'O', definicao: 'é a cor do som, o que distingue uma voz ou um instrumento de outro' },
 ];
 
-return { LETRAS, CIFRAS, SEMITONS_DA_LETRA, SINAIS, NOME_DO_SINAL, nota, nomeDaNota, semitomDaNota, FIGURAS, figuraPorId, fracaoBonita, COMPASSOS_SIMPLES, COMPASSOS_COMPOSTOS, CLAVES, notaDaPosicao, posicaoDaNota, nomeDoLugar, PADRAO_MAIOR, PADRAO_MENOR_NATURAL, escala, ORDEM_SUSTENIDOS, ORDEM_BEMOIS, TONALIDADES, armaduraDe, nomeDaTonalidade, NOMES_DE_INTERVALO, intervalo, ANDAMENTOS, DINAMICAS, TERMOS_DE_EXPRESSAO, PROPRIEDADES_DO_SOM };
+return { LETRAS, SEMITONS_DA_LETRA, SINAIS, NOME_DO_SINAL, nota, nomeDaNota, semitomDaNota, FIGURAS, figuraPorId, fracaoBonita, COMPASSOS_SIMPLES, COMPASSOS_COMPOSTOS, CLAVES, notaDaPosicao, posicaoDaNota, nomeDoLugar, PADRAO_MAIOR, PADRAO_MENOR_NATURAL, escala, ORDEM_SUSTENIDOS, ORDEM_BEMOIS, TONALIDADES, armaduraDe, nomeDaTonalidade, NOMES_DE_INTERVALO, intervalo, ANDAMENTOS, DINAMICAS, TERMOS_DE_EXPRESSAO, PROPRIEDADES_DO_SOM };
 })();
 
 __modulos['notacao'] = (function () {
@@ -1936,8 +1935,6 @@ const FASES = [
         corpo: () => `
           <p>As notas musicais são <b>sete</b>: <b>Dó, Ré, Mi, Fá, Sol, Lá</b> e <b>Si</b>. Depois do Si a série
           recomeça no Dó, agora mais aguda — a mesma nota, uma <b>oitava</b> acima.</p>
-          <p>Na cifra internacional elas se chamam:</p>
-          ${tabela(['Dó', 'Ré', 'Mi', 'Fá', 'Sol', 'Lá', 'Si'], [['C', 'D', 'E', 'F', 'G', 'A', 'B']])}
           <p>No teclado, o <b>Dó</b> é sempre a tecla branca imediatamente à esquerda do grupo de <b>duas</b>
           teclas pretas:</p>
           <div class="quadro-teclado">${teclado({ marcadas: { 'Dó4': 'tonica', 'Dó5': 'tonica' } })}</div>`,
@@ -3944,23 +3941,6 @@ registrar({
       alternativas: alternativas(resposta, T.LETRAS, rnd),
       correta: resposta,
       explicacao: `A série é Dó Ré Mi Fá Sol Lá Si e recomeça. ${v.direcao === 'depois' ? 'Depois' : 'Antes'} de ${v.l} vem ${resposta}.`,
-      referencia: 'MSA, pág. 11',
-    };
-  },
-});
-
-registrar({
-  id: 'f1.cifra',
-  fase: 1,
-  variantes: () => T.LETRAS.flatMap((l, i) => [{ l, c: T.CIFRAS[i], sentido: 'cifra' }, { l, c: T.CIFRAS[i], sentido: 'nota' }]),
-  chave: (v) => `${v.l}-${v.sentido}`,
-  montar(v, rnd) {
-    const paraCifra = v.sentido === 'cifra';
-    return {
-      enunciado: paraCifra ? `Qual é a cifra da nota ${v.l}?` : `Qual nota corresponde à cifra ${v.c}?`,
-      alternativas: alternativas(paraCifra ? v.c : v.l, paraCifra ? T.CIFRAS : T.LETRAS, rnd),
-      correta: paraCifra ? v.c : v.l,
-      explicacao: `Na cifra internacional: Dó=C, Ré=D, Mi=E, Fá=F, Sol=G, Lá=A, Si=B. Logo ${v.l} = ${v.c}.`,
       referencia: 'MSA, pág. 11',
     };
   },
