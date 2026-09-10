@@ -5484,6 +5484,12 @@ __modulos['arquivos'] = (function () {
 const BANCO = 'msa.arquivos';
 const LOJA = 'materiais';
 
+// O tamanho máximo de um arquivo guardado. Fica aqui, no módulo que guarda,
+// e não em cada serviço que anexa: dois limites com o mesmo nome em lugares
+// diferentes é questão de tempo até um deles ser esquecido numa mudança.
+const TAMANHO_MAXIMO = 65 * 1024 * 1024; // 65 MB
+const emMB = (bytes) => Math.round(bytes / 1024 / 1024);
+
 const indexado = () => (typeof indexedDB === 'undefined' ? null : indexedDB);
 
 function abrir() {
@@ -5512,8 +5518,26 @@ function transacao(modo, trabalho) {
 
 const disponivel = () => Boolean(indexado());
 
-/** Guarda o conteúdo de um arquivo sob um identificador. */
-const guardar = (id, blob) => transacao('readwrite', (loja) => loja.put(blob, id));
+/**
+ * Guarda o conteúdo de um arquivo sob um identificador.
+ *
+ * O erro que o navegador devolve quando o espaço acaba ("The quota has been
+ * exceeded") não diz à pessoa o que fazer, e nem está na língua dela. Aqui ele
+ * vira uma frase que diz o tamanho, o limite e a saída.
+ */
+async function guardar(id, blob) {
+  if (blob && blob.size > TAMANHO_MAXIMO) {
+    throw new Error(`O arquivo tem ${emMB(blob.size)} MB e o limite é ${emMB(TAMANHO_MAXIMO)} MB.`);
+  }
+  try {
+    return await transacao('readwrite', (loja) => loja.put(blob, id));
+  } catch (erro) {
+    const semEspaco = erro && (erro.name === 'QuotaExceededError' || /quota/i.test(String(erro.message)));
+    if (!semEspaco) throw erro;
+    throw new Error(`Não coube: este aparelho ficou sem espaço para guardar ${emMB(blob.size)} MB. `
+      + 'Remova um material que não seja mais usado, ou libere espaço no navegador, e tente de novo.');
+  }
+}
 
 /** Devolve o conteúdo guardado, ou null quando não há nada com esse id. */
 const ler = (id) => transacao('readonly', (loja) => loja.get(id)).then((v) => v || null);
@@ -5543,7 +5567,7 @@ async function endereco(id) {
 
 const apagarTudo = () => transacao('readwrite', (loja) => loja.clear());
 
-return { disponivel, guardar, ler, remover, identificadores, faxina, endereco, apagarTudo };
+return { TAMANHO_MAXIMO, disponivel, guardar, ler, remover, identificadores, faxina, endereco, apagarTudo };
 })();
 
 __modulos['dados/deposito'] = (function () {
@@ -9304,7 +9328,7 @@ const R = __modulos['dados/repositorios'];
 const { novoId } = __modulos['dados/ids'];
 const arquivos = __modulos['arquivos'];
 
-const MATERIAL_MAXIMO = 40 * 1024 * 1024;
+const MATERIAL_MAXIMO = arquivos.TAMANHO_MAXIMO;
 const NOTA_MINIMA_PADRAO = 70;
 
 const metodos = () => R.metodos.listar().sort((a, b) => (a.ordem || 0) - (b.ordem || 0)
@@ -9598,7 +9622,7 @@ const { novoId } = __modulos['dados/ids'];
 const { CRITERIO_PADRAO } = __modulos['dados/esquema'];
 const arquivos = __modulos['arquivos'];
 
-const MATERIAL_MAXIMO = 40 * 1024 * 1024; // 40 MB por arquivo
+const MATERIAL_MAXIMO = arquivos.TAMANHO_MAXIMO;
 const TIPOS_ACEITOS = ['application/pdf'];
 
 const turmas = (filtro = null) => R.turmas.listar(filtro)

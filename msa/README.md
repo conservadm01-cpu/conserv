@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 115 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 117 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
@@ -209,6 +209,11 @@ O cadastro da turma guarda só a ficha do arquivo — nome, tipo, tamanho e o
 identificador. Remover o material ou a turma leva os bytes junto, e o app faz
 uma faxina na abertura: um PDF que perdeu o dono (uma cópia importada por cima,
 por exemplo) é apagado.
+
+O limite é **65 MB por arquivo**, e mora num lugar só — no módulo que guarda, e
+não em cada tela que anexa. Se o aparelho ficar sem espaço antes disso, o app
+diz quantos MB não couberam e o que fazer, em vez de repassar o *"The quota has
+been exceeded"* do navegador.
 
 **A cópia de segurança não leva os PDFs.** Ela é um arquivo de texto com o
 cadastro; os métodos ficam no aparelho e são anexados de novo depois de uma

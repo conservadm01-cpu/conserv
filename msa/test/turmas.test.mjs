@@ -224,6 +224,54 @@ test('só PDF entra como material', async () => {
   assert.match(recusa, /precisa ser um arquivo PDF/);
 });
 
+test('o limite é 65 MB, e vale para a turma e para o método', async () => {
+  const { turmaId } = await turmaComAluno(app);
+  const limites = await app.pagina.evaluate(() => ({
+    guardador: __modulos['arquivos'].TAMANHO_MAXIMO,
+    turma: __modulos['servicos/turmas'].MATERIAL_MAXIMO,
+    metodo: __modulos['servicos/metodos'].MATERIAL_MAXIMO,
+  }));
+  assert.equal(limites.guardador, 65 * 1024 * 1024);
+  assert.equal(limites.turma, limites.guardador, 'o limite mora num lugar só');
+  assert.equal(limites.metodo, limites.guardador);
+
+  // A tela diz o mesmo número que a regra usa.
+  await app.ir(`#/instrutor/turma/${turmaId}`);
+  assert.match(await app.texto(), /até 65 MB por arquivo/);
+
+  // Um arquivo maior é recusado, dizendo o tamanho e o limite.
+  const recusa = await app.pagina.evaluate(async (t) => {
+    const gigante = new File([new Uint8Array(1)], 'grande.pdf', { type: 'application/pdf' });
+    Object.defineProperty(gigante, 'size', { value: 70 * 1024 * 1024 });
+    try { await __modulos['servicos/turmas'].anexarMaterial(t, gigante); return null; }
+    catch (erro) { return erro.message; }
+  }, turmaId);
+  assert.match(recusa, /70 MB/);
+  assert.match(recusa, /limite é 65 MB/);
+});
+
+test('um PDF de vários MB é guardado inteiro e volta inteiro', async () => {
+  const { turmaId } = await turmaComAluno(app);
+  // 12 MB: passa longe do que o localStorage aguentaria, e é o ponto de guardar
+  // os bytes no IndexedDB.
+  const conferido = await app.pagina.evaluate(async (t) => {
+    const bytes = new Uint8Array(12 * 1024 * 1024);
+    bytes.set(new TextEncoder().encode('%PDF-1.4\n'), 0);
+    bytes[bytes.length - 1] = 42;
+    const arquivo = new File([bytes], 'metodo-grande.pdf', { type: 'application/pdf' });
+    const ficha = await __modulos['servicos/turmas'].anexarMaterial(t, arquivo);
+    const devolta = await __modulos['arquivos'].ler(ficha.id);
+    const lidos = new Uint8Array(await devolta.arrayBuffer());
+    return { tamanho: ficha.tamanho, guardado: lidos.length, ultimo: lidos[lidos.length - 1] };
+  }, turmaId);
+  assert.equal(conferido.tamanho, 12 * 1024 * 1024);
+  assert.equal(conferido.guardado, 12 * 1024 * 1024);
+  assert.equal(conferido.ultimo, 42, 'o último byte precisa voltar igual');
+
+  const bruto = await app.pagina.evaluate(() => localStorage.getItem('msa.escola.v2'));
+  assert.ok(bruto.length < 200 * 1024, 'o depósito do cadastro não pode crescer com o PDF');
+});
+
 test('remover o material leva os bytes junto', async () => {
   const { turmaId } = await turmaComAluno(app);
   await app.ir(`#/instrutor/turma/${turmaId}`);
