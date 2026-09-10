@@ -407,7 +407,9 @@ de música — trilha, fase, avaliação por objetivo com peso e boletim impress
 [`musica/README.md`](musica/README.md).
 
 A pasta `msa/` guarda o **Estudo Musical — MSA**, o app de estudo do aluno: teoria do MSA e método
-do instrumento, fase a fase, com lições, jogos, avaliação que nunca repete pergunta e certificado.
+do instrumento, fase a fase, com lições, jogos, avaliação que nunca repete pergunta e **selo de fase
+concluída**. O MSA segue as 16 fases do livro, e a avaliação é **por bloco de três fases** — seis
+blocos, seis selos.
 É **uma página só** (`msa/publico/index.html`), sem servidor e sem build — abrir o arquivo no celular
 basta. A entrada é por usuário e senha, e o acesso de fábrica é o **master** `ADMIN` / `CCB701040`.
 Aluno se cadastra e entra na hora; instrutor, encarregado e ministério pedem acesso e esperam o master

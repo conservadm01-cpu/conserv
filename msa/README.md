@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 119 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 136 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a
@@ -111,7 +111,7 @@ aqui?" não exige abrir o e-mail e o WhatsApp de cada músico.
 **O aluno não exporta nada.** A cópia de segurança leva o aparelho inteiro — a
 ficha, o contato e o progresso de toda a turma, e o resumo da senha de cada um.
 Ela é do administrador, e a tela de ajustes do aluno diz isso em vez de oferecer
-um botão. O que é dele, ele leva: os certificados, em *Meus certificados*.
+um botão. O que é dele, ele leva: os selos de fase concluída, em *Meus selos*.
 
 Esconder o botão vale para quem não sabe abrir o console — por isso cada ação
 sensível também **confere a permissão onde ela acontece**, lendo a mesma tabela
@@ -120,6 +120,55 @@ dia discorde dessa.
 
 Rota de aluno que aponte para o painel cai de volta em `#/` com um recado; rota
 qualquer sem sessão cai na tela de acesso.
+
+---
+
+## Fases, blocos e selos
+
+No MSA a **fase é a unidade de estudo** e o **bloco é a unidade de avaliação**.
+As 16 fases do livro estão agrupadas de três em três: seis blocos, seis
+avaliações, seis selos.
+
+| Bloco | Fases | Páginas |
+| :-: | :-: | :-: |
+| 1 | 1 a 3 | 9–33 |
+| 2 | 4 a 6 | 34–64 |
+| 3 | 7 a 9 | 65–92 |
+| 4 | 10 a 12 | 93–117 |
+| 5 | 13 a 15 | 118–135 |
+| 6 | 16 | 136–157 |
+
+A avaliação do bloco **sorteia das três fases juntas**. Isso é o que torna o
+bloco possível: sozinha, a fase 9 tem pouco repertório inédito; dentro do bloco
+3 ela divide a prova com as fases 7 e 8, e o bloco todo passa de sessenta
+perguntas diferentes. A memória do que já caiu também é do bloco — a mesma
+pergunta não volta, venha ela de qual das três fases vier.
+
+Passar na avaliação **conclui as três fases de uma vez** e libera o bloco
+seguinte. O aluno estuda as três antes de ser avaliado; enquanto o bloco não
+abre, a tela da fase diz qual bloco falta.
+
+O que ele ganha ao passar não se chama certificado: é um **selo de fase
+concluída**, um por bloco, com o intervalo no rosto — *Fases 1 a 3*, *Fases 4 a
+6*. Certificado é palavra de quem certifica alguém perante terceiros, e não é
+isso que um app de estudo faz. O selo fica em *Meus selos*, e o aluno baixa a
+imagem.
+
+O último bloco tem uma fase só porque o livro tem 16, não 18. Ele é avaliado
+como os outros.
+
+O **método do instrumento continua fase a fase**: uma avaliação e um selo por
+fase, sem blocos. Quem cadastra um método novo escolhe — sem bloco, vale a
+regra antiga (a fase abre quando a anterior passa).
+
+### A subida para as 16 fases
+
+O MSA tinha 10 fases inventadas para o app antes de seguir o livro. Na primeira
+abertura depois da atualização, o app **refaz o conteúdo do MSA** e **apaga o
+progresso, os resultados e os selos do MSA** — a fase 5 de antes não é a fase 5
+de agora, e aproveitar a nota seria mentir sobre o que o aluno estudou. Uma
+cópia de segurança automática é gravada antes, e o método do instrumento não é
+tocado.
 
 ---
 
@@ -228,7 +277,8 @@ esta página fora de um navegador seria testar outra coisa.
 | Arquivo | O que cobre |
 | --- | --- |
 | `test/acesso.test.mjs` | portaria: usuário e senha, perfis, troca de senha, o que cada um alcança |
-| `test/estudo.test.mjs` | lição, jogo, avaliação, certificado — e o que fica guardado |
+| `test/estudo.test.mjs` | lição, jogo, avaliação, selo — e o que fica guardado |
+| `test/blocos.test.mjs` | as 16 fases do MSA, os 6 blocos, a avaliação do bloco e o selo |
 | `test/conteudo.test.mjs` | **todas** as variantes de **todos** os geradores de pergunta |
 | `test/perfis.test.mjs` | quem entra sozinho, quem espera liberação, e o que cada perfil alcança |
 | `test/turmas.test.mjs` | a turma, o método em PDF e o critério de aprovação conferido item a item |
@@ -298,14 +348,40 @@ Vercel é público, e `CCB701040` está escrito neste README.
 
 ## O conteúdo
 
-A trilha de **teoria** segue os assuntos do *Método Simplificado de Aprendizagem
-Musical* (Congregação Cristã no Brasil, 1ª edição, dez/2022), com a página do
-livro em cada lição. A trilha do **instrumento** traz a técnica padrão do
+A trilha de **teoria** segue o *Método Simplificado de Aprendizagem Musical*
+(Congregação Cristã no Brasil, 1ª edição, dez/2022) na ordem do livro: **16
+fases**, com o título e as páginas de cada assunto como estão lá.
+
+| Fase | Assunto | Páginas |
+| :-: | --- | :-: |
+| 1 | Música, som e escrita | 9–16 |
+| 2 | Figuras, compasso e pulsação | 17–26 |
+| 3 | Endecagrama e solfejo | 27–33 |
+| 4 | Ligadura, ponto e compassos em 3 e em 2 | 34–43 |
+| 5 | Tercinas, fermata e compasso em 6 | 44–51 |
+| 6 | Tom, semitom, acidentes e escalas maiores | 52–64 |
+| 7 | Armadura de clave e compassos em 9 e em 12 | 65–79 |
+| 8 | Tonalidade e acidentes ocorrentes | 80–85 |
+| 9 | Barra de repetição | 86–92 |
+| 10 | Dinâmica | 93–99 |
+| 11 | Acento métrico, compasso simples e composto | 100–110 |
+| 12 | Síncopa e contratempo | 111–117 |
+| 13 | Ritmos iniciais | 118–125 |
+| 14 | Notas pontuadas na subdivisão | 126–129 |
+| 15 | Andamento | 130–135 |
+| 16 | Frases e interpretação musical | 136–157 |
+
+O texto das lições **foi escrito para o app**, não copiado do livro: o método é
+material da Congregação, com reprodução vedada fora dos seus recintos. A lição
+apresenta o assunto, aponta a página, e o aluno lê o original no **PDF anexado
+ao método** — que fica no aparelho dele, não no repositório nem no site.
+
+A trilha do **instrumento** traz a técnica padrão do
 instrumento escolhido — família, clave, afinação, transposição, cuidados e rotina
 de estudo; o método impresso do instrumento não foi fornecido, e este conteúdo
 não o substitui. Nenhuma das duas substitui a aula com o instrutor.
 
 As perguntas da avaliação não são um banco fixo: nascem de geradores com
 variantes, e a mesma pergunta nunca cai duas vezes para o mesmo aluno. Quando o
-aluno esgota o repertório inédito de uma fase, o app avisa antes de reaproveitar
-as mais antigas.
+aluno esgota o repertório inédito, o app avisa antes de reaproveitar as mais
+antigas.

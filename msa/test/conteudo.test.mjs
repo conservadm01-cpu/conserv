@@ -61,10 +61,36 @@ test('a trilha do instrumento é válida para todos os instrumentos do catálogo
   }
 });
 
-test('cada fase tem perguntas inéditas de sobra para mais de uma avaliação', async () => {
+test('toda fase do MSA tem pergunta, e nenhuma ficou órfã', async () => {
+  const vazias = await app.pagina.evaluate(() => {
+    const { totalDeVariantes } = __modulos['conteudo/geradores'];
+    return __modulos['dados/repositorios'].fasesDoMetodo('msa')
+      .map((f) => ({ fase: f.ordem, titulo: f.titulo, variantes: totalDeVariantes(f.id) }))
+      .filter((f) => f.variantes === 0);
+  });
+  assert.deepEqual(vazias, [], 'toda fase do livro precisa ter perguntas');
+});
+
+test('cada bloco tem perguntas inéditas de sobra para mais de uma avaliação', async () => {
+  // A unidade avaliada é o BLOCO: a prova sorteia das fases dele juntas, e é
+  // por bloco que a folga de perguntas inéditas precisa existir.
+  const magros = await app.pagina.evaluate(() => {
+    const { totalDeVariantes } = __modulos['conteudo/geradores'];
+    return __modulos['servicos/blocos'].blocosDoMetodo('msa')
+      .map((b) => ({
+        id: b.id,
+        variantes: b.faseIds.reduce((soma, faseId) => soma + totalDeVariantes(faseId), 0),
+      }))
+      .filter((b) => b.variantes < 40);
+  });
+  assert.deepEqual(magros, []);
+});
+
+test('as fases do método do instrumento também têm perguntas de sobra', async () => {
   const magras = await app.pagina.evaluate(() => {
     const { totalDeVariantes } = __modulos['conteudo/geradores'];
     return __modulos['conteudo/trilhas'].trilhasDoAluno('viola').todas
+      .filter((f) => /^inst/.test(f.id))
       .map((f) => ({ id: f.id, variantes: totalDeVariantes(f.id, f.contexto || null) }))
       .filter((f) => f.variantes < 30);
   });

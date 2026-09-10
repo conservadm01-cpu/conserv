@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2f9e6b">
-<meta name="description" content="Teoria do MSA e método do seu instrumento, fase a fase, com avaliação que nunca repete pergunta e certificado.">
+<meta name="description" content="Teoria do MSA e método do seu instrumento, fase a fase, com avaliação que nunca repete pergunta e selo a cada fase concluída.">
 <meta name="color-scheme" content="light dark">
 <title>Estudo Musical — MSA</title>
 
@@ -118,6 +118,16 @@ p { margin: 0 0 12px; }
 .atalho { flex: 1; text-align: center; background: var(--papel); border-radius: var(--raio); padding: 12px 8px; box-shadow: var(--sombra); font-size: 14px; }
 
 .lista-fases { display: grid; gap: 10px; }
+.faixa-bloco {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  margin: 18px 0 2px; padding: 10px 12px; border-radius: var(--raio);
+  background: var(--papel); box-shadow: var(--sombra); border-left: 5px solid var(--cor, var(--marca));
+  color: inherit; text-decoration: none;
+}
+.faixa-bloco strong { font-size: 14px; }
+.faixa-bloco .mini { display: block; }
+.faixa-bloco .estado { font-size: 12px; white-space: nowrap; color: var(--tinta-fraca); }
+.faixa-bloco .estado.ok { color: var(--acerto); font-weight: 700; }
 .cartao-fase {
   position: relative; display: flex; gap: 12px; align-items: center;
   background: var(--papel); border-radius: var(--raio); padding: 14px;
@@ -329,15 +339,15 @@ th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 .resultado-jogo { margin-top: 16px; text-align: center; border-top: 1px solid var(--linha); padding-top: 14px; }
 .resultado-jogo strong { font-size: 28px; color: var(--cor, var(--marca)); }
 
-/* -------------------------------------------------------- certificados */
-.lista-certificados { display: grid; gap: 10px; }
-.cartao-certificado {
+/* -------------------------------------------------------------- selos */
+.lista-selos { display: grid; gap: 10px; }
+.cartao-selo {
   display: grid; gap: 2px; background: var(--papel); border-radius: var(--raio);
   padding: 14px; box-shadow: var(--sombra); border-left: 5px solid var(--cor, var(--marca)); font-size: 14px;
 }
-.cartao-certificado .codigo { font-family: "Courier New", monospace; font-size: 12px; color: var(--tinta-fraca); }
-.moldura-certificado { background: #fff; color: #23201c; border-radius: var(--raio); padding: 8px; box-shadow: var(--sombra); overflow-x: auto; }
-.certificado-svg { display: block; min-width: 320px; }
+.cartao-selo .codigo { font-family: "Courier New", monospace; font-size: 12px; color: var(--tinta-fraca); }
+.moldura-selo { background: #fff; color: #23201c; border-radius: var(--raio); padding: 8px; box-shadow: var(--sombra); overflow-x: auto; }
+.selo-svg { display: block; min-width: 320px; }
 
 .sobre { background: var(--papel); border-radius: var(--raio); padding: 18px 16px; box-shadow: var(--sombra); }
 .sobre h3 { margin: 18px 0 6px; font-size: 16px; }
@@ -679,7 +689,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   .lista-conquistas { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
   .lista-assuntos { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
   .lista-fases { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
-  .lista-certificados { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .lista-selos { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
   .fileira-filtros { max-width: 560px; }
 }
 
@@ -859,7 +869,7 @@ __modulos['ficha'] = (function () {
 
 const CAMPOS_DA_FICHA = [
   { id: 'nome', rotulo: 'Nome completo', artigo: 'o', tipo: 'text', obrigatorio: true, autocomplete: 'name',
-    dica: 'como deve sair no certificado', maximo: 80 },
+    dica: 'como deve sair no selo de fase', maximo: 80 },
   { id: 'comum', rotulo: 'Comum-congregação', artigo: 'a', tipo: 'text', obrigatorio: true,
     dica: 'a comum onde você toca — bairro e cidade', maximo: 80 },
   { id: 'instrumento', rotulo: 'Instrumento', artigo: 'o', tipo: 'instrumento', obrigatorio: true,
@@ -1849,8 +1859,8 @@ __modulos['conteudo/fases'] = (function () {
 // Brasil (1ª edição, dez/2022). A referência de página aponta para o livro
 // impresso, para o aluno estudar os dois juntos.
 
-const { pentagrama, figuraSolta, teclado } = __modulos['notacao'];
-const { FIGURAS, ANDAMENTOS, DINAMICAS, PROPRIEDADES_DO_SOM, TERMOS_DE_EXPRESSAO } = __modulos['musica'];
+const { pentagrama, figuraSolta, compassoRitmico, teclado } = __modulos['notacao'];
+const { FIGURAS, ANDAMENTOS, DINAMICAS, PROPRIEDADES_DO_SOM, TERMOS_DE_EXPRESSAO, fracaoBonita } = __modulos['musica'];
 
 const linhaDeFiguras = (pausa = false) =>
   `<div class="tira-figuras">${FIGURAS.slice(0, 5)
@@ -1865,51 +1875,110 @@ const FASES = [
   // ------------------------------------------------------------------ 1
   {
     numero: 1,
-    id: 'som',
-    titulo: 'O som e a música',
-    subtitulo: 'Propriedades do som, notas musicais',
-    paginas: '9 a 11',
+    id: 'f1',
+    titulo: 'Música, som e escrita',
+    subtitulo: 'Elementos da música, propriedades do som, pentagrama e claves',
+    paginas: '9 a 16',
     icone: '🎧',
     cor: '#2f9e6b',
-    resumo: 'Antes de ler uma partitura é preciso saber o que a partitura escreve: o som. Aqui você aprende as quatro propriedades do som e o nome das sete notas.',
+    resumo: 'A fase que abre o método: o que é música e som, os três elementos da música, as quatro propriedades do som, as sete notas, o lugar onde a música se escreve e as claves que dão nome ao que está escrito.',
     licoes: [
       {
-        titulo: 'Som, ruído e música',
+        titulo: 'Música e som',
         pagina: 9,
         corpo: () => `
-          <p><b>Som</b> é tudo aquilo que os nossos ouvidos podem perceber, produzido pela vibração de um corpo.
-          Quando essa vibração é <b>regular</b>, temos o som musical; quando é <b>irregular</b>, temos o <b>ruído</b>.</p>
-          <p><b>Música</b> é a arte de combinar os sons de forma agradável ao ouvido, obedecendo às leis da
-          <b>melodia</b>, da <b>harmonia</b> e do <b>ritmo</b>.</p>
-          <ul class="lista-chave">
-            <li><b>Melodia</b> — sons que soam um depois do outro, formando o desenho da música.</li>
-            <li><b>Harmonia</b> — sons diferentes que soam ao mesmo tempo, um apoiando o outro.</li>
-            <li><b>Ritmo</b> — a ordem e a proporção da duração dos sons no tempo.</li>
-          </ul>`,
+          <p>Dentro do contexto de <b>música sacra</b> destinada a louvores e súplicas a Deus, o método define
+          <b>música</b> como a arte de expressar sentimentos por meio de <b>sons coordenados</b> produzidos por
+          voz ou instrumento musical.</p>
+          <p><b>Som</b> é tudo o que ouvimos. Ele se forma pela propagação de ondas no ar, captadas pelos
+          nossos ouvidos.</p>
+          <p>Os sons das nossas orquestras são produzidos pelos instrumentos listados no
+          <b>Manual de Orientação Orquestral (MOO)</b>, organizados em quatro grupos:
+          <b>teclados</b>, <b>cordas</b>, <b>madeiras</b> e <b>metais</b>.</p>
+          <p class="dica">Esta lição é da <b>página 9</b> do método. Abra o PDF anexado à sua trilha para ver a
+          lista completa dos instrumentos e ouvir cada um deles pelo MOO Digital.</p>`,
       },
       {
-        titulo: 'As quatro propriedades do som',
+        titulo: 'Elementos da música',
+        pagina: 9,
+        corpo: () => `
+          <p>Os elementos mais importantes da música são <b>melodia</b>, <b>harmonia</b> e <b>ritmo</b>.</p>
+          <ul class="lista-chave">
+            <li><b>Melodia</b> — a produção ordenada de sons <b>sucessivos</b>, um depois do outro. Nos hinos,
+            cada voz (soprano, contralto, tenor e baixo) é uma melodia quando considerada sozinha. A voz do
+            baixo, por exemplo, é uma voz melódica e deve ser entoada como tal.</li>
+            <li><b>Harmonia</b> — a produção ordenada de vários sons diferentes emitidos <b>ao mesmo tempo</b>.
+            Nos hinos, a harmonia acontece quando mais de uma voz soa simultaneamente.</li>
+            <li><b>Ritmo</b> — a disposição ordenada dos sons <b>no tempo</b>, combinando sons curtos, longos
+            e silêncios.</li>
+          </ul>
+          <p class="dica">A mesma voz pode ser as duas coisas: o soprano é <b>melodia</b> quando cantado
+          sozinho e faz parte da <b>harmonia</b> quando soa junto com as outras vozes.</p>`,
+      },
+      {
+        titulo: 'Propriedades do som',
         pagina: 10,
         corpo: () => `
-          <p>Todo som musical tem quatro propriedades. Guardar bem estas quatro palavras resolve boa parte da teoria:</p>
-          ${tabela(['Propriedade', 'O que é'], PROPRIEDADES_DO_SOM.map((p) => [`<b>${p.nome}</b>`, p.definicao.replace(/^é /, '')]))}
-          <p class="dica">Truque de memória: <b>A-D-I-T</b> — <b>A</b>ltura, <b>D</b>uração, <b>I</b>ntensidade, <b>T</b>imbre.
-          Altura é grave/agudo; intensidade é fraco/forte. Trocar uma pela outra é o erro mais comum da prova.</p>`,
+          <p>As principais propriedades do som são <b>timbre</b>, <b>duração</b>, <b>altura</b> e
+          <b>intensidade</b>.</p>
+          ${tabela(['Propriedade', 'O que é'], [
+            ['<b>Timbre</b>', 'a distinção de sons produzidos por diferentes fontes sonoras, ainda que de mesma altura e intensidade; é a <b>cor</b> do som, o que distingue um instrumento do outro'],
+            ['<b>Duração</b>', 'a sustentação do som num determinado espaço de tempo — som curto ou som longo'],
+            ['<b>Altura</b>', 'a propriedade das frequências que permite distinguir sons <b>graves</b>, <b>médios</b> e <b>agudos</b>: quanto menor a frequência, mais grave; quanto maior, mais agudo'],
+            ['<b>Intensidade</b>', 'o volume do som — som forte ou som fraco'],
+          ])}
+          <p class="dica">Confundir <b>altura</b> com <b>intensidade</b> é o erro mais comum. Altura é
+          grave/agudo; intensidade é fraco/forte. O violoncelo é grave, a flauta é aguda — isso é altura.</p>`,
       },
       {
-        titulo: 'As sete notas musicais',
+        titulo: 'Notas musicais',
         pagina: 11,
         corpo: () => `
-          <p>As notas musicais são <b>sete</b>: <b>Dó, Ré, Mi, Fá, Sol, Lá e Si</b>. Depois do Si, a série recomeça no Dó,
-          agora mais aguda — é a mesma nota, uma <b>oitava</b> acima.</p>
-          <p>Na cifra internacional, usada em muitos instrumentos e métodos, elas se chamam:</p>
+          <p>As notas musicais são <b>sete</b>: <b>Dó, Ré, Mi, Fá, Sol, Lá</b> e <b>Si</b>. Depois do Si a série
+          recomeça no Dó, agora mais aguda — a mesma nota, uma <b>oitava</b> acima.</p>
+          <p>Na cifra internacional elas se chamam:</p>
           ${tabela(['Dó', 'Ré', 'Mi', 'Fá', 'Sol', 'Lá', 'Si'], [['C', 'D', 'E', 'F', 'G', 'A', 'B']])}
-          <p>No teclado, o <b>Dó</b> é sempre a tecla branca imediatamente à esquerda do grupo de <b>duas</b> teclas pretas:</p>
+          <p>No teclado, o <b>Dó</b> é sempre a tecla branca imediatamente à esquerda do grupo de <b>duas</b>
+          teclas pretas:</p>
           <div class="quadro-teclado">${teclado({ marcadas: { 'Dó4': 'tonica', 'Dó5': 'tonica' } })}</div>`,
+      },
+      {
+        titulo: 'Pentagrama (pauta musical)',
+        pagina: 12,
+        corpo: () => `
+          <p>O <b>pentagrama</b>, ou <b>pauta musical</b>, é o conjunto de <b>cinco linhas</b> e
+          <b>quatro espaços</b> onde a música se escreve. Linhas e espaços se contam sempre <b>de baixo para
+          cima</b>.</p>
+          ${pentagrama({ clave: 'sol', notas: [], largura: 300 })}
+          <p>Quando a nota é grave ou aguda demais para caber nas cinco linhas, ela é escrita sobre pequenas
+          <b>linhas suplementares</b>, acrescentadas acima ou abaixo do pentagrama.</p>
+          ${pentagrama({ clave: 'sol', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }, { letra: 'Lá', oitava: 5, figura: 'semibreve' }], largura: 240, rotulos: ['Dó', 'Lá'] })}
+          <p class="dica">Contar de baixo para cima vale para tudo: a 1ª linha é a de baixo, o 1º espaço é o
+          de baixo. É por isso que a clave de Sol se chama assim — ela marca a <b>2ª linha</b>, contada de
+          baixo.</p>`,
+      },
+      {
+        titulo: 'Claves',
+        pagina: 13,
+        corpo: () => `
+          <p>A <b>clave</b> é o sinal colocado no início do pentagrama que determina o <b>nome</b> da nota
+          escrita na sua linha de referência — e, com isso, o nome de todas as outras.</p>
+          ${tabela(['Clave', 'Linha de referência', 'Quem usa'], [
+            ['Clave de <b>Sol</b>', '2ª linha', 'violino, flauta, clarinete, trompete, saxofone…'],
+            ['Clave de <b>Dó</b>', '3ª ou 4ª linha', 'viola, trombone, fagote'],
+            ['Clave de <b>Fá</b>', '4ª linha', 'violoncelo, tuba, bombardino, contrabaixo'],
+          ])}
+          <div class="tres-claves">
+            ${pentagrama({ clave: 'sol', notas: [{ letra: 'Sol', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Sol'] })}
+            ${pentagrama({ clave: 'do', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Dó'] })}
+            ${pentagrama({ clave: 'fa', notas: [{ letra: 'Fá', oitava: 3, figura: 'semibreve' }], largura: 190, rotulos: ['Fá'] })}
+          </div>
+          <p class="dica">A clave só diz o nome. A mesma bolinha, no mesmo lugar do pentagrama, é uma nota em
+          clave de Sol e outra em clave de Fá. Por isso o músico lê na clave do <b>seu</b> instrumento.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'ouvido', modo: 'altura', titulo: 'Grave ou agudo?', descricao: 'Ouça as duas notas e diga se a segunda subiu ou desceu.' },
+      { tipo: 'ouvido', modo: 'altura', titulo: 'Grave ou agudo?', descricao: 'Ouça as duas notas e diga o que aconteceu com a altura.' },
       { tipo: 'memoria', baralho: 'propriedades', titulo: 'Jogo da memória: propriedades do som', descricao: 'Junte cada propriedade com a sua definição.' },
     ],
   },
@@ -1917,583 +1986,882 @@ const FASES = [
   // ------------------------------------------------------------------ 2
   {
     numero: 2,
-    id: 'escrita',
-    titulo: 'A escrita musical',
-    subtitulo: 'Pentagrama, claves, figuras e pausas',
-    paginas: '12 a 21',
-    icone: '🎼',
-    cor: '#1f7ae0',
-    resumo: 'A pauta, as claves de Sol, Dó e Fá, as figuras de nota e de pausa e o número de equivalência: o alfabeto da partitura.',
+    id: 'f2',
+    titulo: 'Figuras, compasso e pulsação',
+    subtitulo: 'Figuras musicais, barras, fórmula em 4, ritmo e pulsação',
+    paginas: '17 a 26',
+    icone: '🎵',
+    cor: '#2e7d9a',
+    resumo: 'As figuras que escrevem a duração do som e do silêncio, o compasso que organiza o tempo, a primeira fórmula de compasso e a diferença entre ritmo e pulsação.',
     licoes: [
       {
-        titulo: 'Pauta e pentagrama',
-        pagina: 12,
-        corpo: () => `
-          <p>A <b>pauta musical</b> (ou <b>pentagrama</b>) é o conjunto de <b>5 linhas</b> e <b>4 espaços</b>,
-          contados sempre <b>de baixo para cima</b>.</p>
-          ${pentagrama({ clave: 'sol', notas: [], largura: 300 })}
-          <p>Quando a nota não cabe na pauta, escrevemos <b>linhas suplementares</b>, acima ou abaixo dela.</p>`,
-      },
-      {
-        titulo: 'As claves',
-        pagina: 13,
-        corpo: () => `
-          <p>A <b>clave</b> é o sinal colocado no início da pauta que dá o nome às notas. O método usa três:</p>
-          ${tabela(['Clave', 'Onde se apoia', 'Instrumentos/vozes'], [
-            ['Clave de <b>Sol</b>', '2ª linha', 'flauta, violino, soprano, contralto'],
-            ['Clave de <b>Dó</b>', '3ª linha', 'viola, trombone tenor, contralto'],
-            ['Clave de <b>Fá</b>', '4ª linha', 'violoncelo, tuba, baixo'],
-          ])}
-          <div class="tres-claves">
-            ${pentagrama({ clave: 'sol', notas: [{ letra: 'Sol', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Sol'] })}
-            ${pentagrama({ clave: 'do', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Dó'] })}
-            ${pentagrama({ clave: 'fa', notas: [{ letra: 'Fá', oitava: 3, figura: 'semibreve' }], largura: 190, rotulos: ['Fá'] })}
-          </div>
-          <p class="dica">A clave marca <b>uma</b> nota na pauta; todas as outras saem contando linha e espaço a partir dela.</p>`,
-      },
-      {
-        titulo: 'Figuras de nota',
-        pagina: 15,
-        corpo: () => `
-          <p>As <b>figuras</b> indicam a <b>duração</b> do som. Cada uma vale o dobro da seguinte:</p>
-          ${linhaDeFiguras(false)}
-          ${tabela(['Figura', 'Nº de equivalência', 'Vale, em compasso simples de semínima'],
-            FIGURAS.slice(0, 5).map((f) => [f.nome, String(f.equivalencia), f.duracao >= 1 ? `${f.duracao} tempo${f.duracao > 1 ? 's' : ''}` : `${1 / f.duracao === 2 ? 'meio tempo' : `1/${1 / f.duracao} de tempo`}`]))}
-          <p>O <b>número de equivalência</b> diz quantas figuras daquele tipo cabem numa semibreve: 1 semibreve = 2 mínimas =
-          4 semínimas = 8 colcheias = 16 semicolcheias.</p>`,
-      },
-      {
-        titulo: 'Partes da nota e pausas',
+        titulo: 'Figuras musicais',
         pagina: 17,
         corpo: () => `
-          <p>A nota escrita tem <b>cabeça</b>, <b>haste</b> e, a partir da colcheia, <b>colchete</b> (bandeirola).
-          Quando várias colcheias vêm juntas, os colchetes viram uma <b>barra de ligação</b>.</p>
-          <p>Para cada figura existe uma <b>pausa</b> de mesmo valor — o silêncio também é medido:</p>
+          <p>As <b>figuras de som</b> escrevem quanto tempo o som dura. Cada uma vale <b>metade</b> da
+          anterior — é essa proporção que o método chama de <b>número de equivalência</b>.</p>
+          ${linhaDeFiguras()}
+          <p>Para cada figura de som existe uma <b>figura de silêncio</b> — a <b>pausa</b> — de mesma
+          duração:</p>
           ${linhaDeFiguras(true)}
-          <p class="dica">Pausa não é descanso do músico: é som que não soa, mas que continua sendo contado.</p>`,
+          ${tabela(['Figura', 'Dura', 'Cabem numa semibreve'], FIGURAS.slice(0, 5).map((f) => [
+            `<b>${f.nome}</b>`,
+            f.duracao >= 1 ? `${f.duracao} ${f.duracao === 1 ? 'tempo' : 'tempos'}` : fracaoBonita(f.duracao),
+            String(f.equivalencia),
+          ]))}
+          <p class="dica">A <b>colcheia</b> tem partes: a cabeça, a haste e o colchete. Duas ou mais colcheias
+          seguidas costumam aparecer <b>unidas</b> por uma barra no lugar dos colchetes.</p>`,
+      },
+      {
+        titulo: 'Compasso, barras e fórmula de compasso em 4',
+        pagina: 21,
+        corpo: () => `
+          <p><b>Compasso</b> é a divisão da música em partes de igual duração. Cada parte é separada por uma
+          <b>barra de compasso</b>.</p>
+          <ul class="lista-chave">
+            <li><b>Barra simples</b> — separa um compasso do seguinte.</li>
+            <li><b>Barra dupla</b> — marca o fim de uma seção ou uma mudança importante.</li>
+            <li><b>Barra final</b> — uma fina e uma grossa: termina a música.</li>
+          </ul>
+          <p>A <b>fórmula de compasso</b> aparece logo depois da clave, em dois números. Na
+          <b>fórmula em 4</b> — <b>4/4</b> — o número de cima diz que cada compasso tem <b>4 tempos</b>, e o
+          de baixo diz que a figura que vale <b>um tempo</b> é a <b>semínima</b>.</p>
+          ${compassoRitmico(['seminima', 'seminima', 'seminima', 'seminima'], { formula: '4/4' })}
+          <p class="dica">Número de cima: <b>quantos</b> tempos. Número de baixo: <b>qual figura</b> vale um
+          tempo. O 4 de baixo é a semínima.</p>`,
+      },
+      {
+        titulo: 'Ritmo e pulsação',
+        pagina: 22,
+        corpo: () => `
+          <p><b>Pulsação</b> é a batida regular que corre por baixo da música, sempre igual, como o tique-taque
+          de um relógio. <b>Ritmo</b> é o desenho das durações que se apoia sobre essa pulsação.</p>
+          <p>A pulsação não muda quando o ritmo muda: numa mesma pulsação cabem uma semínima, duas colcheias
+          ou uma pausa. É a pulsação que mantém a orquestra junta.</p>
+          ${compassoRitmico(['seminima', 'colcheia', 'colcheia', 'minima'], { formula: '4/4' })}
+          <p class="dica">Bata o pé numa velocidade constante: isso é a <b>pulsação</b>. O que você fala por
+          cima dela é o <b>ritmo</b>.</p>`,
+      },
+      {
+        titulo: 'Forma de realização dos exercícios rítmicos',
+        pagina: 23,
+        corpo: () => `
+          <p>O método pede uma forma própria de executar os exercícios rítmicos, e ela vale para todos os
+          exercícios daqui em diante:</p>
+          <ul class="lista-chave">
+            <li>manter a <b>pulsação</b> constante, do primeiro ao último compasso;</li>
+            <li>executar o ritmo escrito <b>com precisão</b>, sem apressar nem atrasar;</li>
+            <li><b>repetir</b> o exercício quantas vezes for necessário, e só passar ao seguinte quando o
+            atual sair com qualidade satisfatória.</li>
+          </ul>
+          <p class="dica">O método é explícito: quem decide se a lição está boa o bastante para avançar é o
+          <b>instrutor</b>. Aqui no app, as lições e a avaliação ajudam — não substituem a aula.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'memoria', baralho: 'figuras', titulo: 'Memória das figuras', descricao: 'Junte cada figura ao seu nome e valor.' },
-      { tipo: 'pentagrama', modo: 'ler', titulo: 'Leitura relâmpago', descricao: 'Diga o nome da nota que aparecer na pauta.' },
+      { tipo: 'memoria', baralho: 'figuras', titulo: 'Jogo da memória: figuras e pausas', descricao: 'Junte cada figura de som com a sua pausa.' },
+      { tipo: 'ritmo', titulo: 'Fecha o compasso', descricao: 'Escolha a figura que falta para completar o compasso.' },
     ],
   },
 
   // ------------------------------------------------------------------ 3
   {
     numero: 3,
-    id: 'ritmo',
-    titulo: 'Ritmo, pulsação e compasso',
-    subtitulo: 'Fórmulas simples, tempos fortes e condução',
-    paginas: '22 a 30',
-    icone: '🥁',
-    cor: '#e0761f',
-    resumo: 'Pulsação, ritmo, barras de compasso e as fórmulas 2/4, 3/4 e 4/4 — mais os movimentos de condução para o solfejo.',
+    id: 'f3',
+    titulo: 'Endecagrama e solfejo',
+    subtitulo: 'Leitura rítmica, métrica e solfejo, condução e metrônomo',
+    paginas: '27 a 33',
+    icone: '🎼',
+    cor: '#7a5ea8',
+    resumo: 'As três claves alinhadas num sistema de onze linhas, as três formas de ler a partitura em voz alta, os movimentos de condução do solfejo e o metrônomo.',
     licoes: [
       {
-        titulo: 'Pulsação e ritmo',
-        pagina: 22,
-        corpo: () => `
-          <p>A <b>pulsação</b> é a batida regular que corre por baixo da música, sempre igual, como o tique-taque do relógio
-          ou as batidas do coração. É o que fazemos com o pé.</p>
-          <p>O <b>ritmo</b> é o desenho das durações que se apoia nessa pulsação: notas longas e curtas, sons e silêncios.</p>
-          <p class="dica">Pulsação é o chão; ritmo é o que se dança em cima do chão.</p>`,
-      },
-      {
-        titulo: 'Compasso e fórmula de compasso',
-        pagina: 24,
-        corpo: () => `
-          <p>A música é dividida em <b>compassos</b>, separados por <b>barras de compasso</b>. No fim da peça vem a
-          <b>barra final</b> (uma fina e uma grossa).</p>
-          <p>A <b>fórmula de compasso</b> aparece no início, depois da clave e da armadura. Nos compassos simples:</p>
-          <ul class="lista-chave">
-            <li>o número de <b>cima</b> diz <b>quantos tempos</b> tem cada compasso;</li>
-            <li>o número de <b>baixo</b> diz <b>qual figura vale um tempo</b> (4 = semínima, 2 = mínima, 8 = colcheia).</li>
-          </ul>
-          ${pentagrama({ clave: 'sol', compasso: '3/4', notas: [
-            { letra: 'Sol', oitava: 4, figura: 'seminima' }, { letra: 'Lá', oitava: 4, figura: 'seminima' }, { letra: 'Si', oitava: 4, figura: 'seminima' }], largura: 300 })}
-          ${tabela(['Fórmula', 'Tempos', 'Espécie'], [['2/4', '2', 'binário'], ['3/4', '3', 'ternário'], ['4/4', '4', 'quaternário']])}`,
-      },
-      {
-        titulo: 'Tempos fortes e fracos',
-        pagina: 26,
-        corpo: () => `
-          <p>Dentro do compasso os tempos não têm todos o mesmo peso. O <b>1º tempo é sempre forte</b>.</p>
-          ${tabela(['Compasso', 'Desenho dos tempos'], [
-            ['Binário (2/4)', '<b>forte</b> · fraco'],
-            ['Ternário (3/4)', '<b>forte</b> · fraco · fraco'],
-            ['Quaternário (4/4)', '<b>forte</b> · fraco · meio-forte · fraco'],
-          ])}
-          <p>É esse desenho que faz o ouvinte sentir onde o compasso começa, mesmo sem ver a partitura.</p>`,
-      },
-      {
-        titulo: 'Solfejo e movimentos de condução',
+        titulo: 'Endecagrama',
         pagina: 27,
         corpo: () => `
-          <p><b>Solfejar</b> é ler a música cantando o nome das notas, no ritmo certo. Para não perder a pulsação,
-          usamos o <b>movimento de condução</b> da mão, um desenho para cada espécie de compasso.</p>
-          ${tabela(['Compasso', 'Movimento da mão'], [
-            ['em 2', 'baixo → cima'],
-            ['em 3', 'baixo → lado → cima'],
-            ['em 4', 'baixo → esquerda → direita → cima'],
+          <p>A clave determina o nome da nota e também a <b>região</b> em que ela soa: aguda, média ou grave.
+          Um mesmo <b>Dó3</b> pode ser escrito de três maneiras diferentes — em clave de Sol, de Dó e de Fá —
+          <b>soando exatamente igual</b>.</p>
+          <div class="tres-claves">
+            ${pentagrama({ clave: 'sol', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Dó3'] })}
+            ${pentagrama({ clave: 'do', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Dó3'] })}
+            ${pentagrama({ clave: 'fa', notas: [{ letra: 'Dó', oitava: 4, figura: 'semibreve' }], largura: 190, rotulos: ['Dó3'] })}
+          </div>
+          <p>Isso acontece porque a clave de Sol é mais aguda que a de Dó, que por sua vez é mais aguda que a
+          de Fá. Quando alinhamos as três claves pela altura real, elas formam um sistema de
+          <b>onze linhas</b>: é o que se chama <b>endecagrama</b>.</p>
+          <p class="dica">O endecagrama é a razão de a mesma nota "mudar de lugar" quando muda a clave. Ela
+          não mudou — mudou a régua com que a estamos medindo.</p>`,
+      },
+      {
+        titulo: 'Leitura rítmica, leitura métrica e solfejo',
+        pagina: 27,
+        corpo: () => `
+          <p>São três formas de executar a partitura em voz alta, e o método as distingue com cuidado:</p>
+          ${tabela(['Forma', 'O que se faz'], [
+            ['<b>Leitura rítmica</b>', 'falar a sílaba <b>"TA"</b>, executando com precisão o ritmo escrito pelas figuras'],
+            ['<b>Leitura métrica</b>', 'falar o <b>nome da nota</b>, sem cantar, executando com precisão o mesmo ritmo'],
+            ['<b>Solfejo</b>', '<b>cantar</b> as notas na altura, dentro do padrão rítmico escrito'],
           ])}
-          <p>O pé marca a <b>pulsação</b>; a mão marca o <b>compasso</b>; a voz faz o <b>ritmo</b>. Os três ao mesmo tempo.</p>`,
+          <p>Nesta fase usa-se apenas a <b>leitura rítmica</b> — só a sílaba "TA". Na fase seguinte entra a
+          leitura métrica, quando passamos a falar o nome das notas.</p>
+          <p class="dica">Onde o método pedir <b>leitura métrica</b>, o candidato pode, se quiser, executar
+          <b>solfejando</b>: cantando as notas na altura ao mesmo tempo em que diz o nome de cada uma.</p>`,
+      },
+      {
+        titulo: 'Movimentos de condução para solfejo',
+        pagina: 28,
+        corpo: () => `
+          <p>A mão conduz a pulsação enquanto se solfeja. O método dá duas regras que valem para todos os
+          compassos:</p>
+          <ul class="lista-chave">
+            <li><b>Janela de movimento</b> — faça sempre a condução dentro de uma janela imaginária à sua
+            frente, usando a <b>maior parte</b> da área interna dela. Movimentos que saem da janela, ou que se
+            encolhem num canto dela, estão errados.</li>
+            <li><b>Mesa invisível</b> — cada movimento deve ser feito como se a mão tocasse uma superfície
+            rígida invisível no ar, uma mesa invisível. É esse toque que marca o tempo com precisão.</li>
+          </ul>
+          <p>Sobre a <b>pulsação no pé</b>: o músico pode movimentar o pé para manter a pulsação, mas com
+          <b>movimentos leves dos dedos</b> do pé — nunca a planta nem o calcanhar —, sem movimentos
+          expansivos e sem produzir som que os outros músicos percebam. E, quando houver metrônomo, na mesma
+          batida dele.</p>`,
+      },
+      {
+        titulo: 'Movimento de solfejo em 4 e metrônomo',
+        pagina: 30,
+        corpo: () => `
+          <p>No compasso <b>em 4</b>, a mão faz quatro movimentos por compasso, sempre na mesma ordem:
+          <b>1</b> para baixo, <b>2</b> para dentro, <b>3</b> para fora e <b>4</b> para cima.</p>
+          ${compassoRitmico(['seminima', 'seminima', 'seminima', 'seminima'], { formula: '4/4', destaque: 0 })}
+          <p>O <b>metrônomo</b> é o aparelho que marca a pulsação em batidas por minuto. Ele é a referência
+          objetiva de velocidade: estudar com metrônomo é o que impede o ritmo de acelerar nos trechos fáceis
+          e atrasar nos difíceis.</p>
+          <p class="dica">Comece devagar. A velocidade só sobe quando o trecho sai <b>certo</b> na velocidade
+          atual — subir antes disso ensina o erro junto com a música.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'ritmo', titulo: 'Fecha o compasso', descricao: 'Escolha as figuras que completam o compasso, sem sobrar nem faltar.' },
-      { tipo: 'pulso', titulo: 'No compasso', descricao: 'Toque na tela junto com o metrônomo e veja a sua precisão.' },
+      { tipo: 'pentagrama', modo: 'ler', titulo: 'Que nota é essa?', descricao: 'Leia a nota escrita no pentagrama, na clave indicada.' },
+      { tipo: 'pulso', titulo: 'Estudo com metrônomo', descricao: 'Mantenha a pulsação junto com o metrônomo.' },
     ],
   },
+
 
   // ------------------------------------------------------------------ 4
   {
     numero: 4,
-    id: 'duracao',
-    titulo: 'Metrônomo, ponto de aumento e tercinas',
-    subtitulo: 'Velocidade, prolongamento e divisão especial',
-    paginas: '31 a 51',
-    icone: '⏱️',
-    cor: '#8a4fd3',
-    resumo: 'O metrônomo e o bpm, o ponto de aumento, a ligadura de valor, a fermata e a tercina — as ferramentas que esticam e dividem o tempo.',
+    id: 'f4',
+    titulo: 'Ligadura, ponto e compassos em 3 e em 2',
+    subtitulo: 'Ligadura, ponto de aumento, intervalo, fórmulas em 3 e em 2',
+    paginas: '34 a 43',
+    icone: '🪢',
+    cor: '#c76b2f',
+    resumo: 'Dois sinais que prolongam o som — a ligadura e o ponto de aumento —, a primeira noção de intervalo e os compassos ternário e binário com os seus movimentos de solfejo.',
     licoes: [
       {
-        titulo: 'Metrônomo e andamento',
-        pagina: 31,
+        titulo: 'Ligadura',
+        pagina: 34,
         corpo: () => `
-          <p>O <b>metrônomo</b> é o aparelho que dá cliques regulares numa velocidade ajustável. Serve para determinar
-          a velocidade da música e para manter a frequência regular das batidas — a <b>pulsação musical</b>.</p>
-          <p>Existe o mecânico, o <b>metrônomo de Maelzel (M.M.)</b>, e os digitais — inclusive aplicativos de celular.</p>
-          <p>A indicação <b>♩ = 100</b> (ou M.M. = 100) quer dizer <b>100 batidas por minuto</b>, cada batida valendo uma semínima.</p>
-          <blockquote>Quando o hino traz uma faixa, por exemplo <b>♩ = 60 - 80</b>, ele deve ser entoado dentro desses
-          limites, sendo recomendável ficar na <b>média</b> entre a velocidade mínima e a máxima.</blockquote>
-          <p class="dica">Faixa 60–80 → a média é <b>70</b>. Essa conta cai na avaliação.</p>`,
+          <p>A <b>ligadura</b> é uma linha curva que une notas. O método distingue duas:</p>
+          <ul class="lista-chave">
+            <li><b>Ligadura de valor</b> — une duas notas <b>de mesma altura</b> e soma as durações: toca-se
+            uma só nota, com o tempo das duas.</li>
+            <li><b>Ligadura de portamento</b> — une notas <b>de alturas diferentes</b>, pedindo que sejam
+            executadas de forma ligada, sem interrupção entre elas.</li>
+          </ul>
+          <p class="dica">A regra é a altura: mesma nota ligada = <b>uma</b> nota mais longa; notas diferentes
+          ligadas = todas tocadas, mas emendadas.</p>`,
       },
       {
         titulo: 'Ponto de aumento',
         pagina: 35,
         corpo: () => `
-          <p>O <b>ponto de aumento</b> é o pontinho colocado à direita da figura. Ele <b>aumenta metade do valor</b> da figura.</p>
+          <p>O <b>ponto de aumento</b> é um ponto colocado à direita da figura. Ele acrescenta à figura
+          <b>metade</b> do valor dela.</p>
           ${tabela(['Figura', 'Vale', 'Com ponto, vale'], [
-            ['semibreve', '4 tempos', '6 tempos'],
-            ['mínima', '2 tempos', '3 tempos'],
-            ['semínima', '1 tempo', '1 tempo e meio'],
-            ['colcheia', 'meio tempo', '3/4 de tempo'],
+            ['Semibreve', '4 tempos', '6 tempos'],
+            ['Mínima', '2 tempos', '3 tempos'],
+            ['Semínima', '1 tempo', '1 tempo e meio'],
+            ['Colcheia', 'meio tempo', 'três quartos de tempo'],
           ])}
-          <p>Um <b>segundo ponto</b> acrescenta a metade do primeiro ponto (1/4 do valor original):
-          mínima com dois pontos = 2 + 1 + 0,5 = <b>3,5 tempos</b>.</p>`,
+          ${compassoRitmico(['minima', 'seminima', 'seminima'], { formula: '3/4' })}
+          <p class="dica">O ponto vale sempre <b>metade da figura que ele acompanha</b> — não é um valor fixo.
+          Ao lado de uma mínima ele vale uma semínima; ao lado de uma semínima, uma colcheia.</p>`,
       },
       {
-        titulo: 'Ligadura e fermata',
-        pagina: 38,
+        titulo: 'Intervalo',
+        pagina: 35,
         corpo: () => `
-          <p>A <b>ligadura de valor</b> une duas notas <b>de mesma altura</b>: soa uma nota só, com a soma das durações.
-          A <b>ligadura de expressão</b> (portamento) une notas <b>diferentes</b> e pede que sejam tocadas ligadas, sem cortar o som.</p>
-          <p>A <b>fermata</b> (o olhinho sobre a nota) manda prolongar o som além do seu valor, a critério do regente.</p>
-          <p class="dica">Mínima ligada a uma semínima = 2 + 1 = <b>3 tempos</b> de som contínuo, atacado uma vez só.</p>`,
+          <p><b>Intervalo</b> é a distância de altura entre dois sons. Ele se conta pelo <b>número de notas</b>
+          entre as duas, incluindo as duas pontas.</p>
+          ${tabela(['De', 'Para', 'Contando', 'Intervalo'], [
+            ['Dó', 'Ré', 'Dó–Ré', '2ª'],
+            ['Dó', 'Mi', 'Dó–Ré–Mi', '3ª'],
+            ['Dó', 'Sol', 'Dó–Ré–Mi–Fá–Sol', '5ª'],
+            ['Dó', 'Dó (acima)', 'as oito notas', '8ª'],
+          ])}
+          <p class="dica">Conte sempre as <b>duas</b> notas das pontas. De Dó a Mi não são dois passos: são
+          três notas, e por isso o intervalo é de <b>terça</b>.</p>`,
       },
       {
-        titulo: 'Tercinas',
-        pagina: 44,
+        titulo: 'Fórmula de compasso em 3 e movimento de solfejo em 3',
+        pagina: 36,
         corpo: () => `
-          <p>A <b>tercina</b> é a divisão de um valor em <b>três partes iguais</b> no lugar de duas. Vem escrita com o
-          número <b>3</b> sobre (ou sob) o grupo.</p>
-          <ul class="lista-chave">
-            <li>tercina de colcheias = 3 colcheias no tempo de <b>2</b> colcheias (1 semínima);</li>
-            <li>tercina de semínimas = 3 semínimas no tempo de <b>2</b> semínimas (1 mínima).</li>
-          </ul>
-          <p>É a divisão <b>ternária</b> aparecendo dentro de um compasso <b>simples</b>, que é binário por natureza.</p>`,
+          <p>Na <b>fórmula em 3</b> — <b>3/4</b> — cada compasso tem <b>três tempos</b>, e a semínima vale um
+          tempo.</p>
+          ${compassoRitmico(['seminima', 'seminima', 'seminima'], { formula: '3/4', destaque: 0 })}
+          <p>O <b>movimento de solfejo em 3</b> faz três movimentos por compasso: <b>1</b> para baixo,
+          <b>2</b> para fora e <b>3</b> para cima. Valem as mesmas regras da fase anterior — a
+          <b>janela de movimento</b> e a <b>mesa invisível</b>.</p>`,
+      },
+      {
+        titulo: 'Fórmula de compasso em 2 e movimento de solfejo em 2',
+        pagina: 40,
+        corpo: () => `
+          <p>Na <b>fórmula em 2</b> — <b>2/4</b> — cada compasso tem <b>dois tempos</b>, e a semínima vale um
+          tempo.</p>
+          ${compassoRitmico(['seminima', 'seminima'], { formula: '2/4', destaque: 0 })}
+          <p>O <b>movimento de solfejo em 2</b> é o mais simples: <b>1</b> para baixo e <b>2</b> para cima.</p>
+          <p class="dica">Repare que o <b>1</b> é sempre para baixo, em qualquer compasso. É por ele que a
+          orquestra inteira se encontra.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'pulso', titulo: 'Acerta o bpm', descricao: 'Marque a pulsação e descubra em que velocidade você está batendo.' },
-      { tipo: 'ritmo', titulo: 'Fecha o compasso com ponto', descricao: 'Agora com figuras pontuadas na conta.', comPonto: true },
+      { tipo: 'ritmo', titulo: 'Fecha o compasso com ponto', descricao: 'Complete o compasso usando o ponto de aumento.' },
+      { tipo: 'pulso', titulo: 'No compasso', descricao: 'Conduza a pulsação no compasso indicado.' },
     ],
   },
 
   // ------------------------------------------------------------------ 5
   {
     numero: 5,
-    id: 'semitons',
-    titulo: 'Tons, semitons e acidentes',
-    subtitulo: 'Sustenido, bemol, bequadro e enarmonia',
-    paginas: '52 a 60',
-    icone: '🎹',
-    cor: '#d33f6a',
-    resumo: 'A menor distância entre dois sons, os sinais que alteram a nota e a diferença entre semitom cromático e diatônico.',
+    id: 'f5',
+    titulo: 'Tercinas, fermata e compasso em 6',
+    subtitulo: 'Divisão especial, prolongamento livre e a fórmula em 6',
+    paginas: '44 a 51',
+    icone: '⏸️',
+    cor: '#b03b6a',
+    resumo: 'A tercina, que divide o tempo em três onde caberiam dois; a fermata, que prolonga o som além do escrito; e o compasso em 6 com os seus dois movimentos de solfejo.',
     licoes: [
       {
-        titulo: 'Tom e semitom',
-        pagina: 52,
+        titulo: 'Tercinas',
+        pagina: 44,
         corpo: () => `
-          <p>O <b>semitom</b> é a <b>menor distância</b> entre dois sons no nosso sistema musical. Dois semitons formam um <b>tom</b>.</p>
-          <p>No teclado, o semitom é a distância de uma tecla para a tecla <b>imediatamente vizinha</b>, seja branca ou preta.
-          Por isso, entre <b>Mi–Fá</b> e entre <b>Si–Dó</b> há apenas um semitom: não existe tecla preta entre elas.</p>
-          <div class="quadro-teclado">${teclado({ marcadas: { 'Mi4': 'grau', 'Fá4': 'grau', 'Si4': 'alterada', 'Dó5': 'alterada' } })}</div>`,
+          <p>A <b>tercina</b> é um grupo de <b>três figuras iguais</b> executadas no tempo em que
+          normalmente caberiam <b>duas</b>. Ela vem marcada com o algarismo <b>3</b> sobre o grupo.</p>
+          <p>Uma tercina de colcheias, por exemplo, ocupa exatamente <b>um tempo</b> de semínima: as três
+          colcheias se apertam para caber onde caberiam duas.</p>
+          ${compassoRitmico(['colcheia', 'colcheia', 'colcheia', 'seminima', 'seminima'], { formula: '4/4' })}
+          <p class="dica">A tercina não muda o tempo do compasso — muda o número de partes <b>dentro</b> de um
+          tempo. O compasso continua com a mesma duração.</p>`,
       },
       {
-        titulo: 'Os acidentes',
-        pagina: 53,
+        titulo: 'Fermata',
+        pagina: 46,
         corpo: () => `
-          <p>Os <b>acidentes</b> alteram a altura da nota:</p>
-          ${tabela(['Sinal', 'Nome', 'O que faz'], [
-            ['♯', 'sustenido', 'sobe a nota um semitom'],
-            ['♭', 'bemol', 'desce a nota um semitom'],
-            ['♮', 'bequadro', 'cancela o acidente anterior'],
-            ['𝄪', 'dobrado sustenido', 'sobe a nota um tom'],
-            ['𝄫', 'dobrado bemol', 'desce a nota um tom'],
-          ])}
-          <p>O acidente escrito no meio da música vale <b>até o fim do compasso</b>, e só para as notas naquela mesma linha
-          ou espaço. Já o acidente da <b>armadura de clave</b> vale para a peça inteira, em todas as oitavas.</p>`,
+          <p>A <b>fermata</b> é o sinal — um arco com um ponto — colocado sobre (ou sob) uma nota ou pausa.
+          Ela pede que a duração seja <b>prolongada além</b> do valor escrito.</p>
+          <p>Quanto tempo a mais? Isso não está escrito: quem decide é a <b>condução</b>. Na orquestra, todos
+          seguram o som juntos e o soltam juntos, no gesto de quem rege.</p>
+          <p class="dica">A fermata sobre uma <b>pausa</b> prolonga o silêncio, e não o som. É o mesmo sinal,
+          com o mesmo efeito, aplicado ao que estiver embaixo dele.</p>`,
       },
       {
-        titulo: 'Semitom cromático e diatônico',
-        pagina: 53,
+        titulo: 'Fórmula de compasso em 6 e movimentos de solfejo em 6',
+        pagina: 48,
         corpo: () => `
-          <p>Dois semitons podem soar igual e se escrever de modos diferentes:</p>
+          <p>Na <b>fórmula em 6</b> — <b>6/8</b> — cada compasso tem <b>seis</b> partes, e a figura que vale
+          uma parte é a <b>colcheia</b>.</p>
+          ${compassoRitmico(['colcheia', 'colcheia', 'colcheia', 'colcheia', 'colcheia', 'colcheia'], { formula: '6/8' })}
+          <p>O método dá <b>dois</b> movimentos de solfejo para o compasso em 6:</p>
           <ul class="lista-chave">
-            <li><b>Semitom cromático</b>: as duas notas têm o <b>mesmo nome</b> — Dó → Dó♯, Lá → Lá♭.</li>
-            <li><b>Semitom diatônico</b>: as duas notas têm <b>nomes diferentes</b> — Mi → Fá, Dó → Ré♭.</li>
+            <li><b>Movimento de solfejo em 6</b> — seis movimentos, um para cada colcheia. É o usado no estudo
+            e nos andamentos lentos, porque mostra cada parte do compasso.</li>
+            <li><b>Movimento alternativo para solfejo em 6</b> — dois movimentos por compasso, agrupando as
+            colcheias de três em três. É o usado quando o andamento é rápido demais para seis gestos.</li>
           </ul>
-          <p class="dica">Mesmo nome = cromático. Nome trocado = diatônico. Só isso.</p>`,
-      },
-      {
-        titulo: 'Enarmonia e uníssono',
-        pagina: 54,
-        corpo: () => `
-          <p><b>Notas enarmônicas</b> são notas de nomes diferentes que soam igual: Dó♯ = Ré♭, Fá♯ = Sol♭, Mi = Fá♭.</p>
-          <p><b>Uníssono</b> é o mesmo som cantado ou tocado por vozes ou instrumentos diferentes ao mesmo tempo —
-          quando toda a congregação canta a mesma melodia, está cantando em uníssono.</p>`,
+          <p class="dica">Os dois estão certos: o que muda é a velocidade. Seis gestos num andamento rápido
+          viram atropelo; dois gestos num andamento lento deixam o meio do compasso sem referência.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'teclado', modo: 'semitom', titulo: 'Caça ao semitom', descricao: 'Toque a tecla que fica um semitom acima ou abaixo.' },
-      { tipo: 'memoria', baralho: 'acidentes', titulo: 'Memória dos acidentes', descricao: 'Junte cada sinal ao seu efeito.' },
+      { tipo: 'pulso', titulo: 'Conduzir em 6/8', descricao: 'Conduza o compasso em 6, nos dois movimentos.' },
+      { tipo: 'ritmo', modo: 'classificar', titulo: 'Simples ou composto?', descricao: 'Classifique o compasso pela fórmula.' },
     ],
   },
 
   // ------------------------------------------------------------------ 6
   {
     numero: 6,
-    id: 'escalas',
-    titulo: 'Escalas maiores e armaduras',
-    subtitulo: 'T T st T T T st, sustenidos e bemóis',
-    paginas: '61 a 79',
-    icone: '🔑',
-    cor: '#0f8f9e',
-    resumo: 'Como se constrói qualquer escala maior, a ordem dos sustenidos e dos bemóis e como descobrir a tonalidade só de olhar a armadura.',
+    id: 'f6',
+    titulo: 'Tom, semitom, acidentes e escalas maiores',
+    subtitulo: 'Sustenido e bemol, escalas diatônicas e maiores',
+    paginas: '52 a 64',
+    icone: '🎹',
+    cor: '#2f7d9e',
+    resumo: 'A menor distância entre dois sons, os sinais que alteram a altura das notas e a construção das escalas maiores — com sustenidos e com bemóis.',
     licoes: [
       {
-        titulo: 'A escala maior modelo',
-        pagina: 61,
+        titulo: 'Tom e semitom',
+        pagina: 52,
         corpo: () => `
-          <p>A escala de <b>Dó Maior</b> é a escala modelo: só notas naturais. O que a define não são as notas, e sim o
-          <b>padrão de tons e semitons</b> entre elas:</p>
-          <p class="padrao">T &nbsp; T &nbsp; st &nbsp; T &nbsp; T &nbsp; T &nbsp; st</p>
-          <p>Ou seja: os semitons caem sempre entre o <b>3º e o 4º</b> graus e entre o <b>7º e o 8º</b> graus.
-          Qualquer nota pode ser tônica, desde que esse padrão seja mantido — e é aí que entram os acidentes.</p>
-          <div class="quadro-teclado">${teclado({ marcadas: { 'Dó4': 'tonica', 'Ré4': 'grau', 'Mi4': 'grau', 'Fá4': 'grau', 'Sol4': 'grau', 'Lá4': 'grau', 'Si4': 'grau', 'Dó5': 'tonica' } })}</div>`,
+          <p><b>Semitom</b> é a <b>menor distância</b> entre dois sons no nosso sistema. <b>Tom</b> é a
+          distância equivalente a <b>dois semitons</b>.</p>
+          <p>Entre as sete notas naturais, os semitons estão em dois lugares fixos: <b>Mi–Fá</b> e
+          <b>Si–Dó</b>. Entre todas as outras vizinhas há um tom inteiro.</p>
+          <div class="quadro-teclado">${teclado({ marcadas: { 'Mi4': 'tonica', 'Fá4': 'tonica', 'Si4': 'tonica' } })}</div>
+          <p>O método ainda distingue dois tipos de semitom:</p>
+          <ul class="lista-chave">
+            <li><b>Semitom diatônico</b> — entre notas de <b>nomes diferentes</b> (Mi–Fá, Dó–Ré♭).</li>
+            <li><b>Semitom cromático</b> — entre notas de <b>mesmo nome</b>, uma alterada (Dó–Dó♯).</li>
+          </ul>
+          <p class="dica">No teclado, Mi e Fá são vizinhas <b>sem tecla preta no meio</b> — e Si e Dó também.
+          É esse buraco na sequência de teclas pretas que marca os dois semitons naturais.</p>`,
       },
       {
-        titulo: 'Escalas com sustenidos',
-        pagina: 63,
+        titulo: 'Acidentes — sustenido e bemol',
+        pagina: 52,
         corpo: () => `
-          <p>Para achar a próxima escala com sustenido, tomamos a <b>5ª nota</b> da escala anterior como nova tônica
-          (Dó → Sol → Ré → Lá → Mi → Si → Fá♯ → Dó♯) e acrescentamos o sustenido necessário para manter o padrão.</p>
-          <p>Os sustenidos entram sempre nesta ordem — <b>Fá, Dó, Sol, Ré, Lá, Mi, Si</b>:</p>
-          ${pentagrama({ clave: 'sol', armadura: { letras: ['Fá', 'Dó', 'Sol', 'Ré', 'Lá', 'Mi', 'Si'], tipo: 'sustenido' }, largura: 300 })}
-          <p class="dica">Com sustenidos: a <b>tônica é um semitom acima do último sustenido</b> da armadura.
-          Armadura com Fá♯ e Dó♯ → último é Dó♯ → tonalidade de <b>Ré Maior</b>.</p>`,
+          <p><b>Acidentes</b> são sinais que alteram a altura da nota:</p>
+          ${tabela(['Sinal', 'Nome', 'O que faz'], [
+            ['♯', '<b>Sustenido</b>', 'sobe a nota um semitom'],
+            ['♭', '<b>Bemol</b>', 'desce a nota um semitom'],
+            ['♮', '<b>Bequadro</b>', 'cancela o acidente anterior e devolve a nota ao natural'],
+            ['𝄪', '<b>Dobrado sustenido</b>', 'sobe a nota dois semitons (um tom)'],
+            ['𝄫', '<b>Dobrado bemol</b>', 'desce a nota dois semitons (um tom)'],
+          ])}
+          <p>Duas notas de nomes diferentes podem soar exatamente igual — Dó♯ e Ré♭, por exemplo. O método
+          chama isso de <b>som uníssono</b>.</p>
+          <p class="dica">O acidente vem <b>antes</b> da nota na partitura, mas se lê <b>depois</b> do nome
+          dela: escreve-se ♯ e depois a bolinha, e se diz "Fá sustenido".</p>`,
       },
       {
-        titulo: 'Escalas com bemóis',
-        pagina: 61,
+        titulo: 'Escalas, escalas diatônicas e escalas maiores',
+        pagina: 55,
         corpo: () => `
-          <p>Para as escalas com bemol partimos da <b>4ª nota</b> da escala anterior (Dó → Fá → Si♭ → Mi♭ → Lá♭ → Ré♭ → Sol♭ → Dó♭),
-          mantendo o mesmo padrão T T st T T T st. O nome da escala leva o acidente da tônica: não é "Si Maior", é <b>Si bemol Maior</b>.</p>
-          <p>Os bemóis entram na ordem inversa dos sustenidos — <b>Si, Mi, Lá, Ré, Sol, Dó, Fá</b>:</p>
-          ${pentagrama({ clave: 'sol', armadura: { letras: ['Si', 'Mi', 'Lá', 'Ré', 'Sol', 'Dó', 'Fá'], tipo: 'bemol' }, largura: 300 })}
-          <p class="dica">Com bemóis: o <b>penúltimo bemol dá o nome</b> da tonalidade. Com um bemol só (Si♭), é <b>Fá Maior</b> — esse decora.</p>`,
+          <p><b>Escala</b> é a sucessão ordenada de sons, subindo ou descendo. Cada nota da escala ocupa um
+          <b>grau</b>, numerado de I a VIII.</p>
+          <p>A <b>escala diatônica</b> usa as sete notas com os seus nomes diferentes, sem repetir nome. A
+          <b>escala maior</b> é a escala diatônica construída sempre na mesma ordem de distâncias:</p>
+          <p class="formula-escala"><b>T · T · st · T · T · T · st</b></p>
+          <div class="quadro-teclado">${teclado({ marcadas: { 'Dó4': 'tonica', 'Ré4': 'grau', 'Mi4': 'grau', 'Fá4': 'grau', 'Sol4': 'grau', 'Lá4': 'grau', 'Si4': 'grau', 'Dó5': 'tonica' } })}</div>
+          <p>Dó Maior é a única escala maior sem nenhum acidente — todas as outras precisam de sustenidos ou
+          bemóis para manter essa mesma ordem de tons e semitons.</p>`,
       },
       {
-        titulo: 'Armadura de clave',
-        pagina: 66,
+        titulo: 'Escalas maiores com sustenidos e com bemóis',
+        pagina: 57,
         corpo: () => `
-          <p>A <b>armadura de clave</b> é o conjunto de sustenidos ou bemóis escrito logo depois da clave. Ela evita repetir
-          o acidente a cada nota e vale para a música inteira, em qualquer oitava.</p>
-          <p>Numa mesma armadura nunca se misturam sustenidos e bemóis, e a ordem dos acidentes é sempre a mesma.</p>
-          ${tabela(['Acidentes', 'Tonalidade maior', 'Relativa menor'], [
-            ['nenhum', 'Dó Maior', 'Lá menor'],
-            ['1 ♯ (Fá♯)', 'Sol Maior', 'Mi menor'],
-            ['2 ♯', 'Ré Maior', 'Si menor'],
-            ['3 ♯', 'Lá Maior', 'Fá♯ menor'],
-            ['1 ♭ (Si♭)', 'Fá Maior', 'Ré menor'],
-            ['2 ♭', 'Si♭ Maior', 'Sol menor'],
-            ['3 ♭', 'Mi♭ Maior', 'Dó menor'],
-          ])}`,
+          <p>Para manter a ordem <b>T T st T T T st</b> a partir de outra nota, é preciso alterar algumas
+          notas. As escalas se organizam em duas famílias:</p>
+          ${tabela(['Escalas com sustenidos', 'Acidentes'], [
+            ['<b>Sol</b> Maior', 'Fá♯'],
+            ['<b>Ré</b> Maior', 'Fá♯ Dó♯'],
+            ['<b>Lá</b> Maior', 'Fá♯ Dó♯ Sol♯'],
+            ['<b>Mi</b> Maior', 'Fá♯ Dó♯ Sol♯ Ré♯'],
+          ])}
+          ${tabela(['Escalas com bemóis', 'Acidentes'], [
+            ['<b>Fá</b> Maior', 'Si♭'],
+            ['<b>Si♭</b> Maior', 'Si♭ Mi♭'],
+            ['<b>Mi♭</b> Maior', 'Si♭ Mi♭ Lá♭'],
+            ['<b>Lá♭</b> Maior', 'Si♭ Mi♭ Lá♭ Ré♭'],
+          ])}
+          <p>Os sustenidos entram sempre na ordem <b>Fá Dó Sol Ré Lá Mi Si</b>; os bemóis, na ordem inversa —
+          <b>Si Mi Lá Ré Sol Dó Fá</b>.</p>
+          <p class="dica">Cada escala com sustenido nova começa uma <b>5ª acima</b> da anterior; cada escala
+          com bemol nova começa uma <b>4ª acima</b>. É por isso que a sequência é sempre a mesma.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'teclado', modo: 'escala', titulo: 'Monte a escala', descricao: 'Construa a escala maior tecla por tecla, seguindo T T st T T T st.' },
-      { tipo: 'armadura', titulo: 'Que tonalidade é essa?', descricao: 'Olhe a armadura e acerte a tonalidade.' },
+      { tipo: 'memoria', baralho: 'acidentes', titulo: 'Jogo da memória: acidentes', descricao: 'Junte cada sinal com o que ele faz.' },
+      { tipo: 'teclado', modo: 'escala', titulo: 'Monte a escala', descricao: 'Toque a escala maior pedida no teclado.' },
     ],
   },
 
   // ------------------------------------------------------------------ 7
   {
     numero: 7,
-    id: 'tonalidade',
-    titulo: 'Tonalidade, intervalos e dinâmica',
-    subtitulo: 'Maior e menor, distâncias e volume',
-    paginas: '80 a 100',
-    icone: '🎵',
-    cor: '#c2185b',
-    resumo: 'Tonalidade maior e menor, relativa menor, intervalos entre notas, ritornello e os sinais de dinâmica.',
+    id: 'f7',
+    titulo: 'Armadura de clave e compassos em 9 e em 12',
+    subtitulo: 'Os acidentes na chave da música e os compassos longos',
+    paginas: '65 a 79',
+    icone: '🔑',
+    cor: '#4a7c2f',
+    resumo: 'A armadura de clave, que declara de uma vez os acidentes que valem para a música inteira, e os compassos em 9 e em 12 com os seus movimentos de solfejo.',
     licoes: [
       {
-        titulo: 'Tonalidade maior e menor',
-        pagina: 80,
+        titulo: 'Armadura de clave',
+        pagina: 65,
         corpo: () => `
-          <p><b>Tonalidade</b> é o conjunto de sons de uma escala organizados em torno da <b>tônica</b>, a nota que dá
-          o nome e o repouso à música.</p>
+          <p>A <b>armadura de clave</b> é o conjunto de acidentes escrito logo depois da clave, antes da
+          fórmula de compasso. Ela vale para a <b>música inteira</b>, em todas as oitavas — não é preciso
+          repetir o sinal nota a nota.</p>
+          ${pentagrama({ clave: 'sol', armadura: { letras: ['Fá', 'Dó'], tipo: 'sustenido' }, compasso: '4/4', notas: [], largura: 260 })}
+          <p>Os sustenidos entram sempre nesta ordem: <b>Fá, Dó, Sol, Ré, Lá, Mi, Si</b>. Os bemóis, na ordem
+          inversa: <b>Si, Mi, Lá, Ré, Sol, Dó, Fá</b>.</p>
+          <p class="dica">Para descobrir a tonalidade maior pela armadura: com <b>sustenidos</b>, é um semitom
+          <b>acima</b> do último sustenido; com <b>bemóis</b>, é o <b>penúltimo</b> bemol da armadura.</p>`,
+      },
+      {
+        titulo: 'Fórmula de compasso em 9 e movimentos de solfejo em 9',
+        pagina: 68,
+        corpo: () => `
+          <p>Na <b>fórmula em 9</b> — <b>9/8</b> — cada compasso tem <b>nove</b> colcheias, agrupadas de três
+          em três.</p>
+          <p>Como no compasso em 6, o método dá dois movimentos:</p>
           <ul class="lista-chave">
-            <li><b>Maior</b> — 3º grau a <b>dois tons</b> da tônica (3ª maior). Som mais aberto, alegre.</li>
-            <li><b>Menor</b> — 3º grau a <b>um tom e meio</b> da tônica (3ª menor). Som mais recolhido.</li>
-          </ul>
-          <p>Cada tonalidade maior tem uma <b>relativa menor</b>, com a <b>mesma armadura</b>, cuja tônica está uma
-          <b>3ª menor abaixo</b> (ou, o que dá no mesmo, no <b>6º grau</b> da escala maior): Dó Maior ↔ Lá menor.</p>`,
-      },
-      {
-        titulo: 'Intervalos',
-        pagina: 84,
-        corpo: () => `
-          <p><b>Intervalo</b> é a distância entre duas notas. Conta-se pelo <b>número de graus</b>, incluindo as duas pontas:
-          de Dó a Mi contam-se Dó, Ré, Mi = <b>3ª</b>.</p>
-          ${tabela(['Intervalo', 'Tons e semitons', 'Exemplo'], [
-            ['2ª menor', '1 semitom', 'Mi → Fá'],
-            ['2ª maior', '1 tom', 'Dó → Ré'],
-            ['3ª menor', '1 tom e meio', 'Lá → Dó'],
-            ['3ª maior', '2 tons', 'Dó → Mi'],
-            ['4ª justa', '2 tons e meio', 'Dó → Fá'],
-            ['5ª justa', '3 tons e meio', 'Dó → Sol'],
-            ['8ª justa', '6 tons', 'Dó → Dó'],
-          ])}
-          <p>Intervalo <b>melódico</b> é uma nota depois da outra; <b>harmônico</b> é as duas ao mesmo tempo.</p>`,
-      },
-      {
-        titulo: 'Dinâmica',
-        pagina: 93,
-        corpo: () => `
-          <p>Os sinais de <b>dinâmica</b> dizem com que <b>intensidade</b> tocar ou cantar:</p>
-          ${tabela(['Sinal', 'Termo', 'Sentido'], DINAMICAS.map((d) => [`<b>${d.sigla}</b>`, `<i>${d.termo}</i>`, d.sentido]))}
-          <p>Ainda existem o <b>crescendo</b> (&lt;), que aumenta aos poucos, e o <b>diminuendo</b> (&gt;), que diminui.</p>`,
-      },
-      {
-        titulo: 'Sinais de repetição',
-        pagina: 86,
-        corpo: () => `
-          <p>O <b>ritornello</b> (‖: … :‖) manda repetir o trecho entre os dois sinais. Se aparece só o de fechar,
-          repete-se desde o início.</p>
-          <ul class="lista-chave">
-            <li><b>Casa 1 e casa 2</b> — na repetição, pula-se a primeira casa e toca-se a segunda.</li>
-            <li><b>D.C. (Da Capo)</b> — volta ao começo.</li>
-            <li><b>Fine</b> — marca onde a música termina de verdade.</li>
+            <li><b>Movimento de solfejo em 9</b> — nove movimentos, um por colcheia.</li>
+            <li><b>Movimento alternativo para solfejo em 9</b> — três movimentos por compasso, um para cada
+            grupo de três colcheias. É o usado quando o andamento não permite nove gestos.</li>
           </ul>`,
+      },
+      {
+        titulo: 'Fórmula de compasso em 12 e movimentos de solfejo em 12',
+        pagina: 72,
+        corpo: () => `
+          <p>Na <b>fórmula em 12</b> — <b>12/8</b> — cada compasso tem <b>doze</b> colcheias, agrupadas de
+          três em três, formando quatro grupos.</p>
+          <ul class="lista-chave">
+            <li><b>Movimento de solfejo em 12</b> — doze movimentos, um por colcheia.</li>
+            <li><b>Movimento alternativo para solfejo em 12</b> — quatro movimentos por compasso, um para cada
+            grupo de três colcheias.</li>
+          </ul>
+          <p class="dica">Repare no padrão: em 6 são 2 grupos, em 9 são 3, em 12 são 4. O movimento
+          alternativo é sempre <b>um gesto por grupo de três colcheias</b>.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'teclado', modo: 'intervalo', titulo: 'Mede o intervalo', descricao: 'Toque a nota que fica à distância pedida.' },
-      { tipo: 'ouvido', modo: 'intensidade', titulo: 'Forte ou fraco?', descricao: 'Ouça e diga qual sinal de dinâmica corresponde.' },
+      { tipo: 'armadura', titulo: 'Que tonalidade é essa?', descricao: 'Leia a armadura e diga a tonalidade maior.' },
+      { tipo: 'pulso', titulo: 'Conduzir em 12/8', descricao: 'Conduza o compasso longo no movimento alternativo.' },
     ],
   },
 
   // ------------------------------------------------------------------ 8
   {
     numero: 8,
-    id: 'composto',
-    titulo: 'Compasso composto e subdivisão',
-    subtitulo: '6/8, 9/8, 12/8 e a divisão do tempo',
-    paginas: '101 a 110',
-    icone: '🌀',
-    cor: '#4a6cf7',
-    resumo: 'Subdivisão binária e ternária, a unidade de tempo pontuada e os movimentos de condução em 6, 9 e 12.',
+    id: 'f8',
+    titulo: 'Tonalidade e acidentes ocorrentes',
+    subtitulo: 'Tonalidade maior e menor, acidentes ocorrentes e de precaução',
+    paginas: '80 a 85',
+    icone: '🗝️',
+    cor: '#8a5a2f',
+    resumo: 'A tonalidade, que dá o centro para onde a música se dirige, e os acidentes que aparecem no meio do caminho — os ocorrentes e os de precaução.',
     licoes: [
       {
-        titulo: 'Subdivisão binária e ternária',
-        pagina: 101,
+        titulo: 'Tonalidade',
+        pagina: 80,
         corpo: () => `
-          <p><b>Subdividir</b> é partir cada tempo em partes iguais.</p>
+          <p><b>Tonalidade</b> é o conjunto de sons organizados em torno de uma nota central, a <b>tônica</b>.
+          É ela que dá à música a sensação de repouso quando chega ao fim.</p>
+          <p>A tonalidade pode ser <b>maior</b> ou <b>menor</b>. Uma armadura serve às duas: a mesma armadura
+          de Dó Maior serve a Lá menor, sua <b>relativa</b>. O que diferencia uma da outra é a nota em que a
+          música se apoia e termina.</p>
+          ${tabela(['Armadura', 'Tonalidade maior', 'Relativa menor'], [
+            ['sem acidentes', 'Dó Maior', 'Lá menor'],
+            ['1 sustenido', 'Sol Maior', 'Mi menor'],
+            ['1 bemol', 'Fá Maior', 'Ré menor'],
+            ['2 bemóis', 'Si♭ Maior', 'Sol menor'],
+          ])}
+          <p class="dica">A relativa menor fica sempre uma <b>3ª menor abaixo</b> da maior — ou, o que dá no
+          mesmo, no <b>VI grau</b> dela.</p>`,
+      },
+      {
+        titulo: 'Acidentes ocorrentes e de precaução',
+        pagina: 82,
+        corpo: () => `
+          <p>Nem todo acidente está na armadura. Os que aparecem no meio da música têm nome:</p>
           <ul class="lista-chave">
-            <li><b>Subdivisão binária</b> — o tempo se divide em <b>2</b> partes. É o compasso <b>simples</b>.</li>
-            <li><b>Subdivisão ternária</b> — o tempo se divide em <b>3</b> partes. É o compasso <b>composto</b>.</li>
+            <li><b>Acidente ocorrente</b> — o que aparece durante a música, escrito antes da nota. Ele vale
+            até o <b>fim do compasso</b>, para aquela nota naquela oitava, e some na barra seguinte.</li>
+            <li><b>Acidente de precaução</b> — o que não muda nada: é escrito só para lembrar o músico do que
+            já valia, evitando engano. Costuma vir entre parênteses.</li>
           </ul>
-          <p>Em 4/4, uma semínima (1 tempo) se parte em 2 colcheias. Em 6/8, o tempo é a colcheia pontuada e se parte
-          em 3 colcheias.</p>`,
-      },
-      {
-        titulo: 'Como ler a fórmula composta',
-        pagina: 102,
-        corpo: () => `
-          <p>Nos compassos compostos os números <b>não</b> se leem como nos simples. Para achar o número de tempos,
-          <b>divida o número de cima por 3</b>; a unidade de tempo é a figura de baixo <b>pontuada</b>.</p>
-          ${tabela(['Fórmula', 'Tempos', 'Unidade de tempo', 'Espécie'], [
-            ['6/8', '2', 'colcheia pontuada', 'binário composto'],
-            ['9/8', '3', 'colcheia pontuada', 'ternário composto'],
-            ['12/8', '4', 'colcheia pontuada', 'quaternário composto'],
-            ['6/4', '2', 'semínima pontuada', 'binário composto'],
-          ])}
-          ${pentagrama({ clave: 'sol', compasso: '6/8', notas: [
-            { letra: 'Sol', oitava: 4, figura: 'colcheia' }, { letra: 'Lá', oitava: 4, figura: 'colcheia' },
-            { letra: 'Si', oitava: 4, figura: 'colcheia' }, { letra: 'Dó', oitava: 5, figura: 'seminima', pontuada: true }], largura: 320 })}`,
-      },
-      {
-        titulo: 'Compasso composto e o seu simples correspondente',
-        pagina: 104,
-        corpo: () => `
-          <p>Cada composto tem um simples de mesma espécie — muda a subdivisão, não a quantidade de tempos:</p>
-          ${tabela(['Simples', 'Composto', 'Espécie'], [
-            ['2/4', '6/8', 'binário'], ['3/4', '9/8', 'ternário'], ['4/4', '12/8', 'quaternário'],
-          ])}
-          <p>Os <b>movimentos de condução</b> são os mesmos do simples de mesma espécie: 6/8 conduz-se como binário
-          (baixo–cima), 9/8 como ternário, 12/8 como quaternário. O que muda é que cada movimento carrega <b>três</b>
-          subdivisões em vez de duas.</p>`,
-      },
-      {
-        titulo: 'Solfejo em 6, 9 e 12',
-        pagina: 106,
-        corpo: () => `
-          <p>Quando o andamento é lento, o compasso composto pode ser conduzido <b>subdividido</b>: em vez de 2 movimentos
-          em 6/8, fazem-se <b>6</b>; em vez de 3 em 9/8, fazem-se <b>9</b>; em 12/8, <b>12</b>.</p>
-          <p>Isso ajuda a manter a precisão nas passagens lentas e nas figuras curtas, e é o mesmo recurso usado no
-          estudo dos hinos em andamento reduzido.</p>`,
+          <p class="dica">A pergunta que resolve a maioria dos casos: <b>já passou a barra de compasso?</b>
+          Se passou, o acidente ocorrente não vale mais — a armadura volta a mandar sozinha.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'ritmo', titulo: 'Fecha o compasso composto', descricao: 'Complete compassos 6/8, 9/8 e 12/8.', composto: true },
-      { tipo: 'pulso', titulo: 'Conduzir em 6/8', descricao: 'Bata a pulsação da colcheia pontuada.', compasso: '6/8' },
+      { tipo: 'armadura', titulo: 'Maior ou relativa menor?', descricao: 'Leia a armadura e diga as duas tonalidades que ela serve.' },
+      { tipo: 'memoria', baralho: 'acidentes', titulo: 'Jogo da memória: acidentes', descricao: 'Junte cada sinal com o que ele faz.' },
     ],
   },
 
   // ------------------------------------------------------------------ 9
   {
     numero: 9,
-    id: 'sincopa',
-    titulo: 'Síncopa, contratempo e ritmos iniciais',
-    subtitulo: 'Tético, anacrústico e acéfalo',
-    paginas: '111 a 125',
-    icone: '⚡',
-    cor: '#e6a700',
-    resumo: 'O deslocamento do acento, o ataque no tempo fraco e as três maneiras de uma música começar.',
+    id: 'f9',
+    titulo: 'Barra de repetição',
+    subtitulo: 'Ritornello e os caminhos de repetição da partitura',
+    paginas: '86 a 92',
+    icone: '🔁',
+    cor: '#5a4a9e',
+    resumo: 'Os sinais que mandam voltar e repetir um trecho — e como ler, sem se perder, a ordem em que a música realmente acontece.',
     licoes: [
       {
-        titulo: 'Síncopa',
-        pagina: 111,
+        titulo: 'Barra de compasso — repetição',
+        pagina: 86,
         corpo: () => `
-          <p><b>Síncopa</b> é a nota que <b>começa num tempo (ou parte) fraco e se prolonga</b> sobre o tempo forte
-          seguinte, deslocando o acento natural do compasso.</p>
-          <p>Ela nasce de uma nota curta, uma longa e outra curta, ou de uma ligadura que atravessa a batida.
-          É o balanço característico de muitos hinos e de quase toda a música popular brasileira.</p>`,
-      },
-      {
-        titulo: 'Contratempo',
-        pagina: 114,
-        corpo: () => `
-          <p><b>Contratempo</b> é o som que ataca no tempo (ou parte) <b>fraco</b> e <b>não</b> se prolonga sobre o forte:
-          antes do forte há uma <b>pausa</b>.</p>
-          <p class="dica">A diferença é só essa: se o som <b>invade</b> o tempo forte, é <b>síncopa</b>;
-          se o tempo forte está <b>em silêncio</b>, é <b>contratempo</b>.</p>`,
-      },
-      {
-        titulo: 'Ritmos iniciais',
-        pagina: 118,
-        corpo: () => `
-          <p>Toda peça começa de uma destas três maneiras — e o nome depende do <b>primeiro compasso</b>:</p>
-          ${tabela(['Ritmo inicial', 'Como começa'], [
-            ['<b>Tético</b>', 'no <b>1º tempo</b>, forte, com o compasso completo'],
-            ['<b>Anacrústico</b>', 'antes do 1º tempo forte, com um compasso incompleto (anacruse)'],
-            ['<b>Acéfalo</b>', 'com <b>pausa</b> no 1º tempo, escrita ou não escrita'],
-          ])}
-          <p>Considera-se <b>acéfalo</b> quando as notas desse primeiro compasso abrangem <b>mais da metade</b> de um
-          compasso binário ou quaternário, ou <b>mais de dois terços</b> de um compasso ternário.</p>`,
-      },
-      {
-        titulo: 'Onde o ritmo inicial vale',
-        pagina: 121,
-        corpo: () => `
-          <p>Os ritmos iniciais <b>somente iniciam</b> a partitura: nunca se encontram no meio dela.
-          Um contratempo que aparece no meio do hino é apenas um contratempo — não é compasso de ritmo acéfalo.</p>
-          <p>Quando o contratempo está no <b>primeiro tempo</b> da peça, aí sim ele recebe o nome de
-          <b>ritmo inicial acéfalo</b>.</p>
-          <p>No hinário há apenas <b>dois</b> hinos acéfalos, ambos <b>sem pausa inicial escrita</b>:
-          o <b>208</b> ("Conserva a paz, ó minha alma") e o <b>377</b> ("No céu, Senhor, no céu").</p>`,
+          <p>A <b>barra de repetição</b> — o <b>ritornello</b> — é a barra dupla com <b>dois pontos</b>. Ela
+          manda voltar e tocar de novo o trecho entre os sinais.</p>
+          <ul class="lista-chave">
+            <li>Dois pontos <b>antes</b> da barra: aqui termina o trecho a repetir — volte.</li>
+            <li>Dois pontos <b>depois</b> da barra: aqui começa o trecho a repetir.</li>
+            <li>Sem sinal de abertura, a repetição volta ao <b>início da música</b>.</li>
+          </ul>
+          <p>Quando a segunda vez termina diferente da primeira, aparecem as <b>casas</b>: a
+          <b>1ª casa</b> se toca na primeira vez, e a <b>2ª casa</b> a substitui na repetição.</p>
+          <p class="dica">Ler a partitura é ler a <b>ordem de execução</b>, não a ordem em que os compassos
+          estão desenhados na folha. Antes de tocar, percorra o caminho com o dedo.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'ritmo', modo: 'classificar', titulo: 'Síncopa ou contratempo?', descricao: 'Veja o desenho e classifique.' },
-      { tipo: 'memoria', baralho: 'iniciais', titulo: 'Memória dos ritmos iniciais', descricao: 'Junte cada ritmo inicial à sua definição.' },
+      { tipo: 'pulso', titulo: 'No compasso', descricao: 'Mantenha a pulsação atravessando a repetição.' },
     ],
   },
 
   // ------------------------------------------------------------------ 10
   {
     numero: 10,
-    id: 'interpretacao',
-    titulo: 'Interpretação, andamento e forma',
-    subtitulo: 'Termos, agógica, frase e semifrase',
-    paginas: '126 a 140',
-    icone: '🎯',
-    cor: '#6d4c41',
-    resumo: 'Notas pontuadas na subdivisão, os termos de andamento e de expressão e o desenho da frase musical.',
+    id: 'f10',
+    titulo: 'Dinâmica',
+    subtitulo: 'A intensidade escrita na partitura',
+    paginas: '93 a 99',
+    icone: '🔊',
+    cor: '#a83b3b',
+    resumo: 'Os sinais que dizem com que intensidade tocar, dos mais suaves aos mais fortes, e as passagens graduais entre eles.',
     licoes: [
       {
-        titulo: 'Notas pontuadas na subdivisão',
-        pagina: 126,
+        titulo: 'Dinâmica',
+        pagina: 93,
         corpo: () => `
-          <p>No compasso <b>simples</b>, a semínima pontuada vale 1 tempo e meio: ela ocupa o tempo inteiro
-          <b>mais</b> a primeira metade do tempo seguinte.</p>
-          <p>No compasso <b>composto</b>, a mesma figura pontuada costuma valer <b>um tempo inteiro</b>,
-          porque ali a unidade de tempo já é pontuada.</p>
-          <p class="dica">Antes de contar o valor de uma figura pontuada, olhe primeiro a fórmula de compasso:
-          simples ou composto muda a resposta.</p>`,
-      },
-      {
-        titulo: 'Termos de andamento',
-        pagina: 129,
-        corpo: () => `
-          <p>Os termos de andamento, quase todos em italiano, dizem a velocidade da peça:</p>
-          ${tabela(['Termo', 'Aproximadamente', 'Sentido'], ANDAMENTOS.map((a) => [`<b>${a.termo}</b>`, a.faixa, a.sentido]))}`,
-      },
-      {
-        titulo: 'Mudanças de andamento e expressão',
-        pagina: 131,
-        corpo: () => `
-          <p>Durante a música o andamento pode mudar de propósito:</p>
-          ${tabela(['Termo', 'Sentido'], TERMOS_DE_EXPRESSAO.map((t) => [`<i>${t.termo}</i>`, t.sentido]))}
-          <p>São indicações de <b>agógica</b> e de <b>expressão</b>: não mudam as notas, mudam o modo de dizê-las.</p>`,
-      },
-      {
-        titulo: 'Frase e semifrase',
-        pagina: 136,
-        corpo: () => `
-          <p>A música se organiza como a fala. A <b>frase musical</b> é a ideia completa, que termina numa espécie de
-          ponto final; a <b>semifrase</b> é a metade dessa ideia, com uma vírgula no meio.</p>
-          <p>Frases costumam ter <b>4 ou 8 compassos</b>, e as semifrases, a metade disso. É o que orienta onde
-          <b>respirar</b> ao cantar e onde o regente pede o fraseado.</p>
-          <p>Indicações como <i>solene</i>, escritas no alto da partitura, dizem o <b>caráter</b> da execução —
-          na Congregação, é a diferença entre um hino de louvor e um hino de súplica.</p>`,
+          <p><b>Dinâmica</b> é a intensidade com que se toca — a propriedade do som que distingue o forte do
+          fraco. Ela vem escrita na partitura, em italiano, abreviada:</p>
+          ${tabela(['Sinal', 'Termo', 'Intensidade'], DINAMICAS.map((d) => [`<b>${d.sigla}</b>`, d.termo, d.sentido]))}
+          <p>Além dos degraus fixos, há as passagens <b>graduais</b>:</p>
+          <ul class="lista-chave">
+            <li><b>Crescendo</b> — aumentando a intensidade aos poucos.</li>
+            <li><b>Decrescendo</b> — diminuindo a intensidade aos poucos.</li>
+          </ul>
+          <p class="dica">Dinâmica é <b>intensidade</b>, não velocidade. Tocar mais forte não é tocar mais
+          rápido — trocar as duas coisas é o engano mais frequente da orquestra.</p>`,
       },
     ],
     jogos: [
-      { tipo: 'memoria', baralho: 'andamentos', titulo: 'Memória dos andamentos', descricao: 'Junte cada termo à sua velocidade.' },
-      { tipo: 'pentagrama', modo: 'ler', titulo: 'Leitura relâmpago — final', descricao: 'Leitura nas três claves, contra o relógio.', claves: ['sol', 'do', 'fa'] },
+      { tipo: 'ouvido', modo: 'intensidade', titulo: 'Forte ou fraco?', descricao: 'Ouça e diga qual das duas soou mais forte.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 11
+  {
+    numero: 11,
+    id: 'f11',
+    titulo: 'Acento métrico, compasso simples e composto',
+    subtitulo: 'Subdivisão binária e ternária, compassos alternados',
+    paginas: '100 a 110',
+    icone: '📐',
+    cor: '#2f6b8a',
+    resumo: 'O peso natural de cada tempo dentro do compasso, a diferença entre compasso simples e composto pela forma de subdividir o tempo, e os compassos que se alternam dentro da mesma música.',
+    licoes: [
+      {
+        titulo: 'Acento métrico',
+        pagina: 100,
+        corpo: () => `
+          <p><b>Acento métrico</b> é o peso natural que cada tempo tem dentro do compasso — independente do
+          que esteja escrito. O <b>primeiro</b> tempo é sempre o mais forte.</p>
+          ${tabela(['Compasso', 'Tempos', 'Acentuação natural'], [
+            ['Binário', '2', '<b>forte</b> · fraco'],
+            ['Ternário', '3', '<b>forte</b> · fraco · fraco'],
+            ['Quaternário', '4', '<b>forte</b> · fraco · meio-forte · fraco'],
+          ])}
+          <p class="dica">O acento métrico não se escreve: ele já está lá. É por isso que o <b>1</b> da
+          condução vai sempre para baixo — o gesto acompanha o peso.</p>`,
+      },
+      {
+        titulo: 'Compasso simples e compasso composto',
+        pagina: 101,
+        corpo: () => `
+          <p>A diferença está em como o <b>tempo</b> se divide:</p>
+          ${tabela(['', 'Compasso simples', 'Compasso composto'], [
+            ['Subdivisão do tempo', '<b>binária</b> — em duas partes', '<b>ternária</b> — em três partes'],
+            ['Figura do tempo', 'figura simples (semínima)', 'figura <b>pontuada</b> (semínima pontuada)'],
+            ['Exemplos', '2/4 · 3/4 · 4/4', '6/8 · 9/8 · 12/8'],
+          ])}
+          <p>Num compasso <b>6/8</b>, por exemplo, não há seis tempos: há <b>dois</b> tempos, e cada um vale
+          uma semínima pontuada, que se divide em três colcheias.</p>
+          <p class="dica">O número de cima do compasso composto (6, 9, 12) é sempre <b>divisível por 3</b>, e
+          dividido por 3 dá o número real de tempos: 6÷3 = 2 tempos, 9÷3 = 3, 12÷3 = 4.</p>`,
+      },
+      {
+        titulo: 'Compassos alternados',
+        pagina: 105,
+        corpo: () => `
+          <p><b>Compassos alternados</b> são os que mudam de fórmula ao longo da música — um compasso em 4
+          seguido de um em 3, por exemplo. A nova fórmula é escrita no compasso em que passa a valer.</p>
+          <p>Cada compasso mantém a sua própria acentuação e o seu próprio movimento de condução. Quem lê
+          precisa trocar de movimento na barra, sem quebrar a pulsação.</p>
+          <p class="dica">A pulsação normalmente <b>não muda</b> quando a fórmula muda: o que muda é quantas
+          pulsações cabem em cada compasso.</p>`,
+      },
+    ],
+    jogos: [
+      { tipo: 'ritmo', modo: 'classificar', titulo: 'Simples ou composto?', descricao: 'Classifique o compasso pela fórmula e pela subdivisão.' },
+      { tipo: 'ritmo', titulo: 'Fecha o compasso composto', descricao: 'Complete o compasso composto com a figura certa.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 12
+  {
+    numero: 12,
+    id: 'f12',
+    titulo: 'Síncopa e contratempo',
+    subtitulo: 'Quando o som entra fora do peso natural do compasso',
+    paginas: '111 a 117',
+    icone: '⚡',
+    cor: '#b0722f',
+    resumo: 'Duas figuras rítmicas que deslocam o acento: a síncopa, que prolonga o som do tempo fraco para o forte, e o contratempo, que soa no fraco e cala no forte.',
+    licoes: [
+      {
+        titulo: 'Síncopa',
+        pagina: 111,
+        corpo: () => `
+          <p><b>Síncopa</b> é o som que <b>começa</b> num tempo (ou parte de tempo) <b>fraco</b> e se
+          <b>prolonga</b> sobre o tempo forte seguinte. O acento métrico chega, mas não há ataque novo: o som
+          que já estava soando atravessa o tempo forte.</p>
+          ${compassoRitmico(['colcheia', 'seminima', 'colcheia', 'seminima'], { formula: '4/4' })}
+          <p class="dica">O que caracteriza a síncopa é o <b>prolongamento</b> por cima do tempo forte. Se o
+          som terminar antes do tempo forte, não é síncopa.</p>`,
+      },
+      {
+        titulo: 'Contratempo',
+        pagina: 112,
+        corpo: () => `
+          <p><b>Contratempo</b> é o som que soa no tempo <b>fraco</b> enquanto o tempo <b>forte</b> fica em
+          <b>silêncio</b> — uma pausa no lugar onde o peso cairia.</p>
+          ${compassoRitmico(['colcheia', 'colcheia', 'colcheia', 'colcheia'], { formula: '2/4' })}
+          <p>A diferença para a síncopa está no que acontece no tempo forte:</p>
+          ${tabela(['', 'No tempo forte'], [
+            ['<b>Síncopa</b>', 'há som — prolongado do tempo fraco anterior'],
+            ['<b>Contratempo</b>', 'há <b>silêncio</b> — o som está só no tempo fraco'],
+          ])}`,
+      },
+    ],
+    jogos: [
+      { tipo: 'ritmo', titulo: 'Fecha o compasso', descricao: 'Complete o compasso reconhecendo o deslocamento do acento.' },
+      { tipo: 'pulso', titulo: 'No compasso', descricao: 'Mantenha a pulsação enquanto o ritmo sai do lugar.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 13
+  {
+    numero: 13,
+    id: 'f13',
+    titulo: 'Ritmos iniciais',
+    subtitulo: 'Tético, anacrúsico e acéfalo',
+    paginas: '118 a 125',
+    icone: '🚩',
+    cor: '#2f9e7d',
+    resumo: 'Como uma música começa: no tempo forte, antes dele ou depois dele. São três classificações que valem apenas para o início da partitura.',
+    licoes: [
+      {
+        titulo: 'Ritmos iniciais',
+        pagina: 118,
+        corpo: () => `
+          <p>Os <b>ritmos iniciais</b> de uma música — e eles se localizam <b>apenas no início</b> da
+          partitura — classificam-se em três:</p>
+          ${tabela(['Ritmo inicial', 'Como a música começa'], [
+            ['<b>Tético</b>', 'com som no <b>primeiro tempo</b> do primeiro compasso: a primeira nota cai no tempo forte'],
+            ['<b>Anacrúsico</b>', 'com notas (as <b>anacruses</b>) que <b>precedem</b> o primeiro compasso'],
+            ['<b>Acéfalo</b>', 'com <b>pausa</b> no primeiro tempo: o som entra depois do tempo forte'],
+          ])}
+          <p>A <b>anacruse</b> não pertence ao primeiro compasso — é anterior a ele, como se estivesse num
+          compasso "zero". Por esse motivo <b>não se escrevem pausas</b> antes dela para completar o
+          compasso.</p>
+          <p>Considera-se ritmo anacrúsico quando essas notas iniciais abrangem <b>até a metade</b> de um
+          compasso binário ou quaternário, ou <b>até dois terços</b> de um compasso ternário.</p>
+          <p class="dica">Os três se distinguem só pelo <b>primeiro tempo</b>: som nele (tético), som antes
+          dele (anacrúsico), silêncio nele (acéfalo).</p>`,
+      },
+    ],
+    jogos: [
+      { tipo: 'memoria', baralho: 'iniciais', titulo: 'Jogo da memória: ritmos iniciais', descricao: 'Junte cada ritmo inicial com a sua definição.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 14
+  {
+    numero: 14,
+    id: 'f14',
+    titulo: 'Notas pontuadas na subdivisão',
+    subtitulo: 'O ponto de aumento dentro do compasso simples e do composto',
+    paginas: '126 a 129',
+    icone: '⏱️',
+    cor: '#8a2f6b',
+    resumo: 'A mesma figura pontuada não soa igual num compasso simples e num composto. Esta fase trata das diferenças de subdivisão que isso provoca.',
+    licoes: [
+      {
+        titulo: 'Notas pontuadas — diferenças na subdivisão',
+        pagina: 126,
+        corpo: () => `
+          <p>O ponto de aumento acrescenta <b>metade</b> do valor da figura. O que muda de um compasso para o
+          outro é <b>em quantas partes</b> esse valor se divide.</p>
+          ${tabela(['', 'Compasso simples', 'Compasso composto'], [
+            ['A semínima pontuada', 'vale 1 tempo e meio', 'vale <b>1 tempo inteiro</b>'],
+            ['Divide-se em', '3 colcheias, atravessando um tempo e meio', '3 colcheias, <b>dentro</b> de um tempo'],
+            ['A colcheia pontuada', 'vale três quartos de tempo', 'vale meio tempo do composto'],
+          ])}
+          <p>É por isso que a mesma figura escrita em 3/4 e em 6/8 pede contagens diferentes: em 3/4 a
+          semínima pontuada ocupa um tempo e meio; em 6/8 ela <b>é</b> o tempo.</p>
+          <p class="dica">A pergunta certa é sempre <b>qual figura vale um tempo neste compasso</b>. No
+          simples é a figura sem ponto; no composto, a pontuada.</p>`,
+      },
+    ],
+    jogos: [
+      { tipo: 'ritmo', titulo: 'Fecha o compasso com ponto', descricao: 'Complete o compasso com a figura pontuada certa.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 15
+  {
+    numero: 15,
+    id: 'f15',
+    titulo: 'Andamento',
+    subtitulo: 'Velocidade, modificação e modificação indevida',
+    paginas: '130 a 135',
+    icone: '🏃',
+    cor: '#6b2f9e',
+    resumo: 'A velocidade em que a música anda, como ela é marcada, como pode ser modificada de propósito — e a modificação que acontece sem ninguém querer.',
+    licoes: [
+      {
+        titulo: 'Andamento',
+        pagina: 130,
+        corpo: () => `
+          <p><b>Andamento</b> é a velocidade em que a música é executada. Ele vem indicado por um termo em
+          italiano e, quando há precisão, por uma <b>marcação de velocidade</b> em batidas por minuto
+          (por exemplo, ♩ = 60).</p>
+          ${tabela(['Termo', 'Velocidade', 'Sentido'], ANDAMENTOS.map((a) => [`<b>${a.termo}</b>`, a.faixa, a.sentido]))}
+          <p class="dica">A marcação em bpm é o que o metrônomo entende. O termo em italiano dá o
+          <b>caráter</b>; o número dá a velocidade exata.</p>`,
+      },
+      {
+        titulo: 'Modificação de andamento e modificação indevida',
+        pagina: 131,
+        corpo: () => `
+          <p>O andamento pode ser modificado <b>de propósito</b>, e a partitura escreve isso:</p>
+          <ul class="lista-chave">
+            <li><b>Poco rallentando</b> — retardando pouco a pouco, geralmente ao fim de uma frase ou do hino.</li>
+            <li><b>Ritenuto</b> — retido, mais lento imediatamente.</li>
+          </ul>
+          <p>A <b>modificação indevida</b> é a que acontece <b>sem ninguém querer</b>: acelerar nos trechos
+          fáceis, atrasar nos difíceis, apressar depois de uma pausa. Ela não está escrita, e é um erro de
+          execução — não uma interpretação.</p>
+          <p class="dica">A modificação indevida é justamente o que o estudo com <b>metrônomo</b> revela.
+          Enquanto não se estuda com ele, ela passa despercebida por quem toca e não por quem ouve.</p>`,
+      },
+    ],
+    jogos: [
+      { tipo: 'memoria', baralho: 'andamentos', titulo: 'Jogo da memória: andamentos', descricao: 'Junte cada termo com a sua velocidade.' },
+      { tipo: 'pulso', titulo: 'Acerta o bpm', descricao: 'Encontre a velocidade pedida sem olhar o metrônomo.' },
+    ],
+  },
+
+  // ------------------------------------------------------------------ 16
+  {
+    numero: 16,
+    id: 'f16',
+    titulo: 'Frases e interpretação musical',
+    subtitulo: 'Frases e semifrases, interpretação e indicações interpretativas',
+    paginas: '136 a 157',
+    icone: '🕊️',
+    cor: '#1f7350',
+    resumo: 'A última fase do método: onde a música respira, o que é interpretar, e as indicações interpretativas dos nossos hinos.',
+    licoes: [
+      {
+        titulo: 'Frases e semifrases',
+        pagina: 136,
+        corpo: () => `
+          <p>A música se organiza em <b>frases</b>, como a fala. A <b>frase musical</b> é o trecho com sentido
+          completo, que costuma terminar num ponto de repouso. A <b>semifrase</b> é a metade da frase, com
+          sentido parcial.</p>
+          <p>Nos hinos, a frase musical costuma coincidir com a frase da <b>poesia</b>: onde o texto respira,
+          a música respira junto.</p>
+          <p class="dica">Identificar as frases antes de tocar resolve boa parte da respiração e do fraseado —
+          e evita cortar a música num lugar onde o texto não teria vírgula.</p>`,
+      },
+      {
+        titulo: 'Interpretação musical',
+        pagina: 137,
+        corpo: () => `
+          <p><b>Interpretação musical</b> é executar o que está escrito acrescentando a expressão que a música
+          pede — sem alterar o que a partitura determina de altura, duração e andamento.</p>
+          <p>Nos nossos hinos, a interpretação nasce da <b>poesia</b>: é o texto que diz se aquele hino é um
+          clamor, um louvor ou uma declaração de grandeza.</p>`,
+      },
+      {
+        titulo: 'Indicações interpretativas',
+        pagina: 138,
+        corpo: () => `
+          <p>Em alguns hinos foram colocadas <b>indicações interpretativas</b>, que alertam o músico para uma
+          forma de interpretação mais específica:</p>
+          ${tabela(['Indicação', 'O que exprime'], [
+            ['<b>Solene</b>', 'apresentar-se perante uma autoridade reconhecendo a sua grandeza, soando com grandiosidade, mas de maneira respeitosa — hinos em que nos dirigimos a Deus e a Jesus Cristo falando da Sua grandeza'],
+            ['<b>Majestoso</b>', 'o reconhecimento da majestade de Deus e de Jesus Cristo, soando de modo imponente — hinos em que falamos entre nós da grandeza de Deus'],
+            ['<b>Com júbilo</b>', 'reconhecer a nossa felicidade por sermos filhos de Deus e salvos por Jesus Cristo, soando com contentamento'],
+            ['<b>Com veneração</b>', 'apresentar-se com reverência e adoração, com um som mais suave que o solene'],
+            ['<b>Com submissão</b>', 'o reconhecimento da nossa pequena estatura perante Deus, soando com suavidade e cuidado'],
+            ['<b>Com humildade</b>', 'o clamor da alma reconhecendo erros e fraquezas, soando com leveza, e em alguns momentos com intensificação da dinâmica pelo clamor'],
+          ])}
+          <p>Estas indicações são <b>exemplificativas</b>: cada hino tem uma expressão própria, que o músico
+          identifica analisando a poesia.</p>
+          <p class="dica">A forma de realizar cada indicação depende do <b>instrumento</b> e das
+          circunstâncias dele na orquestra — se está sozinho no naipe, quantos músicos há, se a irmandade
+          está cantando com fervor. Não se toca sempre com a mesma dinâmica.</p>`,
+      },
+    ],
+    jogos: [
+      { tipo: 'memoria', baralho: 'andamentos', titulo: 'Jogo da memória: expressão', descricao: 'Junte cada termo de expressão com o seu sentido.' },
     ],
   },
 ];
 
+// O método avalia a cada TRÊS fases. O bloco é a unidade avaliada: as fases
+// dele se estudam em sequência e, ao fim, uma única avaliação sorteia das três
+// juntas. Passar nela conclui o bloco e vale um selo.
+//
+// São 16 fases, e 16 não é múltiplo de 3: o último bloco fica com uma fase só.
+// Preferimos isso a esticar um bloco para quatro — a régua "a cada três" é a
+// que o instrutor combinou com a turma, e um bloco maior no fim seria uma
+// exceção silenciosa bem no lugar em que o aluno já está cansado.
+const TAMANHO_DO_BLOCO = 3;
+
+const BLOCOS = FASES.reduce((blocos, fase) => {
+  const ultimo = blocos[blocos.length - 1];
+  if (ultimo && ultimo.faseIds.length < TAMANHO_DO_BLOCO) ultimo.faseIds.push(String(fase.numero));
+  else blocos.push({ ordem: blocos.length + 1, faseIds: [String(fase.numero)] });
+  return blocos;
+}, []).map((bloco) => {
+  const primeira = FASES.find((f) => String(f.numero) === bloco.faseIds[0]);
+  const ultima = FASES.find((f) => String(f.numero) === bloco.faseIds[bloco.faseIds.length - 1]);
+  const intervalo = bloco.faseIds.length === 1
+    ? `Fase ${primeira.numero}`
+    : `Fases ${primeira.numero} a ${ultima.numero}`;
+  return {
+    ...bloco,
+    id: `b${bloco.ordem}`,
+    titulo: intervalo,
+    subtitulo: bloco.faseIds.length === 1 ? primeira.titulo
+      : `${primeira.titulo} · ${ultima.titulo}`,
+    cor: primeira.cor,
+    icone: primeira.icone,
+    paginas: `${String(primeira.paginas).split(' a ')[0]} a ${String(ultima.paginas).split(' a ').pop()}`,
+  };
+});
+
+const blocoDaFase = (faseId) => BLOCOS.find((b) => b.faseIds.includes(String(faseId))) || null;
+
 const faseNumero = (n) => FASES.find((f) => f.numero === n);
 const TOTAL_DE_FASES = FASES.length;
 
-return { FASES, faseNumero, TOTAL_DE_FASES };
+return { FASES, BLOCOS, TAMANHO_DO_BLOCO, blocoDaFase, faseNumero, TOTAL_DE_FASES };
 })();
 
 __modulos['conteudo/fases-instrumento'] = (function () {
@@ -3644,7 +4012,7 @@ registrar({
 // ============================================================ FASE 2
 registrar({
   id: 'f2.clave-linha',
-  fase: 2,
+  fase: 1,
   variantes: () => Object.values(T.CLAVES).flatMap((c) => [
     { c: c.id, sentido: 'linha' }, { c: c.id, sentido: 'clave' }, { c: c.id, sentido: 'nota' },
   ]),
@@ -3685,7 +4053,7 @@ registrar({
 
 registrar({
   id: 'f2.ler-nota',
-  fase: 2,
+  fase: 1,
   variantes: () => Object.keys(T.CLAVES).flatMap((c) => [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((p) => ({ c, p }))),
   chave: (v) => `${v.c}-${v.p}`,
   montar(v, rnd) {
@@ -3703,7 +4071,7 @@ registrar({
 
 registrar({
   id: 'f2.lugar-da-nota',
-  fase: 2,
+  fase: 1,
   variantes: () => Object.keys(T.CLAVES).flatMap((c) => [0, 1, 2, 3, 4, 5, 6, 7, 8].map((p) => ({ c, p }))),
   chave: (v) => `${v.c}-${v.p}`,
   montar(v, rnd) {
@@ -3849,7 +4217,7 @@ registrar({
 // ============================================================ FASE 3
 registrar({
   id: 'f3.formula-tempos',
-  fase: 3,
+  fase: 2,
   variantes: () => T.COMPASSOS_SIMPLES.flatMap((c) => [{ f: c.formula, molde: 0 }, { f: c.formula, molde: 1 }]),
   chave: (v) => `${v.f}-${v.molde}`,
   montar(v, rnd) {
@@ -3869,7 +4237,7 @@ registrar({
 
 registrar({
   id: 'f3.formula-unidade',
-  fase: 3,
+  fase: 2,
   variantes: () => T.COMPASSOS_SIMPLES.map((c) => ({ f: c.formula })),
   chave: (v) => v.f,
   montar(v, rnd) {
@@ -3887,7 +4255,7 @@ registrar({
 
 registrar({
   id: 'f3.formula-especie',
-  fase: 3,
+  fase: 2,
   variantes: () => T.COMPASSOS_SIMPLES.map((c) => ({ f: c.formula })),
   chave: (v) => v.f,
   montar(v, rnd) {
@@ -3904,7 +4272,7 @@ registrar({
 
 registrar({
   id: 'f3.quantas-figuras',
-  fase: 3,
+  fase: 2,
   variantes: () => T.COMPASSOS_SIMPLES.flatMap((c) => ['semibreve', 'minima', 'seminima', 'colcheia', 'semicolcheia']
     .map((f) => ({ c: c.formula, f }))
     .filter(({ c: formula, f }) => {
@@ -3931,7 +4299,7 @@ registrar({
 
 registrar({
   id: 'f3.completa-compasso',
-  fase: 3,
+  fase: 2,
   variantes: () => ['2/4', '3/4', '4/4'].flatMap((f) => ['seminima', 'minima', 'colcheia', 'semicolcheia'].flatMap((falta) =>
     [0, 1].map((arranjo) => ({ f, falta, arranjo })))),
   chave: (v) => `${v.f}-${v.falta}-${v.arranjo}`,
@@ -3973,7 +4341,7 @@ registrar({
 
 registrar({
   id: 'f3.tempo-forte',
-  fase: 3,
+  fase: 2,
   variantes: () => [
     { f: '2/4', t: 1, r: 'forte' }, { f: '2/4', t: 2, r: 'fraco' },
     { f: '3/4', t: 1, r: 'forte' }, { f: '3/4', t: 2, r: 'fraco' }, { f: '3/4', t: 3, r: 'fraco' },
@@ -4060,7 +4428,7 @@ registrar({
 // ============================================================ FASE 4
 registrar({
   id: 'f4.metronomo',
-  fase: 4,
+  fase: 3,
   variantes: () => [
     { p: 'Para que serve o metrônomo?', r: 'para marcar uma pulsação regular numa velocidade ajustável', e: ['para afinar o instrumento', 'para gravar o ensaio', 'para transpor a música de tom'] },
     { p: 'O que significa M.M. numa partitura?', r: 'metrônomo de Maelzel', e: ['movimento moderado', 'mínima marcada', 'meia medida'] },
@@ -4083,7 +4451,7 @@ registrar({
 
 registrar({
   id: 'f4.media-da-faixa',
-  fase: 4,
+  fase: 3,
   variantes: () => [[40, 60], [44, 54], [50, 66], [54, 72], [56, 76], [60, 72], [60, 80], [63, 81], [66, 84], [69, 87],
     [72, 88], [72, 96], [76, 92], [76, 100], [80, 96], [84, 104], [88, 108], [92, 112], [96, 120], [100, 120],
     [104, 132], [108, 126], [112, 132], [120, 144]].map(([a, b]) => ({ a, b })),
@@ -4103,7 +4471,7 @@ registrar({
 
 registrar({
   id: 'f4.duracao-em-segundos',
-  fase: 4,
+  fase: 3,
   variantes: () => [60, 72, 80, 90, 100, 120].flatMap((bpm) => ['seminima', 'minima', 'colcheia', 'semibreve'].map((f) => ({ bpm, f }))),
   chave: (v) => `${v.bpm}-${v.f}`,
   montar(v, rnd) {
@@ -4193,7 +4561,7 @@ registrar({
 // ============================================================ FASE 5
 registrar({
   id: 'f5.tom-ou-semitom',
-  fase: 5,
+  fase: 6,
   variantes: () => T.LETRAS.flatMap((l, i) => [{ a: l, b: T.LETRAS[(i + 1) % 7], molde: 0 }, { a: l, b: T.LETRAS[(i + 1) % 7], molde: 1 }]),
   chave: (v) => `${v.a}-${v.b}-${v.molde}`,
   montar(v, rnd) {
@@ -4215,7 +4583,7 @@ registrar({
 
 registrar({
   id: 'f5.acidentes',
-  fase: 5,
+  fase: 6,
   variantes: () => [
     { s: 'sustenido (♯)', r: 'sobe a nota um semitom' },
     { s: 'bemol (♭)', r: 'desce a nota um semitom' },
@@ -4248,7 +4616,7 @@ registrar({
 
 registrar({
   id: 'f5.altera-nota',
-  fase: 5,
+  fase: 6,
   variantes: () => T.LETRAS.flatMap((l) => [
     { l, op: 'sobe-semitom' }, { l, op: 'desce-semitom' }, { l, op: 'sobe-tom' }, { l, op: 'desce-tom' },
   ]),
@@ -4284,7 +4652,7 @@ registrar({
 
 registrar({
   id: 'f5.tipo-de-semitom',
-  fase: 5,
+  fase: 6,
   variantes: () => [
     { a: 'Dó', b: 'Dó♯', t: 'cromático' }, { a: 'Ré', b: 'Ré♯', t: 'cromático' }, { a: 'Fá', b: 'Fá♯', t: 'cromático' },
     { a: 'Sol', b: 'Sol♯', t: 'cromático' }, { a: 'Lá', b: 'Lá♯', t: 'cromático' }, { a: 'Si', b: 'Si♭', t: 'cromático' },
@@ -4312,7 +4680,7 @@ registrar({
 
 registrar({
   id: 'f5.enarmonia',
-  fase: 5,
+  fase: 6,
   variantes: () => [
     { a: 'Dó♯', b: 'Ré♭' }, { a: 'Ré♯', b: 'Mi♭' }, { a: 'Fá♯', b: 'Sol♭' }, { a: 'Sol♯', b: 'Lá♭' },
     { a: 'Lá♯', b: 'Si♭' }, { a: 'Mi', b: 'Fá♭' }, { a: 'Si', b: 'Dó♭' }, { a: 'Fá', b: 'Mi♯' }, { a: 'Dó', b: 'Si♯' },
@@ -4334,7 +4702,7 @@ registrar({
 
 registrar({
   id: 'f5.conceitos',
-  fase: 5,
+  fase: 6,
   variantes: () => [
     { p: 'A menor distância entre dois sons no nosso sistema musical chama-se:', r: 'semitom', e: ['tom', 'oitava', 'uníssono'] },
     { p: 'Um tom é formado por:', r: 'dois semitons', e: ['três semitons', 'meio semitom', 'quatro semitons'] },
@@ -4376,7 +4744,7 @@ registrar({
 
 registrar({
   id: 'f6.quantos-acidentes',
-  fase: 6,
+  fase: 7,
   variantes: () => T.TONALIDADES.flatMap((t) => [{ t: T.nomeDaNota(t.maior), modo: 'maior' }, { t: T.nomeDaNota(t.menor), modo: 'menor' }]),
   chave: (v) => `${v.t}-${v.modo}`,
   montar(v, rnd) {
@@ -4397,7 +4765,7 @@ registrar({
 
 registrar({
   id: 'f6.armadura-para-tonalidade',
-  fase: 6,
+  fase: 7,
   variantes: () => T.TONALIDADES.filter((t) => t.acidentes <= 6).flatMap((t) => [
     { a: t.acidentes, tipo: t.tipo, modo: 'maior' }, { a: t.acidentes, tipo: t.tipo, modo: 'menor' },
   ]).filter((v, i, todos) => todos.findIndex((x) => x.a === v.a && x.tipo === v.tipo && x.modo === v.modo) === i),
@@ -4423,7 +4791,7 @@ registrar({
 
 registrar({
   id: 'f6.ordem-dos-acidentes',
-  fase: 6,
+  fase: 7,
   variantes: () => [1, 2, 3, 4, 5, 6, 7].flatMap((n) => [{ n, tipo: 'sustenido' }, { n, tipo: 'bemol' }]),
   chave: (v) => `${v.n}-${v.tipo}`,
   montar(v, rnd) {
@@ -4506,7 +4874,7 @@ registrar({
 // ============================================================ FASE 7
 registrar({
   id: 'f7.relativa',
-  fase: 7,
+  fase: 8,
   variantes: () => T.TONALIDADES.flatMap((t) => [{ t: T.nomeDaNota(t.maior), sentido: 'menor' }, { t: T.nomeDaNota(t.menor), sentido: 'maior' }]),
   chave: (v) => `${v.t}-${v.sentido}`,
   montar(v, rnd) {
@@ -4527,7 +4895,7 @@ registrar({
 
 registrar({
   id: 'f7.intervalo',
-  fase: 7,
+  fase: 4,
   variantes: () => NOTAS_NATURAIS.flatMap((a) => NOTAS_NATURAIS.filter((b) => b.letra !== a.letra)
     .map((b) => ({ a: a.letra, b: b.letra }))),
   chave: (v) => `${v.a}-${v.b}`,
@@ -4547,7 +4915,7 @@ registrar({
 
 registrar({
   id: 'f7.intervalo-tamanho',
-  fase: 7,
+  fase: 4,
   variantes: () => [
     { i: '2ª menor', t: '1 semitom' }, { i: '2ª maior', t: '1 tom' }, { i: '3ª menor', t: '1 tom e meio' },
     { i: '3ª maior', t: '2 tons' }, { i: '4ª justa', t: '2 tons e meio' }, { i: '5ª justa', t: '3 tons e meio' },
@@ -4578,7 +4946,7 @@ registrar({
 
 registrar({
   id: 'f7.dinamica',
-  fase: 7,
+  fase: 10,
   variantes: () => T.DINAMICAS.flatMap((d) => [{ s: d.sigla, sentido: 'sentido' }, { s: d.sigla, sentido: 'sigla' }, { s: d.sigla, sentido: 'termo' }]),
   chave: (v) => `${v.s}-${v.sentido}`,
   montar(v, rnd) {
@@ -4613,7 +4981,7 @@ registrar({
 
 registrar({
   id: 'f7.conceitos',
-  fase: 7,
+  fase: 8,
   variantes: () => [
     { p: 'Tonalidade é:', r: 'o conjunto de sons de uma escala organizados em torno da tônica', e: ['a velocidade da execução', 'a intensidade do som', 'a divisão do compasso em tempos'] },
     { p: 'O que diferencia a tonalidade maior da menor?', r: 'a distância entre a tônica e o 3º grau', e: ['o número de tempos do compasso', 'a clave usada na pauta', 'a velocidade indicada pelo metrônomo'] },
@@ -4638,7 +5006,7 @@ registrar({
 // ============================================================ FASE 8
 registrar({
   id: 'f8.composto-tempos',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.flatMap((c) => [{ f: c.formula, molde: 0 }, { f: c.formula, molde: 1 }]),
   chave: (v) => `${v.f}-${v.molde}`,
   montar(v, rnd) {
@@ -4658,7 +5026,7 @@ registrar({
 
 registrar({
   id: 'f8.composto-unidade',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.map((c) => ({ f: c.formula })),
   chave: (v) => v.f,
   montar(v, rnd) {
@@ -4676,7 +5044,7 @@ registrar({
 
 registrar({
   id: 'f8.correspondencia',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.flatMap((c) => [{ f: c.formula, sentido: 'simples' }, { f: c.formula, sentido: 'composto' }]),
   chave: (v) => `${v.f}-${v.sentido}`,
   montar(v, rnd) {
@@ -4702,7 +5070,7 @@ registrar({
 
 registrar({
   id: 'f8.simples-ou-composto',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_SIMPLES.map((c) => ({ f: c.formula, tipo: 'simples' }))
     .concat(T.COMPASSOS_COMPOSTOS.map((c) => ({ f: c.formula, tipo: 'composto' }))),
   chave: (v) => v.f,
@@ -4722,7 +5090,7 @@ registrar({
 
 registrar({
   id: 'f8.figuras-no-composto',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.flatMap((c) => ['colcheia', 'semicolcheia', 'seminima'].map((f) => ({ c: c.formula, f })))
     .filter(({ c, f }) => {
       const comp = T.COMPASSOS_COMPOSTOS.find((x) => x.formula === c);
@@ -4750,7 +5118,7 @@ registrar({
 
 registrar({
   id: 'f8.conceitos',
-  fase: 8,
+  fase: 11,
   variantes: () => [
     { p: 'Subdivisão binária é aquela em que cada tempo se divide em:', r: '2 partes iguais', e: ['3 partes iguais', '4 partes desiguais', '6 partes iguais'] },
     { p: 'Subdivisão ternária é aquela em que cada tempo se divide em:', r: '3 partes iguais', e: ['2 partes iguais', '4 partes iguais', '3 partes desiguais'] },
@@ -4771,7 +5139,7 @@ registrar({
 // ============================================================ FASE 9
 registrar({
   id: 'f9.sincopa-contratempo',
-  fase: 9,
+  fase: 12,
   variantes: () => ['2/4', '3/4', '4/4', '6/8'].flatMap((c) => [
     { c, onde: 'na segunda metade do 1º tempo', prolonga: true },
     { c, onde: 'na segunda metade do 1º tempo', prolonga: false },
@@ -4797,7 +5165,7 @@ registrar({
 
 registrar({
   id: 'f9.ritmo-inicial-caso',
-  fase: 9,
+  fase: 13,
   variantes: () => ['2/4', '3/4', '4/4', '6/8'].flatMap((c) => [
     { c, i: 'o primeiro compasso está completo e a música ataca no 1º tempo', r: 'tético' },
     { c, i: 'a música começa com uma nota antes da primeira barra de compasso, num compasso incompleto', r: 'anacrústico' },
@@ -4824,7 +5192,7 @@ registrar({
 
 registrar({
   id: 'f9.conceitos',
-  fase: 9,
+  fase: 13,
   variantes: () => [
     { p: 'Síncopa é a nota que:', r: 'começa em tempo ou parte fraca e se prolonga sobre o tempo forte', e: ['começa e termina no tempo forte', 'ataca no fraco e para antes do forte', 'dura exatamente um compasso'] },
     { p: 'Contratempo é o som que:', r: 'ataca no tempo fraco enquanto o tempo forte fica em silêncio', e: ['ataca no tempo forte', 'se prolonga sobre o tempo forte', 'divide o tempo em três partes'] },
@@ -4849,7 +5217,7 @@ registrar({
 
 registrar({
   id: 'f9.hinos',
-  fase: 9,
+  fase: 13,
   variantes: () => [
     { h: '208', t: 'Conserva a paz, ó minha alma' },
     { h: '377', t: 'No céu, Senhor, no céu' },
@@ -4887,7 +5255,7 @@ registrar({
 // ============================================================ FASE 10
 registrar({
   id: 'f10.andamento',
-  fase: 10,
+  fase: 15,
   variantes: () => T.ANDAMENTOS.flatMap((a) => [{ t: a.termo, sentido: 'sentido' }, { t: a.termo, sentido: 'faixa' }, { t: a.termo, sentido: 'termo' }]),
   chave: (v) => `${v.t}-${v.sentido}`,
   montar(v, rnd) {
@@ -4922,7 +5290,7 @@ registrar({
 
 registrar({
   id: 'f10.mais-rapido',
-  fase: 10,
+  fase: 15,
   variantes: () => pares(T.ANDAMENTOS.map((a) => a.termo)).flatMap(([a, b]) => [{ a, b, pergunta: 'rápido' }, { a, b, pergunta: 'lento' }]),
   chave: (v) => `${v.a}-${v.b}-${v.pergunta}`,
   montar(v, rnd) {
@@ -4942,7 +5310,7 @@ registrar({
 
 registrar({
   id: 'f10.expressao',
-  fase: 10,
+  fase: 16,
   variantes: () => T.TERMOS_DE_EXPRESSAO.flatMap((t) => [{ t: t.termo, sentido: 'sentido' }, { t: t.termo, sentido: 'termo' }]),
   chave: (v) => `${v.t}-${v.sentido}`,
   montar(v, rnd) {
@@ -4968,7 +5336,7 @@ registrar({
 
 registrar({
   id: 'f10.pontuada-no-contexto',
-  fase: 10,
+  fase: 14,
   variantes: () => [
     { f: 'seminima', c: '4/4', tipo: 'simples' }, { f: 'seminima', c: '3/4', tipo: 'simples' },
     { f: 'seminima', c: '2/4', tipo: 'simples' }, { f: 'minima', c: '4/4', tipo: 'simples' },
@@ -5004,7 +5372,7 @@ registrar({
 
 registrar({
   id: 'f10.forma',
-  fase: 10,
+  fase: 16,
   variantes: () => [
     { p: 'Frase musical é:', r: 'uma ideia musical completa, com sentido próprio', e: ['a metade de uma ideia musical', 'um compasso isolado', 'o mesmo que armadura de clave'] },
     { p: 'Semifrase é:', r: 'a metade de uma frase musical', e: ['o dobro de uma frase', 'a repetição da frase', 'a última nota da frase'] },
@@ -5057,7 +5425,7 @@ registrar({
 
 registrar({
   id: 'f4.tercina-conta',
-  fase: 4,
+  fase: 5,
   variantes: () => [
     { f: 'colcheia', ocupa: 'uma semínima', equivale: 'duas colcheias' },
     { f: 'semínima', ocupa: 'uma mínima', equivale: 'duas semínimas' },
@@ -5096,7 +5464,7 @@ registrar({
 
 registrar({
   id: 'f8.tempo-em-figuras',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.flatMap((c) => ['a subdivisão do tempo', 'o tempo inteiro'].map((alvo) => ({ f: c.formula, alvo }))),
   chave: (v) => `${v.f}-${v.alvo}`,
   montar(v, rnd) {
@@ -5124,7 +5492,7 @@ registrar({
 
 registrar({
   id: 'f8.conducao-composto',
-  fase: 8,
+  fase: 11,
   variantes: () => T.COMPASSOS_COMPOSTOS.flatMap((c) => [{ f: c.formula, sentido: 'movimentos' }, { f: c.formula, sentido: 'subdividido' }, { f: c.formula, sentido: 'especie' }]),
   chave: (v) => `${v.f}-${v.sentido}`,
   montar(v, rnd) {
@@ -5160,7 +5528,7 @@ registrar({
 
 registrar({
   id: 'f9.acefalo-medida',
-  fase: 9,
+  fase: 13,
   variantes: () => [
     { c: '2/4', regra: 'mais da metade do compasso' }, { c: '4/4', regra: 'mais da metade do compasso' },
     { c: '2/2', regra: 'mais da metade do compasso' }, { c: '6/8', regra: 'mais da metade do compasso' },
@@ -5183,7 +5551,7 @@ registrar({
 
 registrar({
   id: 'f9.padrao-ritmico',
-  fase: 9,
+  fase: 13,
   variantes: () => [
     { d: 'colcheia — semínima — colcheia, tudo ligado ao tempo seguinte', r: 'síncopa' },
     { d: 'pausa de colcheia — colcheia, em cada tempo', r: 'contratempo' },
@@ -5212,7 +5580,7 @@ registrar({
 
 registrar({
   id: 'f10.bpm-para-termo',
-  fase: 10,
+  fase: 15,
   variantes: () => [46, 52, 58, 70, 74, 84, 96, 100, 112, 116, 130, 140, 152, 176, 190].map((bpm) => ({ bpm })),
   chave: (v) => String(v.bpm),
   montar(v, rnd) {
@@ -5234,7 +5602,7 @@ registrar({
 
 registrar({
   id: 'f10.classifica-indicacao',
-  fase: 10,
+  fase: 16,
   variantes: () => [
     { t: 'Allegro', c: 'andamento' }, { t: 'Adagio', c: 'andamento' }, { t: 'Moderato', c: 'andamento' },
     { t: 'pianissimo', c: 'dinâmica' }, { t: 'forte', c: 'dinâmica' }, { t: 'crescendo', c: 'dinâmica' },
@@ -5256,6 +5624,117 @@ registrar({
   },
 });
 
+
+// ============================================ assuntos que o app não cobria
+// As fases abaixo existem no livro e não tinham pergunta nenhuma no aplicativo:
+// endecagrama e formas de leitura, fermata e compasso em 6, barra de repetição,
+// dinâmica, notas pontuadas na subdivisão e indicações interpretativas. Cada
+// enunciado sai do assunto da fase correspondente do método.
+
+const conceitual = (id, fase, referencia, lista) => registrar({
+  id, fase,
+  variantes: () => lista,
+  chave: (v) => v.p,
+  montar(v, rnd) {
+    return {
+      enunciado: v.p,
+      alternativas: embaralhar([v.r, ...v.e], rnd),
+      correta: v.r,
+      explicacao: `Resposta: ${v.r}.`,
+      referencia,
+    };
+  },
+});
+
+conceitual('f3.leitura', 3, 'MSA, pág. 27 a 31', [
+  { p: 'Leitura rítmica consiste em:', r: 'falar a sílaba "TA", executando com precisão o ritmo escrito', e: ['falar o nome da nota, sem cantar', 'cantar as notas na altura', 'bater palmas a cada compasso'] },
+  { p: 'Leitura métrica consiste em:', r: 'falar o nome da nota, sem cantar, executando com precisão o ritmo escrito', e: ['falar a sílaba "TA"', 'cantar as notas na altura', 'contar os tempos em voz alta'] },
+  { p: 'Solfejo consiste em:', r: 'cantar as notas musicais na altura, dentro do padrão rítmico escrito', e: ['falar a sílaba "TA"', 'falar o nome da nota sem cantar', 'tocar o trecho no instrumento'] },
+  { p: 'O sistema de 11 linhas que alinha as claves de Sol, Dó e Fá pela altura real chama-se:', r: 'endecagrama', e: ['pentagrama', 'endecassílabo', 'diagrama de claves'] },
+  { p: 'No endecagrama, uma mesma nota escrita em clave de Sol, de Dó e de Fá:', r: 'soa exatamente igual nas três', e: ['soa uma oitava acima a cada clave', 'só existe na clave de Sol', 'muda de nome em cada clave'] },
+  { p: 'Entre as três claves, a ordem da mais aguda para a mais grave é:', r: 'Sol, Dó, Fá', e: ['Fá, Dó, Sol', 'Dó, Sol, Fá', 'Sol, Fá, Dó'] },
+  { p: 'A "janela de movimento" da condução do solfejo pede que os movimentos:', r: 'fiquem dentro da janela, usando a maior parte da área interna dela', e: ['saiam da janela nos tempos fortes', 'fiquem num canto da janela', 'sejam feitos acima da cabeça'] },
+  { p: 'A "mesa invisível" da condução do solfejo significa que cada movimento deve ser feito:', r: 'como se a mão tocasse uma superfície rígida invisível no ar', e: ['sem parar em ponto nenhum', 'apoiando a mão numa mesa de verdade', 'com o braço totalmente esticado'] },
+  { p: 'Sobre os movimentos de pulsação no pé, o método recomenda:', r: 'movimentos leves com os dedos do pé, nunca a planta nem o calcanhar', e: ['bater o calcanhar no chão a cada tempo', 'movimentos amplos, para os outros verem', 'não movimentar o pé em hipótese alguma'] },
+  { p: 'Quando há metrônomo, os movimentos de pulsação no pé devem ser executados:', r: 'na mesma batida do metrônomo, junto com ele', e: ['na metade da velocidade do metrônomo', 'no dobro da velocidade do metrônomo', 'livremente, sem relação com ele'] },
+  { p: 'Na fase em que se estuda a condução, a leitura utilizada é:', r: 'apenas a leitura rítmica, falando a sílaba "TA"', e: ['apenas o solfejo', 'apenas a leitura métrica', 'as três ao mesmo tempo'] },
+  { p: 'Onde o método pede leitura métrica, o candidato pode, se quiser:', r: 'executar solfejando, cantando as notas na altura ao dizer o nome delas', e: ['pular o exercício', 'substituir por leitura rítmica', 'tocar no instrumento em vez de ler'] },
+]);
+
+conceitual('f5.conceitos', 5, 'MSA, pág. 44 a 51', [
+  { p: 'A tercina é um grupo de três figuras iguais executadas no tempo de:', r: 'duas figuras dessa mesma espécie', e: ['quatro figuras dessa mesma espécie', 'três figuras dessa mesma espécie', 'um compasso inteiro'] },
+  { p: 'Uma tercina de colcheias, num compasso simples, ocupa:', r: 'um tempo de semínima', e: ['dois tempos de semínima', 'meio tempo de semínima', 'um compasso inteiro'] },
+  { p: 'A tercina vem marcada na partitura com:', r: 'o algarismo 3 sobre o grupo de figuras', e: ['o algarismo 2 sobre o grupo', 'uma ligadura de valor', 'um ponto de aumento'] },
+  { p: 'A tercina altera:', r: 'o número de partes dentro de um tempo, não a duração do compasso', e: ['a duração total do compasso', 'a fórmula de compasso', 'o andamento da peça'] },
+  { p: 'A fermata pede que a duração da nota ou pausa seja:', r: 'prolongada além do valor escrito', e: ['reduzida à metade', 'executada exatamente como está escrita', 'repetida duas vezes'] },
+  { p: 'Quanto tempo a mais dura uma fermata?', r: 'não está escrito: quem determina é a condução', e: ['exatamente o dobro do valor escrito', 'exatamente metade a mais', 'sempre dois compassos'] },
+  { p: 'Uma fermata colocada sobre uma pausa:', r: 'prolonga o silêncio', e: ['não tem efeito algum', 'transforma a pausa em som', 'antecipa a entrada seguinte'] },
+  { p: 'Na fórmula de compasso em 6 (6/8), a figura que vale uma parte do compasso é:', r: 'a colcheia', e: ['a semínima', 'a mínima', 'a semicolcheia'] },
+  { p: 'No compasso em 6, o movimento alternativo para solfejo tem:', r: 'dois movimentos por compasso, agrupando as colcheias de três em três', e: ['seis movimentos por compasso', 'três movimentos por compasso', 'um movimento por compasso'] },
+  { p: 'Quando se usa o movimento alternativo para solfejo em 6?', r: 'quando o andamento é rápido demais para seis movimentos', e: ['quando o andamento é muito lento', 'sempre, em qualquer andamento', 'somente quando há fermata'] },
+]);
+
+conceitual('f9.conceitos', 9, 'MSA, pág. 86 a 92', [
+  { p: 'A barra de compasso com dois pontos, que manda repetir um trecho, chama-se:', r: 'barra de repetição (ritornello)', e: ['barra final', 'barra dupla', 'barra de compasso simples'] },
+  { p: 'Quando a barra de repetição tem os dois pontos antes dela, ela indica:', r: 'o fim do trecho a repetir — daqui se volta', e: ['o início do trecho a repetir', 'o fim definitivo da música', 'uma mudança de andamento'] },
+  { p: 'Quando a barra de repetição tem os dois pontos depois dela, ela indica:', r: 'o início do trecho a repetir', e: ['o fim do trecho a repetir', 'o fim da música', 'uma mudança de compasso'] },
+  { p: 'Se não houver sinal de abertura, a repetição volta:', r: 'ao início da música', e: ['ao compasso anterior', 'à barra dupla mais próxima', 'ao meio da peça'] },
+  { p: 'As "casas" (1ª e 2ª) servem para:', r: 'terminar de formas diferentes a primeira e a segunda vez', e: ['marcar a dinâmica de cada trecho', 'indicar mudança de clave', 'numerar os compassos'] },
+  { p: 'Na repetição, a 2ª casa:', r: 'substitui a 1ª casa', e: ['é tocada logo depois da 1ª casa', 'é ignorada', 'é tocada só na terceira vez'] },
+  { p: 'A barra final é formada por:', r: 'uma barra fina e uma barra grossa', e: ['duas barras finas', 'duas barras grossas', 'uma barra fina e dois pontos'] },
+  { p: 'A barra dupla, sem os dois pontos, marca:', r: 'o fim de uma seção ou uma mudança importante', e: ['a repetição do trecho anterior', 'o fim definitivo da música', 'o início de uma tercina'] },
+  { p: 'Ler a partitura com repetições exige atenção a:', r: 'a ordem de execução, que não é a ordem em que os compassos aparecem na folha', e: ['a clave de cada sistema', 'o número de linhas do pentagrama', 'a cor da tinta da impressão'] },
+  { p: 'A barra de compasso simples serve para:', r: 'separar um compasso do seguinte', e: ['repetir o compasso anterior', 'encerrar a música', 'indicar uma fermata'] },
+]);
+
+conceitual('f10.conceitos', 10, 'MSA, pág. 93 a 99', [
+  { p: 'Dinâmica, na partitura, é a indicação de:', r: 'intensidade — com que força se toca', e: ['velocidade da execução', 'altura das notas', 'timbre do instrumento'] },
+  { p: 'A dinâmica corresponde a qual propriedade do som?', r: 'intensidade', e: ['altura', 'duração', 'timbre'] },
+  { p: 'O sinal que pede aumento gradual da intensidade chama-se:', r: 'crescendo', e: ['decrescendo', 'rallentando', 'ritenuto'] },
+  { p: 'O sinal que pede diminuição gradual da intensidade chama-se:', r: 'decrescendo', e: ['crescendo', 'accelerando', 'fermata'] },
+  { p: 'Tocar mais forte significa:', r: 'aumentar a intensidade, sem alterar a velocidade', e: ['tocar mais rápido', 'tocar mais agudo', 'tocar mais notas'] },
+  { p: 'Entre piano e forte, qual soa com maior intensidade?', r: 'forte', e: ['piano', 'as duas soam igual', 'depende do andamento'] },
+  { p: 'Entre pianissimo e piano, qual soa mais fraco?', r: 'pianissimo', e: ['piano', 'as duas soam igual', 'depende do instrumento'] },
+  { p: 'Entre mezzo forte e fortissimo, qual soa mais forte?', r: 'fortissimo', e: ['mezzo forte', 'as duas soam igual', 'depende da clave'] },
+  { p: 'A indicação de dinâmica escrita na partitura:', r: 'vale a partir do ponto em que aparece, até uma nova indicação', e: ['vale apenas para a nota seguinte', 'vale apenas para o compasso em que aparece', 'vale para a peça inteira, sempre'] },
+]);
+
+conceitual('f14.conceitos', 14, 'MSA, pág. 126 a 129', [
+  { p: 'O ponto de aumento acrescenta à figura:', r: 'metade do valor dela', e: ['o dobro do valor dela', 'um terço do valor dela', 'sempre um tempo'] },
+  { p: 'Num compasso composto, a semínima pontuada vale:', r: 'um tempo inteiro', e: ['um tempo e meio', 'meio tempo', 'dois tempos'] },
+  { p: 'Num compasso simples, a semínima pontuada vale:', r: 'um tempo e meio', e: ['um tempo inteiro', 'meio tempo', 'três tempos'] },
+  { p: 'A semínima pontuada divide-se em:', r: 'três colcheias', e: ['duas colcheias', 'quatro colcheias', 'duas semínimas'] },
+  { p: 'A mesma figura pontuada escrita em 3/4 e em 6/8:', r: 'ocupa posições diferentes na contagem, porque a unidade de tempo é outra', e: ['soa exatamente igual nos dois', 'é proibida em 6/8', 'vale sempre um tempo nos dois'] },
+  { p: 'Para saber quanto vale uma figura pontuada num compasso, a pergunta certa é:', r: 'qual figura vale um tempo neste compasso', e: ['qual é a clave do trecho', 'qual é o andamento da peça', 'quantos compassos a música tem'] },
+  { p: 'Num compasso composto, a figura que vale um tempo é:', r: 'a figura pontuada', e: ['a figura simples', 'sempre a colcheia', 'sempre a mínima'] },
+  { p: 'A colcheia pontuada, num compasso simples, vale:', r: 'três quartos de tempo', e: ['meio tempo', 'um tempo inteiro', 'um tempo e meio'] },
+]);
+
+conceitual('f16.conceitos', 16, 'MSA, pág. 136 a 139', [
+  { p: 'Frase musical é:', r: 'o trecho com sentido completo, que costuma terminar num ponto de repouso', e: ['um compasso isolado', 'a metade de uma semifrase', 'a repetição de um motivo'] },
+  { p: 'Semifrase é:', r: 'a metade da frase, com sentido parcial', e: ['o dobro da frase', 'a última nota da frase', 'a frase repetida'] },
+  { p: 'Nos hinos, a frase musical costuma coincidir com:', r: 'a frase da poesia', e: ['o número de compassos por linha', 'a mudança de clave', 'a barra de repetição'] },
+  { p: 'Interpretação musical é executar o que está escrito:', r: 'acrescentando a expressão que a música pede, sem alterar altura, duração e andamento', e: ['mudando as notas conforme o gosto', 'acelerando os trechos difíceis', 'ignorando a dinâmica escrita'] },
+  { p: 'A indicação interpretativa "Solene" pede a forma de:', r: 'apresentar-se perante uma autoridade reconhecendo a sua grandeza, com grandiosidade e respeito', e: ['soar com contentamento e alegria', 'soar com leveza, como um clamor', 'soar o mais rápido possível'] },
+  { p: 'A indicação interpretativa "Majestoso" é:', r: 'o reconhecimento da majestade de Deus e de Jesus Cristo, soando de modo imponente', e: ['o clamor da alma pedindo perdão', 'a reverência com som mais suave', 'a alegria por sermos salvos'] },
+  { p: 'A indicação interpretativa "Com júbilo" exprime:', r: 'a nossa felicidade por sermos filhos de Deus e salvos por Jesus Cristo, soando com contentamento', e: ['o reconhecimento da nossa pequena estatura', 'a grandiosidade respeitosa', 'o pedido de perdão pelos erros'] },
+  { p: 'A indicação interpretativa "Com veneração" pede:', r: 'reverência e adoração, com um som mais suave do que o solene', e: ['som imponente e grandioso', 'som contente e alegre', 'som forte do início ao fim'] },
+  { p: 'A indicação interpretativa "Com submissão" exprime:', r: 'o reconhecimento da nossa pequena estatura perante Deus, soando com suavidade e cuidado', e: ['a grandeza de Deus dita entre nós', 'a felicidade da salvação', 'a majestade imponente'] },
+  { p: 'A indicação interpretativa "Com humildade" é:', r: 'o clamor da alma reconhecendo erros e fraquezas, soando com leveza', e: ['a apresentação perante uma autoridade', 'o contentamento pela bênção recebida', 'a imponência da majestade'] },
+  { p: 'As indicações interpretativas dos nossos hinos são:', r: 'exemplificativas — cada hino tem uma expressão própria, identificada pela análise da poesia', e: ['obrigatórias e idênticas em todos os hinos', 'decididas por cada músico isoladamente', 'indicações de andamento em bpm'] },
+  { p: 'A forma de realizar uma indicação interpretativa depende:', r: 'do instrumento e das circunstâncias dele na orquestra', e: ['apenas da vontade do músico', 'apenas do andamento escrito', 'apenas do número de compassos do hino'] },
+]);
+
+conceitual('f12.conceitos', 12, 'MSA, pág. 111 a 117', [
+  { p: 'Síncopa é o som que:', r: 'começa em tempo ou parte fraca e se prolonga sobre o tempo forte', e: ['começa e termina no tempo forte', 'ataca no fraco e para antes do forte', 'dura exatamente um compasso'] },
+  { p: 'Contratempo é o som que:', r: 'soa no tempo fraco enquanto o tempo forte fica em silêncio', e: ['soa no tempo forte', 'se prolonga sobre o tempo forte', 'divide o tempo em três partes'] },
+  { p: 'A diferença essencial entre síncopa e contratempo está em:', r: 'haver som ou silêncio no tempo forte', e: ['o compasso ser simples ou composto', 'a clave utilizada', 'o andamento da peça'] },
+  { p: 'Se o som termina antes do tempo forte, sem invadi-lo, trata-se de:', r: 'contratempo, e não de síncopa', e: ['síncopa', 'tercina', 'anacruse'] },
+  { p: 'No contratempo, o tempo forte é ocupado por:', r: 'uma pausa', e: ['uma nota longa', 'uma tercina', 'uma fermata'] },
+  { p: 'A síncopa desloca:', r: 'o acento, sem alterar a duração do compasso', e: ['a fórmula de compasso', 'a clave da partitura', 'o andamento da peça'] },
+  { p: 'Um contratempo que aparece no meio do hino é:', r: 'apenas um contratempo, e não um ritmo inicial', e: ['sempre um ritmo acéfalo', 'sempre uma síncopa', 'um erro de grafia'] },
+]);
+
 // ------------------------------------------------------- consultas do motor
 
 // A fase do MSA é identificada por número ('1' a '10'); a do instrumento, por
@@ -5268,7 +5747,11 @@ function geradoresDaFase(faseId, contexto = null) {
 
 // Universo completo de perguntas possíveis de uma fase: cada item é uma
 // pergunta distinta que ainda pode ser sorteada.
+//
+// Aceita também uma LISTA de fases, e aí devolve o universo delas somado. É o
+// que a avaliação de um bloco pede: uma prova só, sorteando das três fases.
 function universoDaFase(faseId, contexto = null) {
+  if (Array.isArray(faseId)) return faseId.flatMap((id) => universoDaFase(id, contexto));
   const itens = [];
   for (const gerador of geradoresDaFase(faseId, contexto)) {
     for (const variante of gerador.variantes(contexto)) {
@@ -5303,6 +5786,8 @@ function perguntasIneditas(faseId, usadas, contexto = null) {
  * Monta uma prova espalhando as perguntas entre os geradores da fase, para
  * que a avaliação cubra assuntos diferentes e não caia tudo no mesmo ponto.
  */
+// `faseId` pode ser o id de uma fase ou a lista de fases de um bloco: no
+// segundo caso a prova sorteia das fases juntas, que é como o MSA avalia.
 function montarProva(faseId, usadas = [], { quantidade = QUESTOES_POR_PROVA, semente = novaSemente(), contexto = null } = {}) {
   const rnd = criarAleatorio(semente);
   const universo = universoDaFase(faseId, contexto);
@@ -5353,7 +5838,8 @@ function montarProva(faseId, usadas = [], { quantidade = QUESTOES_POR_PROVA, sem
     };
   });
 
-  return { faseId: String(faseId), semente, reciclou, questoes, ineditasRestantes: universo.length - jaVistas.size };
+  const chave = Array.isArray(faseId) ? faseId.join('+') : String(faseId);
+  return { faseId: chave, semente, reciclou, questoes, ineditasRestantes: universo.length - jaVistas.size };
 }
 
 function corrigir(prova, respostas) {
@@ -5393,6 +5879,9 @@ function montarCertificado({ nome, fase, nota, acertos, total, data = new Date()
   return {
     nome, faseId: fase.id, fase: fase.numero, trilha: fase.trilha, nomeTrilha: fase.nomeTrilha,
     instrumento: fase.instrumento || null, titulo: fase.titulo, subtitulo: fase.subtitulo,
+    // O rótulo do selo. Num bloco o título já é o intervalo ("Fases 1 a 3");
+    // numa fase solta é preciso dizer de que fase se trata.
+    rotulo: fase.rotulo || (/^Fases? /i.test(String(fase.titulo)) ? fase.titulo : `Fase ${fase.numero} — ${fase.titulo}`),
     paginas: fase.paginas || null, cor: fase.cor, nota, acertos, total, data, codigo,
   };
 }
@@ -5400,22 +5889,22 @@ function montarCertificado({ nome, fase, nota, acertos, total, data = new Date()
 function svgDoCertificado(c) {
   const largura = 1123;
   const altura = 794;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="100%" class="certificado-svg" role="img"
-    aria-label="Certificado da fase ${c.fase}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${largura} ${altura}" width="100%" class="selo-svg" role="img"
+    aria-label="Selo — ${escapar(c.rotulo || `Fase ${c.fase}`)}">
     <rect width="${largura}" height="${altura}" fill="#ffffff"/>
     <rect x="18" y="18" width="${largura - 36}" height="${altura - 36}" fill="none" stroke="${c.cor}" stroke-width="6"/>
     <rect x="34" y="34" width="${largura - 68}" height="${altura - 68}" fill="none" stroke="${c.cor}" stroke-width="1.5" opacity="0.6"/>
     <g fill="${c.cor}" opacity="0.10">
       <circle cx="118" cy="118" r="54"/><circle cx="${largura - 118}" cy="${altura - 118}" r="54"/>
     </g>
-    <text x="${largura / 2}" y="126" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="26" letter-spacing="6" fill="#555">CERTIFICADO DE CONCLUSÃO</text>
-    <text x="${largura / 2}" y="196" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="bold" fill="${c.cor}">Fase ${c.fase} — ${escapar(c.titulo)}</text>
+    <text x="${largura / 2}" y="126" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="26" letter-spacing="6" fill="#555">${/^Fases /i.test(String(c.rotulo || '')) ? 'SELO DE FASES CONCLUÍDAS' : 'SELO DE FASE CONCLUÍDA'}</text>
+    <text x="${largura / 2}" y="196" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="bold" fill="${c.cor}">${escapar(c.rotulo || `Fase ${c.fase} — ${c.titulo}`)}</text>
     <text x="${largura / 2}" y="234" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#666">${escapar(c.subtitulo)}</text>
     <line x1="140" y1="266" x2="${largura - 140}" y2="266" stroke="${c.cor}" stroke-width="1.5" opacity="0.5"/>
-    <text x="${largura / 2}" y="322" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#333">Certificamos que</text>
+    <text x="${largura / 2}" y="322" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#333">Concedido a</text>
     <text x="${largura / 2}" y="394" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="46" font-weight="bold" fill="#1a1a1a">${escapar(c.nome)}</text>
     <line x1="240" y1="414" x2="${largura - 240}" y2="414" stroke="#999" stroke-width="1"/>
-    <text x="${largura / 2}" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" fill="#333">concluiu a Fase ${c.fase} do estudo do</text>
+    <text x="${largura / 2}" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" fill="#333">concluiu ${escapar(/^Fases /i.test(String(c.rotulo || '')) ? `as ${String(c.rotulo).toLowerCase()}` : `a ${String(c.rotulo || `Fase ${c.fase}`).split(' — ')[0].toLowerCase()}`)} do estudo do</text>
     <text x="${largura / 2}" y="504" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="bold" fill="#333">${escapar(c.trilha === 'instrumento'
       ? `Método do instrumento — ${c.instrumento}`
       : 'Método Simplificado de Aprendizagem Musical')}</text>
@@ -5426,7 +5915,7 @@ function svgDoCertificado(c) {
     <line x1="${largura / 2 - 190}" y1="686" x2="${largura / 2 + 190}" y2="686" stroke="#666" stroke-width="1.2"/>
     <text x="${largura / 2}" y="712" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#666">Estudo dirigido — aplicativo MSA</text>
     <text x="66" y="${altura - 52}" font-family="'Courier New', monospace" font-size="15" fill="#777">Código: ${c.codigo}</text>
-    <text x="${largura - 66}" y="${altura - 52}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#999">Documento de estudo pessoal, sem validade eclesiástica ou escolar.</text>
+    <text x="${largura - 66}" y="${altura - 52}" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#999">Registro de estudo pessoal, sem validade eclesiástica ou escolar.</text>
   </svg>`;
 }
 
@@ -5442,7 +5931,7 @@ function baixarCertificado(c) {
   const svg = svgDoCertificado(c);
   const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const nome = `certificado-fase-${c.fase}-${c.nome.replace(/\s+/g, '-').toLowerCase()}.png`;
+  const nome = `selo-fase-${c.fase}-${c.nome.replace(/\s+/g, '-').toLowerCase()}.png`;
   const imagem = new Image();
   imagem.onload = () => {
     const tela = document.createElement('canvas');
@@ -5823,7 +6312,7 @@ const ENTIDADES = {
   avaliacoes: {
     nome: 'Avaliações',
     chavePrimaria: 'id',
-    campos: ['id', 'faseId', 'titulo', 'quantidadeDeQuestoes', 'notaMinima', 'geradorRef'],
+    campos: ['id', 'faseId', 'blocoId', 'titulo', 'quantidadeDeQuestoes', 'notaMinima', 'geradorRef'],
     unicos: ['id'],
   },
   questoes: {
@@ -5860,10 +6349,13 @@ const ENTIDADES = {
     unicos: ['id'],
   },
   certificados: {
-    nome: 'Certificados',
+    // O nome do dado continua `certificados` porque é assim que ele está
+    // gravado em cada aparelho e em cada cópia de segurança já exportada.
+    // O que a pessoa lê, em toda tela, é "selo".
+    nome: 'Selos de fase',
     chavePrimaria: 'id',
-    campos: ['id', 'alunoId', 'matriculaId', 'faseId', 'data', 'nota', 'codigo', 'titulo', 'trilha',
-      'aluno', 'numero', 'hash', 'retrato', 'responsavel'],
+    campos: ['id', 'alunoId', 'matriculaId', 'faseId', 'data', 'nota', 'codigo', 'titulo', 'rotulo',
+      'trilha', 'aluno', 'numero', 'hash', 'retrato', 'responsavel'],
     unicos: ['id'],
   },
   versoes: {
@@ -5901,6 +6393,13 @@ const ENTIDADES = {
     nome: 'Avisos',
     chavePrimaria: 'id',
     campos: ['id', 'alunoId', 'tipo', 'titulo', 'texto', 'destino', 'lidaEm', 'criadaEm'],
+    unicos: ['id'],
+  },
+  blocos: {
+    nome: 'Blocos de avaliação',
+    chavePrimaria: 'id',
+    campos: ['id', 'metodoId', 'versaoId', 'ordem', 'titulo', 'subtitulo', 'faseIds',
+      'paginas', 'cor', 'icone', 'notaMinima', 'ativo'],
     unicos: ['id'],
   },
   turmas: {
@@ -6090,7 +6589,27 @@ const validarFilhos = (linhas, entidade, campoPai, pais, rotulo) => {
 const validarLicoes = (licoes, fases = []) => validarFilhos(licoes, 'licoes', 'faseId', fases, 'Lição sem fase.');
 const validarExercicios = (exercicios, licoes = []) => validarFilhos(exercicios, 'exercicios', 'licaoId', licoes, 'Exercício sem lição.');
 const validarJogos = (jogos, fases = []) => validarFilhos(jogos, 'jogos', 'faseId', fases, 'Jogo sem fase.');
-const validarAvaliacoes = (avaliacoes, fases = []) => validarFilhos(avaliacoes, 'avaliacoes', 'faseId', fases, 'Avaliação sem fase.');
+// A avaliação pertence a uma FASE ou a um BLOCO — nunca a nenhum dos dois, e
+// nunca aos dois ao mesmo tempo. É o que separa o método que avalia fase a
+// fase do que avalia a cada três.
+function validarAvaliacoes(avaliacoes, fases = [], blocos = []) {
+  const problemas = [];
+  const idsDeFase = new Set(fases.map((f) => f.id));
+  const idsDeBloco = new Set(blocos.map((b) => b.id));
+  for (const a of avaliacoes) {
+    const temFase = !vazio(a.faseId);
+    const temBloco = !vazio(a.blocoId);
+    if (!temFase && !temBloco) problemas.push(erro('avaliacoes', a.id, 'Avaliação sem fase e sem bloco.'));
+    if (temFase && temBloco) problemas.push(erro('avaliacoes', a.id, 'Avaliação presa a uma fase e a um bloco ao mesmo tempo.'));
+    if (temFase && idsDeFase.size && !idsDeFase.has(a.faseId)) {
+      problemas.push(erro('avaliacoes', a.id, `Avaliação aponta para a fase "${a.faseId}", que não está cadastrada.`));
+    }
+    if (temBloco && idsDeBloco.size && !idsDeBloco.has(a.blocoId)) {
+      problemas.push(erro('avaliacoes', a.id, `Avaliação aponta para o bloco "${a.blocoId}", que não está cadastrado.`));
+    }
+  }
+  return problemas;
+}
 const validarQuestoes = (questoes, avaliacoes = []) => validarFilhos(questoes, 'questoes', 'avaliacaoId', avaliacoes, 'Questão sem avaliação.');
 
 function validarAlunos(alunos, instrumentos = []) {
@@ -6109,6 +6628,34 @@ function validarAlunos(alunos, instrumentos = []) {
   }
   for (const d of duplicados(alunos, 'nome')) {
     problemas.push(erro('alunos', d.linha.id, `Já existe um aluno com o nome "${texto(d.linha.nome)}".`));
+  }
+  return problemas;
+}
+
+// O bloco é a unidade avaliada: um punhado de fases estudadas em sequência e
+// uma avaliação só ao fim delas. Um bloco sem fase nenhuma não avalia coisa
+// alguma, e uma fase em dois blocos seria avaliada duas vezes.
+function validarBlocos(blocos, estado = {}) {
+  const problemas = [];
+  const fases = new Set((estado.fases || []).map((f) => f.id));
+  const jaVistas = new Map();
+  for (const b of blocos) {
+    if (vazio(b.titulo)) problemas.push(erro('blocos', b.id, 'Bloco sem título.'));
+    if (vazio(b.metodoId)) problemas.push(erro('blocos', b.id, 'Bloco sem método.'));
+    if (!Array.isArray(b.faseIds) || !b.faseIds.length) {
+      problemas.push(erro('blocos', b.id, 'Bloco sem nenhuma fase.'));
+    }
+    for (const faseId of b.faseIds || []) {
+      if (fases.size && !fases.has(faseId)) {
+        problemas.push(erro('blocos', b.id, `Bloco aponta para a fase "${faseId}", que não está cadastrada.`));
+      }
+      if (jaVistas.has(faseId)) {
+        problemas.push(erro('blocos', b.id, `A fase "${faseId}" já está no bloco "${jaVistas.get(faseId)}".`));
+      }
+      jaVistas.set(faseId, b.id);
+    }
+    const nota = Number(b.notaMinima);
+    if (!(nota >= 1 && nota <= 100)) problemas.push(erro('blocos', b.id, 'Nota mínima do bloco fora de 1 a 100.'));
   }
   return problemas;
 }
@@ -6257,18 +6804,19 @@ function validarEstado(estado) {
     ...validarLicoes(e.licoes, e.fases),
     ...validarExercicios(e.exercicios, e.licoes),
     ...validarJogos(e.jogos, e.fases),
-    ...validarAvaliacoes(e.avaliacoes, e.fases),
+    ...validarAvaliacoes(e.avaliacoes, e.fases, e.blocos),
     ...validarQuestoes(e.questoes, e.avaliacoes),
     ...validarAlunos(e.alunos, e.instrumentos),
     ...validarUsuarios(e.usuarios, e.alunos),
     ...validarSolicitacoes(e.solicitacoes, e.usuarios),
     ...validarTurmas(e.turmas, e),
+    ...validarBlocos(e.blocos, e),
     ...validarVersoes(e.versoes, e.metodos),
     ...validarMatriculas(e.matriculas, e),
   ];
 }
 
-return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, SITUACOES_DA_TURMA, CRITERIO_PADRAO, validarSolicitacoes, validarTurmas, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
+return { VERSAO_DO_ESQUEMA, ENTIDADES, NOMES_DAS_ENTIDADES, PAPEIS, PAPEL_ANTIGO, PAPEIS_QUE_PEDEM, SITUACOES_DA_SOLICITACAO, SITUACOES_DA_TURMA, CRITERIO_PADRAO, validarSolicitacoes, validarTurmas, validarBlocos, estadoVazio, completarEstado, impedimentos, pendencias, validarInstrumentos, validarMetodos, validarFases, validarLicoes, validarExercicios, validarJogos, validarAvaliacoes, validarQuestoes, validarAlunos, validarUsuarios, validarVersoes, validarMatriculas, validarEstado };
 })();
 
 __modulos['dados/ids'] = (function () {
@@ -6628,8 +7176,26 @@ function normalizeTurma(bruto = {}) {
   };
 }
 
+function normalizeBloco(bruto = {}) {
+  return {
+    id: texto(bruto.id),
+    metodoId: texto(bruto.metodoId),
+    versaoId: texto(bruto.versaoId) || null,
+    ordem: numero(bruto.ordem, 0),
+    titulo: texto(bruto.titulo),
+    subtitulo: texto(bruto.subtitulo),
+    faseIds: lista(bruto.faseIds).map(texto).filter(Boolean),
+    paginas: bruto.paginas === undefined ? null : bruto.paginas,
+    cor: texto(bruto.cor),
+    icone: texto(bruto.icone),
+    notaMinima: numero(bruto.notaMinima, 70),
+    ativo: bruto.ativo === undefined ? true : Boolean(bruto.ativo),
+  };
+}
+
 const NORMALIZADORES = {
   alunos: normalizeAluno,
+  blocos: normalizeBloco,
   turmas: normalizeTurma,
   solicitacoes: normalizeSolicitacao,
   usuarios: normalizeUsuario,
@@ -6647,7 +7213,7 @@ const NORMALIZADORES = {
   notificacoes: normalizeNotificacao,
 };
 
-return { normalizeAluno, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeSolicitacao, normalizeTurma, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
+return { normalizeAluno, normalizeBloco, normalizeProgresso, normalizeMetodo, normalizeFase, normalizeInstrumento, normalizeUsuario, normalizeSolicitacao, normalizeTurma, normalizeResultado, normalizeCertificado, normalizeVersao, normalizeMatricula, normalizeEvento, semSegredos, normalizeAuditoria, normalizeConquista, normalizeNotificacao, NORMALIZADORES };
 })();
 
 __modulos['dados/permissoes'] = (function () {
@@ -6854,7 +7420,7 @@ __modulos['dados/semente'] = (function () {
 //            resumido ou inventado aqui: cada registro aponta para o conteúdo
 //            de origem por referência (conteudoRef).
 
-const { FASES } = __modulos['conteudo/fases'];
+const { FASES, BLOCOS } = __modulos['conteudo/fases'];
 const { FASES_INSTRUMENTO } = __modulos['conteudo/fases-instrumento'];
 const { INSTRUMENTOS } = __modulos['conteudo/instrumentos'];
 const { QUESTOES_POR_PROVA, NOTA_MINIMA } = __modulos['quiz'];
@@ -6994,18 +7560,51 @@ function jogosDaSemente() {
   ];
 }
 
-// Uma avaliação por fase, com a regra que o aplicativo já aplicava: dez
-// questões e nota mínima 70. Ficam aqui como dado, e não mais fixas no código,
-// para que um método novo possa ter outra quantidade ou outra nota mínima.
+// O MSA avalia A CADA TRÊS FASES, como o método pede. O bloco é essa unidade:
+// as fases dele se estudam em sequência e, ao fim, uma avaliação só sorteia
+// das três juntas.
+function blocosDaSemente() {
+  return BLOCOS.map((bloco) => ({
+    id: bloco.id,
+    metodoId: METODO_MSA,
+    versaoId: VERSAO_MSA,
+    ordem: bloco.ordem,
+    titulo: bloco.titulo,
+    subtitulo: bloco.subtitulo,
+    faseIds: bloco.faseIds.slice(),
+    paginas: bloco.paginas,
+    cor: bloco.cor,
+    icone: bloco.icone,
+    notaMinima: NOTA_MINIMA,
+    ativo: true,
+  }));
+}
+
+// Uma avaliação por BLOCO no MSA, e uma por FASE no método do instrumento, que
+// não trabalha em blocos. Ficam aqui como dado, e não fixas no código, para que
+// um método novo possa ter outra quantidade de questões ou outra nota mínima.
 function avaliacoesDaSemente() {
-  return fasesDaSemente().map((fase) => ({
-    id: `av-${fase.id}`,
-    faseId: fase.id,
-    titulo: `Avaliação — ${fase.titulo}`,
+  const porBloco = blocosDaSemente().map((bloco) => ({
+    id: `av-${bloco.id}`,
+    blocoId: bloco.id,
+    faseId: '',
+    titulo: `Avaliação — ${bloco.titulo}`,
     quantidadeDeQuestoes: QUESTOES_POR_PROVA,
     notaMinima: NOTA_MINIMA,
-    geradorRef: fase.id,    // o universo de questões da fase, em js/conteudo/geradores.js
+    geradorRef: bloco.id,
   }));
+  const porFase = fasesDaSemente()
+    .filter((fase) => fase.metodoId !== METODO_MSA)
+    .map((fase) => ({
+      id: `av-${fase.id}`,
+      blocoId: '',
+      faseId: fase.id,
+      titulo: `Avaliação — ${fase.titulo}`,
+      quantidadeDeQuestoes: QUESTOES_POR_PROVA,
+      notaMinima: NOTA_MINIMA,
+      geradorRef: fase.id,
+    }));
+  return [...porBloco, ...porFase];
 }
 
 // Questões e exercícios ficam vazios de propósito.
@@ -7028,12 +7627,13 @@ function semear() {
     licoes: licoesDaSemente(),
     exercicios: exerciciosDaSemente(),
     jogos: jogosDaSemente(),
+    blocos: blocosDaSemente(),
     avaliacoes: avaliacoesDaSemente(),
     questoes: questoesDaSemente(),
   };
 }
 
-return { METODO_MSA, METODO_INSTRUMENTO, VERSAO_MSA, VERSAO_INSTRUMENTO, instrumentosDaSemente, metodosDaSemente, versoesDaSemente, fasesDaSemente, licoesDaSemente, jogosDaSemente, avaliacoesDaSemente, questoesDaSemente, exerciciosDaSemente, semear };
+return { METODO_MSA, METODO_INSTRUMENTO, VERSAO_MSA, VERSAO_INSTRUMENTO, blocosDaSemente, instrumentosDaSemente, metodosDaSemente, versoesDaSemente, fasesDaSemente, licoesDaSemente, jogosDaSemente, avaliacoesDaSemente, questoesDaSemente, exerciciosDaSemente, semear };
 })();
 
 __modulos['dados/migracao'] = (function () {
@@ -7055,10 +7655,10 @@ const {
   normalizeResultado, normalizeUsuario,
 } = __modulos['dados/compatibilidade'];
 const { idDoAcesso, idDoCertificado, idDoProgresso, novoId } = __modulos['dados/ids'];
-const { semear } = __modulos['dados/semente'];
+const { semear, METODO_MSA } = __modulos['dados/semente'];
 const { ehOAcessoDeFabricaAntigo, guardarSenha, LOGIN_INICIAL, SENHA_INICIAL } = __modulos['dados/permissoes'];
 
-const VERSAO_DA_MIGRACAO = 3;
+const VERSAO_DA_MIGRACAO = 4;
 const MAXIMO_DE_BACKUPS = 5;
 
 const agora = () => new Date().toISOString();
@@ -7067,7 +7667,12 @@ const agora = () => new Date().toISOString();
 // nasce com o usuário e a senha de fábrica — e o aplicativo avisa, na primeira
 // entrada, que essa senha precisa ser trocada.
 function garantirAdmin(estado) {
-  const admin = estado.usuarios.find((u) => u.papel === 'ADMIN');
+  // MASTER ou ADMIN: os dois são acesso de topo. Procurar só por ADMIN fazia
+  // esta função não enxergar o master e empurrar um segundo registro com o
+  // mesmo id — dois acessos "admin" no cadastro, um deles impossível de
+  // remover pela tela.
+  const admin = estado.usuarios.find((u) => u.papel === 'MASTER')
+    || estado.usuarios.find((u) => u.papel === 'ADMIN');
   // Cadastro antigo cujo acesso de instrutor ficou sem resumo de senha: sem
   // isto ninguém entraria mais no painel. Ele volta para a senha de fábrica —
   // e o aplicativo avisa, na entrada, que ela precisa ser trocada.
@@ -7390,7 +7995,8 @@ function migrarDadosV1ParaV2(deposito = depositoAtual()) {
   // versão da migração, sem converter nada de novo.
   if (!origem && atual) {
     const estado = completarEstado(atual);
-    const backupDaSubida = completarVersaoEMatriculas(estado, deposito);
+    const backupDaSubida = completarVersaoEMatriculas(estado, deposito)
+      || refazerConteudoDoMsa(estado, deposito);
     estado.migracao = { ...(estado.migracao || {}), versao: VERSAO_DA_MIGRACAO, migradoEm: agora() };
     garantirAdmin(estado);
     deposito.gravar(estado);
@@ -7420,6 +8026,50 @@ function migrarDadosV1ParaV2(deposito = depositoAtual()) {
 
 // Sobe um cadastro que já estava no V2 mas ainda não conhecia versões nem
 // matrículas. Roda uma vez só, faz cópia antes e não converte nada além disso.
+/**
+ * O conteúdo do MSA foi refeito para seguir o livro: 16 fases, com os títulos,
+ * as seções e as páginas do método impresso, e avaliação a cada três fases.
+ *
+ * As dez fases anteriores não eram as do livro, e as novas ocupam os mesmos
+ * identificadores com outro significado: quem tinha vencido a antiga "fase 5"
+ * (tons e semitons) apareceria vencendo a nova fase 5 (tercinas), que ele nunca
+ * estudou. Um progresso que credita o que não aconteceu é pior que nenhum.
+ *
+ * Por isso a subida REFAZ o conteúdo do MSA e APAGA o progresso, os resultados
+ * e os selos dele. Uma cópia de segurança é gravada antes, e o que é do método
+ * do instrumento não é tocado.
+ */
+function refazerConteudoDoMsa(estado, deposito) {
+  const semente = semear();
+  const doMsa = new Set(semente.fases.filter((f) => f.metodoId === METODO_MSA).map((f) => f.conteudoRef));
+  const atuais = estado.fases.filter((f) => f.metodoId === METODO_MSA);
+  const jaEstaNovo = atuais.length === doMsa.size && atuais.every((f) => doMsa.has(f.conteudoRef));
+  if (jaEstaNovo) return null;
+
+  const backup = criarBackupAutomatico(deposito, 'msa-refeito-pelo-livro');
+  const idsAntigos = new Set(atuais.map((f) => f.id));
+  const daCasa = (faseId) => idsAntigos.has(String(faseId));
+
+  estado.fases = [...estado.fases.filter((f) => f.metodoId !== METODO_MSA),
+    ...semente.fases.filter((f) => f.metodoId === METODO_MSA)];
+  estado.licoes = [...estado.licoes.filter((l) => !daCasa(l.faseId)),
+    ...semente.licoes.filter((l) => semente.fases.some((f) => f.id === l.faseId && f.metodoId === METODO_MSA))];
+  estado.jogos = [...estado.jogos.filter((j) => !daCasa(j.faseId)),
+    ...semente.jogos.filter((j) => semente.fases.some((f) => f.id === j.faseId && f.metodoId === METODO_MSA))];
+  estado.blocos = semente.blocos.slice();
+  estado.avaliacoes = [...estado.avaliacoes.filter((a) => a.blocoId ? false : !daCasa(a.faseId)),
+    ...semente.avaliacoes.filter((a) => a.blocoId || semente.fases.some((f) => f.id === a.faseId && f.metodoId === METODO_MSA))];
+
+  // O que o aluno fez nas fases antigas do MSA sai junto: não há como traduzir
+  // "venceu a fase 5 de antes" para o currículo de agora.
+  const eraDoMsa = (faseId) => daCasa(faseId) || estado.blocos.some((b) => b.id === String(faseId));
+  estado.progressos = estado.progressos.filter((linha) => !eraDoMsa(linha.faseId));
+  estado.resultados = estado.resultados.filter((linha) => !eraDoMsa(linha.faseId));
+  estado.certificados = estado.certificados.filter((linha) => !eraDoMsa(linha.faseId));
+
+  return backup;
+}
+
 function completarVersaoEMatriculas(estado, deposito) {
   const precisaDeVersoes = estado.metodos.length && !estado.versoes.length;
   const precisaDeMatriculas = estado.alunos.length && !estado.matriculas.length;
@@ -7470,7 +8120,7 @@ const {
   ENTIDADES, completarEstado, impedimentos, pendencias,
   validarAlunos, validarAvaliacoes, validarExercicios, validarFases, validarInstrumentos,
   validarJogos, validarLicoes, validarMetodos, validarQuestoes, validarUsuarios,
-  validarMatriculas, validarSolicitacoes, validarTurmas, validarVersoes,
+  validarMatriculas, validarSolicitacoes, validarTurmas, validarBlocos, validarVersoes,
 } = __modulos['dados/esquema'];
 const { NORMALIZADORES } = __modulos['dados/compatibilidade'];
 const { migrarDadosV1ParaV2 } = __modulos['dados/migracao'];
@@ -7571,12 +8221,13 @@ const VALIDADORES = {
   licoes: (e) => validarLicoes(e.licoes, e.fases),
   exercicios: (e) => validarExercicios(e.exercicios, e.licoes),
   jogos: (e) => validarJogos(e.jogos, e.fases),
-  avaliacoes: (e) => validarAvaliacoes(e.avaliacoes, e.fases),
+  avaliacoes: (e) => validarAvaliacoes(e.avaliacoes, e.fases, e.blocos),
   questoes: (e) => validarQuestoes(e.questoes, e.avaliacoes),
   alunos: (e) => validarAlunos(e.alunos, e.instrumentos),
   usuarios: (e) => validarUsuarios(e.usuarios, e.alunos),
   solicitacoes: (e) => validarSolicitacoes(e.solicitacoes, e.usuarios),
   turmas: (e) => validarTurmas(e.turmas, e),
+  blocos: (e) => validarBlocos(e.blocos, e),
   versoes: (e) => validarVersoes(e.versoes, e.metodos),
   matriculas: (e) => validarMatriculas(e.matriculas, e),
 };
@@ -7713,6 +8364,7 @@ const alunos = criarRepositorio('alunos', { prefixo: 'u' });
 const usuarios = criarRepositorio('usuarios', { prefixo: 'ac' });
 const solicitacoes = criarRepositorio('solicitacoes', { prefixo: 'sol' });
 const turmas = criarRepositorio('turmas', { prefixo: 'tu' });
+const blocos = criarRepositorio('blocos', { prefixo: 'bl' });
 const progressos = criarRepositorio('progressos', { prefixo: 'p', validar: false });
 const resultados = criarRepositorio('resultados', { prefixo: 'r', validar: false });
 const certificados = criarRepositorio('certificados', { prefixo: 'c', validar: false });
@@ -7732,6 +8384,14 @@ const notificacoes = criarRepositorio('notificacoes', { prefixo: 'nt', validar: 
 const solicitacoesPendentes = () => solicitacoes
   .listar((s) => s.situacao === 'pendente')
   .sort((a, b) => String(a.criadaEm).localeCompare(String(b.criadaEm)));
+
+// Os blocos de avaliação de um método, na ordem. Um método pode não ter bloco
+// nenhum: aí a avaliação é por fase, como sempre foi.
+const blocosDoMetodo = (metodoId) => blocos
+  .listar((b) => b.metodoId === metodoId && b.ativo !== false)
+  .sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+
+const blocoDaFase = (faseId) => blocos.listar().find((b) => b.faseIds.includes(String(faseId))) || null;
 
 // As turmas em que um aluno está. Um aluno pode estar em mais de uma — a de
 // teoria e a do instrumento, por exemplo —, e é por isso que a busca devolve
@@ -7868,7 +8528,7 @@ function fecharSessao() {
   gravar();
 }
 
-return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, solicitacoes, solicitacoesPendentes, turmas, turmasDoAluno, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
+return { estadoAtual, gravar, falhouAoGravar, tamanhoGuardadoKB, recarregar, usarDeposito, definirEstado, informacoesDaMigracao, pendenciasDoCadastro, problemasDeEstrutura, instrumentos, metodos, fases, licoes, exercicios, jogos, avaliacoes, questoes, alunos, usuarios, solicitacoes, solicitacoesPendentes, turmas, turmasDoAluno, blocos, blocosDoMetodo, blocoDaFase, progressos, resultados, certificados, versoes, matriculas, eventos, auditorias, conquistas, notificacoes, fasesDoMetodo, metodosDoInstrumento, licoesDaFase, jogosDaFase, avaliacaoDaFase, questoesDaAvaliacao, exerciciosDaLicao, progressoDoAluno, progressoDeTodasAsFases, resultadosDoAluno, certificadosDoAluno, acessoDoAluno, alunoDoAcesso, versoesDoMetodo, versaoVigente, matriculasDoAluno, matriculasEmCurso, fasesDaVersao, eventosDoAluno, conquistasDoAluno, avisosDoAluno, configuracoes, sessaoAtual, abrirSessao, fecharSessao };
 })();
 
 __modulos['servicos/catalogo'] = (function () {
@@ -9023,7 +9683,7 @@ function emitir({ alunoId, fase, nota, acertos, total, responsavel = null, data 
   if (!existente) {
     eventos.registrar({
       alunoId, matriculaId: certificado.matriculaId, tipo: eventos.TIPOS.CERTIFICADO,
-      titulo: `Certificado da Fase ${fase.numero}`, detalhe: `${nota}% · ${certificado.codigo}`,
+      titulo: `Selo da Fase ${fase.numero}`, detalhe: `${nota}% · ${certificado.codigo}`,
       faseId: fase.id, valor: nota, dataHora: quando,
     });
     auditoria.registrar({
@@ -9055,17 +9715,17 @@ function nomeDoResponsavel() {
 function verificar(codigo) {
   const certificado = R.certificados.listar().find((c) => c.codigo === String(codigo).trim());
   if (!certificado) {
-    return { valido: false, motivo: 'Nenhum certificado com este código foi emitido neste aparelho.' };
+    return { valido: false, motivo: 'Nenhum selo com este código foi emitido neste aparelho.' };
   }
   if (!certificado.hash) {
     return {
       valido: false, certificado,
-      motivo: 'Certificado emitido antes de existir o resumo de conferência: os dados estão aqui, mas não há como conferir se foram alterados.',
+      motivo: 'Selo emitido antes de existir o resumo de conferência: os dados estão aqui, mas não há como conferir se foram alterados.',
     };
   }
   const esperado = calcularHash(certificado);
   if (esperado !== certificado.hash) {
-    return { valido: false, certificado, motivo: 'Os dados do certificado não correspondem ao resumo gravado.' };
+    return { valido: false, certificado, motivo: 'Os dados do selo não correspondem ao resumo gravado.' };
   }
   return { valido: true, certificado };
 }
@@ -9336,6 +9996,225 @@ function situacaoDoAluno(alunoId, { agora = new Date().toISOString() } = {}) {
 }
 
 return { DIAS_PARADO, TENTATIVAS_TRAVADO, GRAVIDADE, doAluno, doInstrutor, situacaoDoAluno };
+})();
+
+__modulos['servicos/blocos'] = (function () {
+// O bloco: a unidade que o MSA avalia.
+//
+// O método pede avaliação A CADA TRÊS FASES, e não fase a fase. Isso separa
+// duas coisas que antes eram uma só:
+//
+//   a FASE continua sendo a unidade de ESTUDO — é dela que são as lições, os
+//   jogos e o progresso de leitura;
+//   o BLOCO passa a ser a unidade de AVALIAÇÃO — é dele a prova, a nota, a
+//   liberação do que vem depois e o selo.
+//
+// A prova de um bloco sorteia das fases dele JUNTAS: passar no bloco 1 é
+// responder sobre as fases 1, 2 e 3 na mesma prova. E o que o aluno já
+// respondeu não volta a cair, porque a memória das perguntas usadas é do
+// bloco — que é o que nunca repete.
+//
+// Onde essa memória fica: numa linha de progresso com o id do bloco, do mesmo
+// formato das linhas de fase. O campo continua se chamando `faseId` porque é
+// o identificador do que está sendo avaliado, e um método sem blocos avalia
+// fases. Trocar o nome do campo custaria migrar o que já está gravado em cada
+// aparelho, sem nada de novo aparecer na tela.
+
+const R = __modulos['dados/repositorios'];
+const { montarProva, corrigir: corrigirProva, QUESTOES_POR_PROVA, NOTA_MINIMA } = __modulos['quiz'];
+const { universoDaFase } = __modulos['conteudo/geradores'];
+const { novaSemente } = __modulos['aleatorio'];
+const eventos = __modulos['servicos/eventos'];
+const catalogo = __modulos['servicos/catalogo'];
+
+const blocosDoMetodo = (metodoId) => R.blocosDoMetodo(metodoId);
+const blocoDaFase = (faseId) => R.blocoDaFase(faseId);
+const blocoPorId = (id) => R.blocos.buscar(id);
+
+/** O método avalia por bloco? Um método sem bloco nenhum avalia fase a fase. */
+const avaliaPorBloco = (metodoId) => blocosDoMetodo(metodoId).length > 0;
+
+const avaliacaoDoBloco = (blocoId) => R.avaliacoes.listar((a) => a.blocoId === blocoId)[0] || null;
+
+const fasesDoBloco = (bloco) => (bloco.faseIds || [])
+  .map((id) => R.fases.buscar(id))
+  .filter(Boolean);
+
+const linhaDoBloco = (alunoId, blocoId) => R.progressoDoAluno(alunoId, blocoId);
+
+const blocoAprovado = (alunoId, blocoId) => Boolean(linhaDoBloco(alunoId, blocoId).aprovadoEm);
+
+/**
+ * O bloco está liberado? O primeiro sempre; os demais quando o anterior foi
+ * aprovado. É por aqui que as fases de um bloco ficam trancadas: quem não
+ * passou no bloco 1 não abre a fase 4.
+ */
+function blocoLiberado(alunoId, bloco) {
+  const irmaos = blocosDoMetodo(bloco.metodoId);
+  const posicao = irmaos.findIndex((b) => b.id === bloco.id);
+  if (posicao <= 0) return true;
+  return blocoAprovado(alunoId, irmaos[posicao - 1].id);
+}
+
+/** Todas as lições de todas as fases do bloco já foram lidas? */
+function licoesEmDia(alunoId, bloco) {
+  let lidas = 0;
+  let total = 0;
+  for (const faseId of bloco.faseIds || []) {
+    const daFase = R.licoesDaFase(faseId).length;
+    total += daFase;
+    lidas += Math.min(daFase, R.progressoDoAluno(alunoId, faseId).licoesLidas.length);
+  }
+  return { lidas, total, emDia: total === 0 || lidas >= total };
+}
+
+/** Onde o aluno está neste bloco — é o que a tela mostra e o que decide a prova. */
+function situacaoDoBloco(alunoId, bloco) {
+  const linha = linhaDoBloco(alunoId, bloco.id);
+  const licoes = licoesEmDia(alunoId, bloco);
+  const avaliacao = avaliacaoDoBloco(bloco.id);
+  return {
+    bloco,
+    liberado: blocoLiberado(alunoId, bloco),
+    aprovado: Boolean(linha.aprovadoEm),
+    aprovadoEm: linha.aprovadoEm,
+    melhorNota: linha.melhorNota || 0,
+    tentativas: R.resultadosDoAluno(alunoId, bloco.id).length,
+    notaMinima: bloco.notaMinima || (avaliacao && avaliacao.notaMinima) || NOTA_MINIMA,
+    quantidadeDeQuestoes: (avaliacao && avaliacao.quantidadeDeQuestoes) || QUESTOES_POR_PROVA,
+    licoes,
+    percentual: licoes.total ? Math.round((licoes.lidas / licoes.total) * 100) : 0,
+  };
+}
+
+// ------------------------------------------------------------------ a prova
+
+/** O universo de perguntas de um bloco: o das fases dele, somado. */
+const universoDoBloco = (bloco, contexto = null) => (bloco.faseIds || [])
+  .flatMap((faseId) => universoDaFase(faseId, contexto));
+
+/** As assinaturas que este aluno já recebeu neste bloco. */
+const usadasDoBloco = (alunoId, blocoId) => linhaDoBloco(alunoId, blocoId).usadas || [];
+
+function registrarUsadasDoBloco(alunoId, blocoId, assinaturas) {
+  const linha = linhaDoBloco(alunoId, blocoId);
+  linha.usadas = [...new Set([...(linha.usadas || []), ...assinaturas])];
+  R.progressos.salvar(linha);
+  return linha;
+}
+
+/**
+ * Monta a prova do bloco. As perguntas saem das fases dele, e as que o aluno
+ * já respondeu ficam de fora enquanto houver inédita.
+ */
+function montar(bloco, { alunoId = null, contexto = null, semente = novaSemente() } = {}) {
+  const avaliacao = avaliacaoDoBloco(bloco.id);
+  const quantidade = (avaliacao && avaliacao.quantidadeDeQuestoes) || QUESTOES_POR_PROVA;
+  const usadas = alunoId ? usadasDoBloco(alunoId, bloco.id) : [];
+  // montarProva sabe sortear de uma fase; aqui ele sorteia do bloco inteiro,
+  // recebendo o universo somado das fases dele.
+  const prova = montarProva(bloco.faseIds, usadas, { quantidade, semente, contexto });
+  return { ...prova, blocoId: bloco.id, faseId: bloco.id };
+}
+
+const corrigir = (prova, respostas, bloco) => {
+  const resultado = corrigirProva(prova, respostas);
+  const minima = bloco ? (bloco.notaMinima || NOTA_MINIMA) : NOTA_MINIMA;
+  return { ...resultado, notaMinima: minima, aprovado: resultado.nota >= minima };
+};
+
+const quantasIneditas = (alunoId, bloco, contexto = null) => {
+  const jaVistas = new Set(usadasDoBloco(alunoId, bloco.id));
+  return universoDoBloco(bloco, contexto).filter((item) => !jaVistas.has(item.assinatura)).length;
+};
+
+const totalDePerguntas = (bloco, contexto = null) => universoDoBloco(bloco, contexto).length;
+
+/**
+ * Grava a tentativa do bloco. Passando, o bloco é concluído — e, com ele,
+ * TODAS as fases dele: é o que faz o bloco seguinte abrir e o que o boletim
+ * conta como fase vencida.
+ */
+function registrarTentativa({ alunoId, bloco, prova, resultado, duracaoSegundos = 0 }) {
+  const agora = new Date().toISOString();
+  const linha = linhaDoBloco(alunoId, bloco.id);
+  const matricula = R.matriculasDoAluno(alunoId).find((m) => m.metodoId === bloco.metodoId) || null;
+
+  linha.matriculaId = linha.matriculaId || (matricula ? matricula.id : null);
+  linha.melhorNota = Math.max(linha.melhorNota || 0, resultado.nota);
+  linha.iniciadoEm = linha.iniciadoEm || agora;
+  linha.atualizadoEm = agora;
+  if (resultado.aprovado && !linha.aprovadoEm) linha.aprovadoEm = agora;
+  R.progressos.salvar(linha);
+
+  registrarUsadasDoBloco(alunoId, bloco.id, prova.questoes.map((q) => q.assinatura));
+
+  R.resultados.criar({
+    alunoId,
+    matriculaId: linha.matriculaId,
+    faseId: bloco.id,
+    avaliacaoId: `av-${bloco.id}`,
+    data: agora,
+    nota: resultado.nota,
+    acertos: resultado.acertos,
+    total: resultado.total,
+    aprovado: resultado.aprovado,
+    duracaoSegundos,
+  });
+
+  // Aprovado o bloco, as fases dele passam a contar como concluídas: é assim
+  // que o resto do aplicativo — trilha, boletim, próxima atividade — enxerga
+  // o que o aluno já venceu, sem precisar saber o que é um bloco.
+  if (resultado.aprovado) {
+    for (const faseId of bloco.faseIds || []) {
+      const daFase = R.progressoDoAluno(alunoId, faseId);
+      daFase.matriculaId = daFase.matriculaId || linha.matriculaId;
+      daFase.melhorNota = Math.max(daFase.melhorNota || 0, resultado.nota);
+      daFase.aprovadoEm = daFase.aprovadoEm || agora;
+      daFase.atualizadoEm = agora;
+      R.progressos.salvar(daFase);
+    }
+    eventos.registrar({
+      alunoId, matriculaId: linha.matriculaId, tipo: eventos.TIPOS.APROVACAO,
+      titulo: `Bloco concluído — ${bloco.titulo}`,
+      detalhe: `${resultado.nota}% · ${resultado.acertos} de ${resultado.total}`,
+      faseId: bloco.id, valor: resultado.nota, dataHora: agora,
+    });
+  } else {
+    eventos.registrar({
+      alunoId, matriculaId: linha.matriculaId, tipo: eventos.TIPOS.AVALIACAO,
+      titulo: `Avaliação — ${bloco.titulo}`,
+      detalhe: `${resultado.nota}% · não atingiu ${bloco.notaMinima || NOTA_MINIMA}%`,
+      faseId: bloco.id, valor: resultado.nota, dataHora: agora,
+    });
+  }
+  R.gravar();
+  return linha;
+}
+
+/**
+ * O bloco no formato que o selo espera. O selo é do bloco — "Fases 1 a 3" —,
+ * e não de cada fase: foi uma prova só que as concluiu.
+ */
+const comoFase = (bloco) => ({
+  id: bloco.id,
+  ordem: bloco.ordem,
+  numero: bloco.ordem,
+  titulo: bloco.titulo,
+  subtitulo: bloco.subtitulo,
+  cor: bloco.cor,
+  icone: bloco.icone,
+  paginas: bloco.paginas,
+  metodoId: bloco.metodoId,
+  nomeTrilha: (R.metodos.buscar(bloco.metodoId) || {}).nome || 'Método',
+});
+
+return {
+  blocosDoMetodo, blocoDaFase, blocoPorId, avaliaPorBloco, avaliacaoDoBloco, fasesDoBloco,
+  blocoAprovado, blocoLiberado, licoesEmDia, situacaoDoBloco,
+  universoDoBloco, usadasDoBloco, registrarUsadasDoBloco, montar, corrigir,
+  quantasIneditas, totalDePerguntas, registrarTentativa, comoFase,
+};
 })();
 
 __modulos['servicos/metodos'] = (function () {
@@ -9869,7 +10748,11 @@ function panorama({ agora = new Date().toISOString(), janelaDeAtividade = 14 } =
   const ativos = alunos.filter((a) => diasDesde(eventos.ultimaAtividade(a.id), agora) <= janelaDeAtividade);
   const semAtividade = alunos.filter((a) => !eventos.ultimaAtividade(a.id));
 
-  const fasesConcluidas = R.progressos.listar((p) => p.aprovadoEm).length;
+  // A linha de progresso de um BLOCO tem o mesmo formato da de uma fase, e
+  // também é marcada como aprovada. Contá-la aqui inflaria "fases vencidas":
+  // o bloco 1 apareceria como uma quarta fase ao lado das três que ele concluiu.
+  const ehBloco = (faseId) => Boolean(R.blocos.buscar(String(faseId)));
+  const fasesConcluidas = R.progressos.listar((p) => p.aprovadoEm && !ehBloco(p.faseId)).length;
 
   return {
     alunos: alunos.length,
@@ -10896,15 +11779,34 @@ const emModoTeste = () => modoTeste;
 // A primeira fase de cada método está sempre aberta; as demais abrem quando a
 // anterior daquele mesmo método é aprovada. A regra não conhece quantas fases
 // o método tem — serve igual para um de 10, de 16 ou de 20.
+/**
+ * A fase está aberta para o aluno?
+ *
+ * Num método que avalia POR BLOCO — o MSA —, quem tranca não é a fase
+ * anterior: é o bloco anterior. As três fases de um bloco abrem juntas, porque
+ * são estudadas juntas e avaliadas de uma vez só.
+ *
+ * Num método que avalia fase a fase, a regra antiga continua: abre quando a
+ * anterior foi aprovada.
+ */
 function faseLiberada(fase) {
-  if (modoTeste || fase.numero === 1 || fase.ordem === 1) return true;
+  if (modoTeste) return true;
+  const blocos = __modulos['servicos/blocos'];
+  const bloco = blocos.blocoDaFase(fase.id);
+  if (bloco) {
+    const alvo = idDoAlunoNaSessao();
+    return alvo ? blocos.blocoLiberado(alvo, bloco) : bloco.ordem === 1;
+  }
+  if (fase.numero === 1 || fase.ordem === 1) return true;
   return fase.anteriorId ? faseAprovada(fase.anteriorId) : true;
 }
 
 // -------------------------------------------------------- painel e arquivos
 
 function resumoDoAluno(id) {
-  const linhas = R.progressoDeTodasAsFases(id);
+  // A linha de um BLOCO tem o mesmo formato da de uma fase — mesmo campo
+  // `aprovadoEm` — e entraria na conta de fases vencidas se não fosse tirada.
+  const linhas = R.progressoDeTodasAsFases(id).filter((l) => !R.blocos.buscar(String(l.faseId)));
   const tentativas = R.resultadosDoAluno(id);
   const ultima = tentativas.map((t) => t.data).sort().pop() || null;
   const aluno = R.alunos.buscar(id);
@@ -11585,7 +12487,7 @@ return { dadosDaPlataforma, integrado, adotar, rotaDesligada, enderecoDeSaida, e
 
 __modulos['app'] = (function () {
 // Casca do aplicativo: entrada, painel do instrutor, trilhas do aluno,
-// lições, jogos, avaliação e certificado.
+// lições, jogos, avaliação e selo de fase.
 
 const banco = __modulos['armazenamento'];
 const { INSTRUMENTOS_POR_FAMILIA, instrumentoPorId } = __modulos['conteudo/instrumentos'];
@@ -11613,6 +12515,7 @@ const certificadosServico = __modulos['servicos/certificados'];
 const avaliacoesServico = __modulos['servicos/avaliacoes'];
 const turmasServico = __modulos['servicos/turmas'];
 const metodosServico = __modulos['servicos/metodos'];
+const blocosServico = __modulos['servicos/blocos'];
 const { CRITERIO_PADRAO } = __modulos['dados/esquema'];
 
 const tela = () => document.getElementById('tela');
@@ -11822,7 +12725,7 @@ function telaEntrada() {
     <div class="marca">🎼</div>
     <h1>Estudo Musical<br><span>fase a fase</span></h1>
     <p class="sub">Teoria do <b>MSA</b> e método do <b>seu instrumento</b>, com avaliação que nunca repete
-    pergunta e certificado a cada fase.</p>
+    pergunta e selo a cada fase concluída.</p>
     ${mostrarRecado()}
     <form class="login" id="forma-entrar" autocomplete="on" onsubmit="return false">
       <label for="usuario">Usuário</label>
@@ -12112,7 +13015,7 @@ function telaAdmin() {
       <div><strong>${panorama.alunos}</strong><span>alunos</span></div>
       <div><strong>${panorama.alunosAtivos}</strong><span>ativos (${panorama.janelaDeAtividade} dias)</span></div>
       <div><strong>${panorama.fasesConcluidas}</strong><span>fases vencidas</span></div>
-      <div><strong>${panorama.certificados}</strong><span>certificados</span></div>
+      <div><strong>${panorama.certificados}</strong><span>selos</span></div>
     </section>
 
     ${blocoDeAlertas()}
@@ -12716,7 +13619,7 @@ function telaAdminAluno(id) {
       <div><strong>${r.licoes}</strong><span>lições lidas</span></div>
       <div><strong>${r.tentativas}</strong><span>avaliações feitas</span></div>
     </section>
-    ${certificados.length ? `<div class="historico"><h3>Certificados</h3>${certificados.map((c) => `
+    ${certificados.length ? `<div class="historico"><h3>Selos de fase</h3>${certificados.map((c) => `
       <div class="linha-historico"><span>${escapar(c.nomeTrilha || 'MSA')} · fase ${c.fase}</span>
       <span class="ok">${c.nota}% · ${data(c.data)}</span></div>`).join('')}</div>` : ''}
     <div class="acoes">
@@ -12742,8 +13645,12 @@ function cartaoDeFase(fase) {
   const liberada = banco.faseLiberada(fase);
   const dados = banco.faseDoAluno(fase.id);
   const aprovada = Boolean(dados.aprovadoEm);
+  // Fase trancada leva ao bloco dela — é lá que está escrito o que falta para
+  // abri-la. Antes levava para a tela inicial, que não explicava nada.
+  const bloco = blocosServico.blocoDaFase(fase.id);
+  const destino = liberada ? `#/fase/${fase.id}` : (bloco ? `#/bloco/${bloco.id}` : '#/');
   return `<a class="cartao-fase ${liberada ? '' : 'trancada'} ${aprovada ? 'aprovada' : ''}"
-    href="${liberada ? `#/fase/${fase.id}` : '#/'}" style="--cor:${fase.cor}">
+    href="${destino}" style="--cor:${fase.cor}">
     <div class="icone-fase">${liberada ? fase.icone : '🔒'}</div>
     <div class="corpo-fase">
       <span class="numero-fase">Fase ${fase.numero}${aprovada ? ' · concluída' : ''}</span>
@@ -12754,6 +13661,35 @@ function cartaoDeFase(fase) {
     </div>
     ${aprovada ? `<span class="selo">${dados.melhorNota}%</span>` : ''}
   </a>`;
+}
+
+// A lista de fases de uma trilha. Num método com blocos, as fases aparecem
+// agrupadas sob a faixa do bloco: com dezesseis fases seguidas, a lista lisa
+// não deixava ver onde uma avaliação começa e a outra termina.
+function listaDeFases(trilha) {
+  const blocos = blocosServico.blocosDoMetodo(trilha.metodo.id);
+  if (!blocos.length) return `<div class="lista-fases">${trilha.fases.map(cartaoDeFase).join('')}</div>`;
+
+  const aluno = banco.alunoAtual();
+  const porId = new Map(trilha.fases.map((f) => [f.id, f]));
+  const soltas = trilha.fases.filter((f) => !blocos.some((b) => (b.faseIds || []).includes(f.id)));
+
+  return blocos.map((bloco) => {
+    const fases = (bloco.faseIds || []).map((id) => porId.get(id)).filter(Boolean);
+    if (!fases.length) return '';
+    const situacao = blocosServico.situacaoDoBloco(aluno.id, bloco);
+    const estado = situacao.aprovado ? `<span class="estado ok">✓ ${situacao.melhorNota}%</span>`
+      : !situacao.liberado ? '<span class="estado">🔒 trancado</span>'
+      : `<span class="estado">${situacao.licoes.lidas} de ${situacao.licoes.total} lições</span>`;
+    return `<a class="faixa-bloco" href="#/bloco/${bloco.id}" style="--cor:${bloco.cor}">
+      <span>
+        <strong>${bloco.icone || '📗'} ${escapar(bloco.titulo)}</strong>
+        <span class="mini">${escapar(bloco.subtitulo || '')}</span>
+      </span>
+      ${estado}
+    </a>
+    <div class="lista-fases">${fases.map(cartaoDeFase).join('')}</div>`;
+  }).join('') + (soltas.length ? `<div class="lista-fases">${soltas.map(cartaoDeFase).join('')}</div>` : '');
 }
 
 // O cartão que abre a tela do aluno: onde ele está, quanto andou e qual é o
@@ -12869,7 +13805,7 @@ function telaInicial() {
       <a href="#/desempenho" class="atalho">📊 Meu desempenho</a>
       <a href="#/conquistas" class="atalho">🏆 Conquistas</a>
       <a href="#/historico" class="atalho">🕘 Histórico</a>
-      <a href="#/certificados" class="atalho">🏅 Certificados</a>
+      <a href="#/selos" class="atalho">🏅 Meus selos</a>
       <a href="#/sobre" class="atalho">ℹ️ Ajustes</a>
       <a href="#/sair" class="atalho">⎋ Sair</a>
     </nav>
@@ -12882,9 +13818,9 @@ function telaInicial() {
            ${escapar(instrumento.claves.length > 1 ? 'claves' : 'clave')} de ${instrumento.claves.map((c) => c === 'sol' ? 'Sol' : c === 'fa' ? 'Fá' : 'Dó').join(' e ')},
            em ${escapar(instrumento.afinacao)}.</p>`
         : trilha.metodo.descricao ? `<p class="mini">${escapar(trilha.metodo.descricao)}</p>` : ''}
-      <div class="lista-fases">${trilha.fases.map(cartaoDeFase).join('')}</div>`).join('')}
+      ${listaDeFases(trilha)}`).join('')}
     ${instrumento ? '' : `<div class="caixa-prova"><p>Escolha o seu instrumento para abrir a trilha do
-       método que você toca — com lições, avaliação e certificado próprios.</p>
+       método que você toca — com lições, avaliação e selos próprios.</p>
        <a class="botao grande" href="#/sobre">Escolher instrumento</a></div>`}
 
     <p class="rodape">Teoria baseada no <b>Método Simplificado de Aprendizagem Musical</b> — Congregação Cristã no
@@ -12922,6 +13858,9 @@ function telaFase(id) {
         <span class="${t.aprovado ? 'ok' : 'nao'}">${t.nota}% — ${t.aprovado ? 'aprovado' : 'não atingiu a nota'}</span></div>`).join('')}</div>`
     : '';
 
+  // Num método que avalia por bloco, a prova não é desta fase: é do bloco.
+  const blocoDaTela = blocosServico.blocoDaFase(fase.id);
+
   return `${cabecalho(`Fase ${fase.numero} · ${escapar(fase.nomeTrilha)}`)}
     <section class="capa-fase" style="--cor:${fase.cor}">
       <div class="icone-grande">${fase.icone}</div>
@@ -12934,6 +13873,7 @@ function telaFase(id) {
     <div class="lista-licoes">${licoes}</div>
     <h2 class="titulo-secao">Exercícios lúdicos</h2>
     <div class="lista-jogos">${jogos}</div>
+    ${blocoDaTela ? blocoNaTelaDaFase(blocoDaTela, fase) : `
     <h2 class="titulo-secao">Avaliação da fase</h2>
     ${prova.total === 0 ? `<div class="caixa-prova">
       <p>Esta fase <b>ainda não tem questões</b>. O instrutor precisa cadastrá-las antes de a avaliação abrir.</p>
@@ -12949,8 +13889,8 @@ function telaFase(id) {
            ${prova.ineditas} ${prova.ineditas === 1 ? 'ainda não caiu' : 'ainda não caíram'} para você.`}</p>
       <button class="botao grande" data-acao="iniciar-prova" data-fase="${fase.id}">
         ${dados.aprovadoEm ? 'Fazer uma nova avaliação' : 'Iniciar avaliação'}</button>
-      ${dados.aprovadoEm ? `<a class="botao secundario" href="#/certificado/${fase.id}">Ver certificado</a>` : ''}
-    </div>`}
+      ${dados.aprovadoEm ? `<a class="botao secundario" href="#/selo/${fase.id}">Ver o selo</a>` : ''}
+    </div>`}`}
     ${historico}`;
 }
 
@@ -13007,6 +13947,27 @@ function montarJogo(faseId, indice) {
   });
 }
 
+// A avaliação não é desta fase: é do bloco a que ela pertence. A tela da fase
+// diz isso e aponta para lá, em vez de oferecer uma prova que não existe.
+function blocoNaTelaDaFase(bloco, fase) {
+  const aluno = banco.alunoAtual();
+  if (!aluno) return '';
+  const situacao = blocosServico.situacaoDoBloco(aluno.id, bloco);
+  const outras = blocosServico.fasesDoBloco(bloco).filter((f) => f.id !== fase.id);
+  return `<h2 class="titulo-secao">Avaliação — ${escapar(bloco.titulo)}</h2>
+    <div class="caixa-prova">
+      <p>Este método avalia <b>a cada três fases</b>. A avaliação desta fase é a do
+      <b>bloco ${escapar(bloco.titulo.toLowerCase())}</b>, e ela sorteia ${bloco.faseIds.length === 1
+        ? 'das perguntas desta fase' : `das ${bloco.faseIds.length} fases juntas`}.</p>
+      ${outras.length ? `<p class="mini">No mesmo bloco: ${outras.map((f) => `Fase ${f.ordem} — ${escapar(f.titulo)}`).join(' · ')}.</p>` : ''}
+      <p class="mini">${situacao.aprovado
+        ? `Bloco concluído com ${situacao.melhorNota}%.`
+        : `Lições do bloco: ${situacao.licoes.lidas} de ${situacao.licoes.total}. Aprovação a partir de ${situacao.notaMinima}%.`}</p>
+      <a class="botao grande" href="#/bloco/${escapar(bloco.id)}">
+        ${situacao.aprovado ? 'Ver o bloco' : 'Ir para a avaliação do bloco'}</a>
+    </div>`;
+}
+
 // ---------------------------------------------------------------- avaliação
 // Monta a prova e a deixa em curso. Não navega: quem chama decide isso.
 // Devolve false quando não há prova para montar — uma fase de método cadastrado
@@ -13022,6 +13983,28 @@ function prepararProva(fase) {
   return true;
 }
 
+// Monta a prova do bloco e vai para ela. O bloco entra em `provaEmCurso` no
+// lugar da fase: daí para a frente a tela da prova não precisa saber a
+// diferença — as duas têm questões, respostas e uma nota mínima.
+function iniciarProvaDoBloco(blocoId) {
+  const aluno = banco.alunoAtual();
+  const bloco = blocosServico.blocoPorId(blocoId);
+  if (!aluno || !bloco) return;
+  if (!blocosServico.blocoLiberado(aluno.id, bloco) && !banco.emModoTeste()) {
+    avisar('Conclua o bloco anterior para abrir este.', 'erro');
+    desenhar();
+    return;
+  }
+  const prova = blocosServico.montar(bloco, { alunoId: aluno.id });
+  if (!prova.questoes.length) {
+    avisar('Este bloco ainda não tem questões para avaliar.', 'erro');
+    desenhar();
+    return;
+  }
+  provaEmCurso = { ...prova, bloco, respostas: [], atual: 0, comecouEm: Date.now() };
+  ir(`#/bloco/${bloco.id}/prova`);
+}
+
 function iniciarProva(faseId) {
   const fase = faseporId(faseId, (banco.alunoAtual() || {}).instrumento);
   if (!prepararProva(fase)) {
@@ -13030,6 +14013,83 @@ function iniciarProva(faseId) {
     return;
   }
   ir(`#/fase/${fase.id}/prova`);
+}
+
+// A prova do bloco reaproveita a tela da prova da fase: o que muda é só de
+// onde as questões vieram e quem grava o resultado no fim.
+function telaProvaDoBloco(blocoId) {
+  const aluno = banco.alunoAtual();
+  const bloco = blocosServico.blocoPorId(blocoId);
+  if (!aluno || !bloco) return telaInicial();
+  if (!provaEmCurso || provaEmCurso.blocoId !== bloco.id) {
+    const prova = blocosServico.montar(bloco, { alunoId: aluno.id });
+    if (!prova.questoes.length) {
+      avisar('Este bloco ainda não tem questões para avaliar.', 'erro');
+      return telaBloco(blocoId);
+    }
+    provaEmCurso = { ...prova, bloco, respostas: [], atual: 0, comecouEm: Date.now() };
+  }
+  if (provaEmCurso.atual >= provaEmCurso.questoes.length) return telaResultadoDoBloco(bloco);
+  return desenharQuestao(provaEmCurso, {
+    titulo: `Avaliação — ${bloco.titulo}`,
+    voltarPara: `#/bloco/${bloco.id}`,
+    trilha: bloco.subtitulo,
+    cor: bloco.cor,
+  });
+}
+
+function telaResultadoDoBloco(bloco) {
+  const prova = provaEmCurso;
+  const aluno = banco.alunoAtual();
+  const resultado = blocosServico.corrigir(prova, prova.respostas, bloco);
+
+  if (!prova.registrada) {
+    prova.registrada = true;
+    blocosServico.registrarTentativa({
+      alunoId: aluno.id, bloco, prova, resultado,
+      duracaoSegundos: prova.comecouEm ? Math.round((Date.now() - prova.comecouEm) / 1000) : 0,
+    });
+    if (resultado.aprovado) {
+      // Um selo por BLOCO: foi uma prova só que concluiu as fases dele.
+      certificadosServico.emitir({
+        alunoId: aluno.id, fase: blocosServico.comoFase(bloco), nota: resultado.nota,
+        acertos: resultado.acertos, total: resultado.total,
+      });
+      efeito('vitoria');
+    }
+    prova.conquistas = gamificacao.conferir(aluno.id);
+  }
+
+  const seguinte = blocosServico.blocosDoMetodo(bloco.metodoId).find((b) => b.ordem === bloco.ordem + 1);
+  const erradas = resultado.detalhes.filter((d) => !d.certa);
+
+  return `${cabecalho('Resultado', `#/bloco/${bloco.id}`)}
+    <section class="resultado ${resultado.aprovado ? 'aprovado' : 'reprovado'}" style="--cor:${bloco.cor}">
+      <div class="nota">${resultado.nota}%</div>
+      <strong>${resultado.aprovado ? `${escapar(bloco.titulo)} — concluídas!` : 'Ainda não desta vez'}</strong>
+      <p>${resultado.acertos} de ${resultado.total} questões certas. A aprovação é a partir de ${resultado.notaMinima}%.</p>
+      ${resultado.aprovado
+        ? `<a class="botao grande" href="#/selo/${escapar(bloco.id)}">🏅 Ver o selo de fases concluídas</a>
+           ${seguinte ? `<a class="botao secundario" href="#/bloco/${escapar(seguinte.id)}">Ir para o ${escapar(seguinte.titulo.toLowerCase())}</a>`
+             : '<p>Você concluiu todos os blocos deste método. Parabéns!</p>'}`
+        : `<button class="botao grande" data-acao="iniciar-prova-bloco" data-id="${escapar(bloco.id)}">Tentar de novo (perguntas novas)</button>
+           <a class="botao secundario" href="#/bloco/${escapar(bloco.id)}">Rever as fases do bloco</a>`}
+    </section>
+    ${(prova.conquistas || []).length ? `<section class="conquistas-novas">
+      <h2 class="titulo-secao">${prova.conquistas.length === 1 ? 'Nova conquista' : 'Novas conquistas'}</h2>
+      ${prova.conquistas.map((c) => `<div class="cartao-conquista ganha">
+        <span class="icone" aria-hidden="true">${c.icone}</span>
+        <div><strong>${escapar(c.titulo)}</strong><small>${escapar(c.descricao)}</small></div>
+      </div>`).join('')}
+    </section>` : ''}
+    ${erradas.length ? blocoDeOndeErrou(resultado) : ''}
+    ${erradas.length ? `<h2 class="titulo-secao">O que revisar</h2>
+      <div class="revisao">${erradas.map((d) => `<div class="item-revisao">
+        <p class="pergunta">${d.questao.enunciado}</p>
+        <p class="sua">Sua resposta: <b>${escapar(d.resposta ?? '—')}</b></p>
+        <p class="certa">Certa: <b>${escapar(d.questao.correta)}</b></p>
+        <p class="mini">${d.questao.explicacao} <i>${escapar(d.questao.referencia)}</i></p>
+      </div>`).join('')}</div>` : ''}`;
 }
 
 function telaProva(faseId) {
@@ -13047,12 +14107,23 @@ function telaProva(faseId) {
   const prova = provaEmCurso;
   if (prova.atual >= prova.questoes.length) return telaResultado(fase);
 
+  return desenharQuestao(prova, {
+    titulo: `Avaliação — Fase ${fase.numero}`,
+    voltarPara: `#/fase/${fase.id}`,
+    trilha: fase.nomeTrilha,
+    cor: fase.cor,
+  });
+}
+
+// A questão da vez. A mesma tela serve à prova da fase e à do bloco: o que
+// muda é o cabeçalho e de onde as perguntas vieram.
+function desenharQuestao(prova, { titulo, voltarPara, trilha, cor }) {
   const q = prova.questoes[prova.atual];
-  return `${cabecalho(`Avaliação — Fase ${fase.numero}`, `#/fase/${fase.id}`)}
+  return `${cabecalho(titulo, voltarPara)}
     <div class="progresso-prova"><span style="width:${(prova.atual / prova.questoes.length) * 100}%"></span></div>
-    <p class="contador">Questão ${prova.atual + 1} de ${prova.questoes.length} · ${escapar(fase.nomeTrilha)}</p>
-    ${prova.reciclou && prova.atual === 0 ? '<p class="aviso leve">Você já respondeu todas as perguntas inéditas desta fase. A partir de agora o app volta a usar as mais antigas.</p>' : ''}
-    <article class="questao" style="--cor:${fase.cor}">
+    <p class="contador">Questão ${prova.atual + 1} de ${prova.questoes.length} · ${escapar(trilha || '')}</p>
+    ${prova.reciclou && prova.atual === 0 ? '<p class="aviso leve">Você já respondeu todas as perguntas inéditas daqui. A partir de agora o app volta a usar as mais antigas.</p>' : ''}
+    <article class="questao" style="--cor:${cor}">
       <h2>${q.enunciado}</h2>
       ${q.html ? `<div class="ilustracao">${q.html}</div>` : ''}
       <div class="alternativas">
@@ -13140,7 +14211,7 @@ function telaResultado(fase) {
       <strong>${resultado.aprovado ? 'Fase concluída!' : 'Ainda não desta vez'}</strong>
       <p>${resultado.acertos} de ${resultado.total} questões certas. A aprovação é a partir de ${NOTA_MINIMA}%.</p>
       ${resultado.aprovado
-        ? `<a class="botao grande" href="#/certificado/${fase.id}">🏅 Ver o certificado</a>
+        ? `<a class="botao grande" href="#/selo/${fase.id}">🏅 Ver o selo da fase</a>
            ${proxima ? `<a class="botao secundario" href="#/fase/${proxima.id}">Ir para a fase ${proxima.numero}</a>`
              : `<p>Você concluiu a trilha <b>${escapar(fase.nomeTrilha)}</b>. Parabéns!</p>`}`
         : `<button class="botao grande" data-acao="iniciar-prova" data-fase="${fase.id}">Tentar de novo (perguntas novas)</button>
@@ -13163,7 +14234,69 @@ function telaResultado(fase) {
       </div>`).join('')}</div>` : ''}`;
 }
 
-// ------------------------------------------------------------- certificados
+// ------------------------------------------------------------------ bloco
+
+// A tela do bloco: as fases que ele reúne, o que falta para avaliar, a
+// avaliação e o selo. É aqui que o MSA conclui — a fase é onde se estuda, o
+// bloco é onde se prova.
+function telaBloco(blocoId) {
+  const aluno = banco.alunoAtual();
+  const bloco = blocosServico.blocoPorId(blocoId);
+  if (!aluno || !bloco) return telaInicial();
+
+  const situacao = blocosServico.situacaoDoBloco(aluno.id, bloco);
+  const fases = blocosServico.fasesDoBloco(bloco);
+  const ineditas = blocosServico.quantasIneditas(aluno.id, bloco);
+  const total = blocosServico.totalDePerguntas(bloco);
+  const selo = banco.certificados().find((c) => String(c.faseId) === String(bloco.id));
+
+  return `${cabecalho(bloco.titulo, '#/')}
+    ${mostrarRecado()}
+    <section class="capa-fase" style="--cor:${bloco.cor}">
+      <div class="icone-grande">${bloco.icone}</div>
+      <span class="etiqueta-trilha">Bloco ${bloco.ordem} · avaliação a cada 3 fases</span>
+      <h2>${escapar(bloco.titulo)}</h2>
+      <p class="sub">${escapar(bloco.subtitulo)}${bloco.paginas ? ` · páginas ${bloco.paginas} do método` : ''}</p>
+    </section>
+
+    <h2 class="titulo-secao">Fases deste bloco</h2>
+    <div class="lista-fases">${fases.map((fase) => {
+      const doAluno = banco.faseDoAluno(fase.id);
+      const licoes = banco.dados.licoesDaFase(fase.id).length;
+      return `<a class="cartao-fase ${situacao.liberado ? '' : 'trancada'} ${situacao.aprovado ? 'aprovada' : ''}"
+        href="${situacao.liberado ? `#/fase/${fase.id}` : `#/bloco/${bloco.id}`}" style="--cor:${fase.cor || bloco.cor}">
+        <div class="icone-fase">${situacao.liberado ? (fase.icone || '📘') : '🔒'}</div>
+        <div class="corpo-fase">
+          <span class="numero-fase">Fase ${fase.ordem}</span>
+          <strong>${escapar(fase.titulo)}</strong>
+          <span class="sub-fase">${escapar(fase.subtitulo || '')}</span>
+          ${barra(licoes ? (doAluno.licoesLidas.length / licoes) * 100 : 0, `lições da fase ${fase.ordem}`)}
+          <span class="mini">${doAluno.licoesLidas.length} de ${licoes} lições${fase.paginas ? ` · páginas ${escapar(String(fase.paginas))}` : ''}</span>
+        </div>
+      </a>`;
+    }).join('')}</div>
+
+    <h2 class="titulo-secao">Avaliação do bloco</h2>
+    ${!situacao.liberado ? `<div class="caixa-prova">
+      <p>Este bloco ainda está <b>trancado</b>. Conclua o bloco anterior para abri-lo.</p>
+    </div>` : `<div class="caixa-prova">
+      <p>${situacao.quantidadeDeQuestoes} ${situacao.quantidadeDeQuestoes === 1 ? 'questão' : 'questões'} de múltipla
+      escolha, sorteadas ${bloco.faseIds.length === 1 ? 'desta fase' : `das ${bloco.faseIds.length} fases do bloco`}.
+      Aprovação a partir de <b>${situacao.notaMinima}%</b>.</p>
+      <p class="mini">Ainda restam <b>${ineditas}</b> perguntas inéditas neste bloco (de ${total} possíveis).
+      Nenhuma pergunta que você já recebeu volta a cair.</p>
+      ${situacao.licoes.emDia ? '' : `<p class="recado alerta">Faltam
+        ${situacao.licoes.total - situacao.licoes.lidas} ${situacao.licoes.total - situacao.licoes.lidas === 1 ? 'lição' : 'lições'}
+        deste bloco. Você pode avaliar assim mesmo, mas o método pede que a lição venha antes da prova.</p>`}
+      ${situacao.tentativas ? `<p class="mini">${situacao.tentativas === 1 ? 'Uma avaliação feita' : `${situacao.tentativas} avaliações feitas`};
+        a melhor nota foi ${situacao.melhorNota}%.</p>` : ''}
+      <button class="botao grande" data-acao="iniciar-prova-bloco" data-id="${escapar(bloco.id)}">
+        ${situacao.aprovado ? 'Fazer uma nova avaliação' : 'Iniciar a avaliação do bloco'}</button>
+      ${selo ? `<a class="botao secundario" href="#/selo/${escapar(bloco.id)}">🏅 Ver o selo deste bloco</a>` : ''}
+    </div>`}`;
+}
+
+// ------------------------------------------------------------------ selos
 // ------------------------------------------------- desempenho do aluno
 
 function telaDesempenho() {
@@ -13289,25 +14422,25 @@ function telaHistorico() {
     <p class="mini centro">Mostrando os últimos 60 registros.</p>`;
 }
 
-function telaCertificados() {
+function telaSelos() {
   const lista = banco.certificados().slice().sort((a, b) => String(a.faseId).localeCompare(String(b.faseId), 'pt-BR', { numeric: true }));
   if (!lista.length) {
-    return `${cabecalho('Meus certificados')}<p class="aviso">Você ainda não tem certificados.
+    return `${cabecalho('Meus selos')}<p class="aviso">Você ainda não tem selos de fase.
       Conclua a avaliação de uma fase com ${NOTA_MINIMA}% ou mais.</p>`;
   }
-  return `${cabecalho('Meus certificados')}
-    <div class="lista-certificados">${lista.map((c) => `<a class="cartao-certificado" href="#/certificado/${c.faseId}" style="--cor:${c.cor}">
-      <strong>Fase ${c.fase} — ${escapar(c.titulo)}</strong>
+  return `${cabecalho('Meus selos')}
+    <div class="lista-selos">${lista.map((c) => `<a class="cartao-selo" href="#/selo/${c.faseId}" style="--cor:${c.cor}">
+      <strong>${escapar(c.rotulo || `Fase ${c.fase} — ${c.titulo}`)}</strong>
       <span>${escapar(c.nomeTrilha || 'Teoria — MSA')}</span>
       <span>${c.nota}% · ${dataPorExtenso(c.data)}</span>
       <span class="codigo">${escapar(c.codigo)}</span></a>`).join('')}</div>`;
 }
 
-function telaCertificado(faseId) {
+function telaSelo(faseId) {
   const c = banco.certificados().find((x) => String(x.faseId) === String(faseId));
-  if (!c) return telaCertificados();
-  return `${cabecalho(`Certificado — Fase ${c.fase}`, `#/fase/${c.faseId}`)}
-    <div class="moldura-certificado">${svgDoCertificado(c)}</div>
+  if (!c) return telaSelos();
+  return `${cabecalho(`Selo — ${c.rotulo || `Fase ${c.fase}`}`, `#/${blocosServico.blocoPorId(String(c.faseId)) ? 'bloco' : 'fase'}/${c.faseId}`)}
+    <div class="moldura-selo">${svgDoCertificado(c)}</div>
     <div class="acoes">
       <button class="botao grande" data-acao="imprimir" data-fase="${c.faseId}">🖨️ Imprimir / salvar em PDF</button>
       <button class="botao secundario" data-acao="baixar" data-fase="${c.faseId}">⬇️ Baixar como imagem</button>
@@ -13342,13 +14475,13 @@ function telaSobre() {
       Cada pergunta recebe uma assinatura; as que você já respondeu ficam guardadas neste aparelho e saem
       do sorteio seguinte.</p>
       <h2 class="titulo-secao">Seus dados</h2>
-      <p>A sua ficha, o progresso e os certificados ficam apenas neste aparelho. Não há servidor nem cadastro
+      <p>A sua ficha, o progresso e os selos ficam apenas neste aparelho. Não há servidor nem cadastro
       na internet. A senha é guardada em resumo (hash), mas o app roda todo no navegador: serve para organizar
       o acesso, não para proteger dados sigilosos.</p>
       <p>A <b>cópia de segurança</b> é feita pelo instrutor, no painel dele: ela leva o aparelho inteiro —
       a ficha, o contato e o progresso de <b>toda a turma</b>, não só os seus. Se você quer guardar o que é
-      seu, os seus certificados você baixa em
-      <a href="#/certificados">Meus certificados</a>.</p>
+      seu, os seus selos você baixa em
+      <a href="#/selos">Meus selos</a>.</p>
       <div class="acoes">
         <a class="botao secundario" href="#/senha">Trocar a minha senha</a>
         <a class="botao secundario" href="#/sair">Sair desta conta</a>
@@ -13421,7 +14554,7 @@ function desenhar() {
   let depois = null;
 
   // O modo de demonstração abre todas as fases: fica atrás do painel, senão
-  // seria um atalho para pular a avaliação e ganhar o certificado sem estudar.
+  // seria um atalho para pular a avaliação e ganhar o selo sem estudar.
   if (partes[0] === 'teste') {
     if (!banco.podeNaSessao('configuracao.editar')) { avisar('O modo de demonstração é do administrador.', 'erro'); ir('#/'); return; }
     banco.ativarModoTeste();
@@ -13469,8 +14602,13 @@ function desenhar() {
   else if (partes[0] === 'desempenho') html = telaDesempenho();
   else if (partes[0] === 'conquistas') html = telaConquistas();
   else if (partes[0] === 'historico') html = telaHistorico();
-  else if (partes[0] === 'certificados') html = telaCertificados();
-  else if (partes[0] === 'certificado') html = telaCertificado(partes[1]);
+  else if (partes[0] === 'selos' || partes[0] === 'certificados') html = telaSelos();
+  // A rota antiga continua respondendo: quem guardou o endereço de um selo
+  // quando ele se chamava certificado não fica com um link morto na mão.
+  else if (partes[0] === 'selo' || partes[0] === 'certificado') html = telaSelo(partes[1]);
+  // O bloco: onde o MSA avalia. A prova dele mora em #/bloco/:id/prova.
+  else if (partes[0] === 'bloco' && partes[2] === 'prova') html = telaProvaDoBloco(partes[1]);
+  else if (partes[0] === 'bloco') html = telaBloco(partes[1]);
   else if (partes[0] === 'fase') {
     const id = partes[1];
     if (partes[2] === 'licao') html = telaLicao(id, Number(partes[3]));
@@ -13798,6 +14936,8 @@ function acoes(evento) {
       exportarProgresso();
     } else if (acao === 'autocadastro') {
       banco.definirAutocadastro(botao.checked);
+    } else if (acao === 'iniciar-prova-bloco') {
+      iniciarProvaDoBloco(id);
     } else if (acao === 'iniciar-prova') {
       iniciarProva(botao.dataset.fase);
     } else if (acao === 'proxima') {
@@ -13814,7 +14954,7 @@ function acoes(evento) {
     } else if (acao === 'exportar-fichas') {
       exigirPermissao('dados.exportar');
       const cabecalhos = ['Nome', 'Comum-congregação', 'Instrumento', 'Encarregado local', 'Encarregado regional',
-        'Ancião', 'E-mail', 'WhatsApp', 'Fases vencidas', 'Certificados', 'Última atividade'];
+        'Ancião', 'E-mail', 'WhatsApp', 'Fases vencidas', 'Selos de fase', 'Última atividade'];
       const celula = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const linhas = banco.usuarios().map((u) => {
         const r = banco.resumoDoAluno(u.id);
@@ -13832,7 +14972,7 @@ function acoes(evento) {
       document.getElementById('arquivo-progresso').click();
     } else if (acao === 'apagar') {
       exigirPermissao('dados.apagar');
-      if (window.confirm('Isto apaga alunos, progresso, certificados e histórico de perguntas deste aparelho. Continuar?')) {
+      if (window.confirm('Isto apaga alunos, progresso, selos e histórico de perguntas deste aparelho. Continuar?')) {
         banco.apagarTudo();
         ir('#/');
       }
