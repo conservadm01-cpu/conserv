@@ -7483,10 +7483,36 @@ let estado = null;
 // Na primeira leitura o aplicativo migra o que houver do V1 (uma única vez) e
 // deixa o estado pronto na memória. Toda chamada seguinte usa o que está em
 // memória; o depósito só é tocado para gravar.
+/**
+ * Passa cada registro guardado pelo normalizador dele.
+ *
+ * `completarEstado` acrescenta a COLEÇÃO que falta. O que falta num cadastro
+ * antigo, porém, costuma ser CAMPO dentro de registro que já existe — e foi
+ * assim que anexar um PDF ao MSA quebrou: o método estava lá, gravado antes de
+ * a lista de materiais existir, e a lista chegou como `undefined`.
+ *
+ * Espalhar `|| []` por quem lê seria remendar caso a caso, e o próximo campo
+ * novo abriria o mesmo buraco em outro lugar. Aqui o formato do estado depois
+ * de carregar passa a ser o mesmo formato depois de gravar, porque é a mesma
+ * função que faz os dois. Só as coleções que têm normalizador são tocadas.
+ */
+function normalizarEstado(estado) {
+  for (const [nome, normalizar] of Object.entries(NORMALIZADORES)) {
+    const colecao = estado[nome];
+    if (!Array.isArray(colecao)) continue;
+    // O aluno é o único que precisa de contexto: é com o catálogo de
+    // instrumentos à mão que o instrumento digitado reencontra o cadastrado.
+    estado[nome] = nome === 'alunos'
+      ? colecao.map((linha) => normalizar(linha, { instrumentos: estado.instrumentos || [] }))
+      : colecao.map((linha) => normalizar(linha));
+  }
+  return estado;
+}
+
 function estadoAtual() {
   if (!estado) {
     const resultado = migrarDadosV1ParaV2(depositoAtual());
-    estado = completarEstado(resultado.estado);
+    estado = normalizarEstado(completarEstado(resultado.estado));
   }
   return estado;
 }
@@ -7526,8 +7552,10 @@ function usarDeposito(deposito = criarDepositoLocal()) {
   return estadoAtual();
 }
 
+// Usado pela importação de uma cópia de segurança e pelo "apagar tudo": o
+// arquivo que chega de fora passa pela mesma normalização da carga.
 function definirEstado(novo) {
-  estado = completarEstado(novo);
+  estado = normalizarEstado(completarEstado(novo));
   gravar();
   return estado;
 }
@@ -9394,7 +9422,7 @@ async function removerMetodo(id) {
   const turmas = R.turmas.listar((t) => t.metodoId === id).length;
   if (turmas) throw new Error(`${turmas} ${turmas === 1 ? 'turma usa' : 'turmas usam'} este método.`);
 
-  for (const material of metodo.materiais) await arquivos.remover(material.id).catch(() => undefined);
+  for (const material of metodo.materiais || []) await arquivos.remover(material.id).catch(() => undefined);
   for (const fase of R.fasesDoMetodo(id)) removerFase(fase.id);
   for (const versao of R.versoesDoMetodo(id)) R.versoes.remover(versao.id);
   R.metodos.remover(id);
@@ -9570,7 +9598,7 @@ async function anexarMaterial(metodoId, arquivo, { adicionadoPor = '' } = {}) {
     id, nome: arquivo.name, tipo: arquivo.type, tamanho: arquivo.size,
     adicionadoEm: new Date().toISOString(), adicionadoPor,
   };
-  R.metodos.atualizar(metodoId, { materiais: [...metodo.materiais, ficha] });
+  R.metodos.atualizar(metodoId, { materiais: [...(metodo.materiais || []), ficha] });
   return ficha;
 }
 
@@ -9578,7 +9606,7 @@ async function removerMaterial(metodoId, idDoMaterial) {
   const metodo = metodoPorId(metodoId);
   if (!metodo) throw new Error('Método não encontrado.');
   await arquivos.remover(idDoMaterial).catch(() => undefined);
-  return R.metodos.atualizar(metodoId, { materiais: metodo.materiais.filter((m) => m.id !== idDoMaterial) });
+  return R.metodos.atualizar(metodoId, { materiais: (metodo.materiais || []).filter((m) => m.id !== idDoMaterial) });
 }
 
 const materiaisEmUso = () => R.metodos.listar().flatMap((m) => (m.materiais || []).map((x) => x.id));
@@ -9690,7 +9718,7 @@ function desmatricular(id, alunoId) {
 async function removerTurma(id) {
   const turma = turmaPorId(id);
   if (!turma) return false;
-  for (const material of turma.materiais) await arquivos.remover(material.id).catch(() => undefined);
+  for (const material of turma.materiais || []) await arquivos.remover(material.id).catch(() => undefined);
   R.turmas.remover(id);
   return true;
 }
@@ -9717,7 +9745,7 @@ async function anexarMaterial(id, arquivo, { adicionadoPor = '' } = {}) {
     adicionadoEm: new Date().toISOString(),
     adicionadoPor,
   };
-  R.turmas.atualizar(id, { materiais: [...turma.materiais, ficha] });
+  R.turmas.atualizar(id, { materiais: [...(turma.materiais || []), ficha] });
   return ficha;
 }
 
@@ -9725,15 +9753,15 @@ async function removerMaterial(id, idDoMaterial) {
   const turma = turmaPorId(id);
   if (!turma) throw new Error('Turma não encontrada.');
   await arquivos.remover(idDoMaterial).catch(() => undefined);
-  return R.turmas.atualizar(id, { materiais: turma.materiais.filter((m) => m.id !== idDoMaterial) });
+  return R.turmas.atualizar(id, { materiais: (turma.materiais || []).filter((m) => m.id !== idDoMaterial) });
 }
 
 /** Todo material de todas as turmas — o material que um aluno pode abrir. */
 const materiaisDoAluno = (alunoId) => R.turmasDoAluno(alunoId)
-  .flatMap((turma) => turma.materiais.map((material) => ({ ...material, turma })));
+  .flatMap((turma) => (turma.materiais || []).map((material) => ({ ...material, turma })));
 
 // Os identificadores que ainda têm dono, para a faxina do guardador.
-const materiaisEmUso = () => R.turmas.listar().flatMap((t) => t.materiais.map((m) => m.id));
+const materiaisEmUso = () => R.turmas.listar().flatMap((t) => (t.materiais || []).map((m) => m.id));
 
 // -------------------------------------------------------- critério e situação
 
@@ -12183,7 +12211,7 @@ function telaTurmas() {
           <strong>${escapar(turma.nome)}</strong>
           <span class="mini">${quadro.length} ${quadro.length === 1 ? 'aluno' : 'alunos'} ·
           ${aprovados} ${aprovados === 1 ? 'aprovado' : 'aprovados'} ·
-          ${turma.materiais.length} ${turma.materiais.length === 1 ? 'material' : 'materiais'}</span>
+          ${(turma.materiais || []).length} ${(turma.materiais || []).length === 1 ? 'material' : 'materiais'}</span>
           <span class="mini">Aprovação: ${turma.criterio.notaMinima}% em cada avaliação</span>
         </div>
         <span class="seta" aria-hidden="true">›</span>
@@ -12251,10 +12279,11 @@ function telaTurmaNova() {
 
 function blocoDeMaterial(turma) {
   const podeMexer = banco.podeNaSessao('turma.material') && turma.situacao === 'ativa';
+  const materiais = turma.materiais || [];
   return `<h2 class="titulo-secao">Material do método</h2>
     <p class="mini">O método em PDF fica guardado neste aparelho e abre para os alunos desta turma.
     Os arquivos não passam pela internet.</p>
-    ${turma.materiais.length ? `<div class="materiais">${turma.materiais.map((material) => `
+    ${materiais.length ? `<div class="materiais">${materiais.map((material) => `
       <div class="material">
         <span class="icone-material" aria-hidden="true">📄</span>
         <div class="dados-material">
@@ -12805,7 +12834,7 @@ function blocoDaTurmaDoAluno(aluno) {
         : `Para ser aprovado nesta turma:`}</p>
       ${situacao.aprovado ? '' : `<ul class="lista-chave">${situacao.itens.map((item) =>
         `<li>${item.cumpre ? '✔' : '○'} ${escapar(item.pede)} — <b>${escapar(item.tem)}</b></li>`).join('')}</ul>`}
-      ${turma.materiais.length ? `<div class="materiais">${turma.materiais.map((material) => `
+      ${(turma.materiais || []).length ? `<div class="materiais">${turma.materiais.map((material) => `
         <button class="botao secundario" data-acao="abrir-material" data-id="${escapar(material.id)}">
           📄 ${escapar(material.nome)}</button>`).join('')}</div>` : ''}
     </section>`;

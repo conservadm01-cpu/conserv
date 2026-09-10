@@ -7,7 +7,7 @@ não há build, não há dependência para rodar. Abrir o arquivo no celular bas
 ```bash
 cd msa
 npm start            # http://localhost:4321 — serve publico/ com os cabeçalhos da Vercel
-npm install && npx playwright install chromium && npm test   # 117 testes, num Chromium de verdade
+npm install && npx playwright install chromium && npm test   # 119 testes, num Chromium de verdade
 ```
 
 Sem instalar nada: abra `msa/publico/index.html` direto no navegador. O app é a

@@ -52,6 +52,54 @@ test('depois de importar, a senha de antes continua valendo', async () => {
   assert.equal((await app.sessao()).tipo, 'aluno');
 });
 
+test('cadastro gravado antes de um campo existir ganha o campo ao carregar', async () => {
+  await app.entrarComoMaster();
+  // Isto é o aparelho de quem já usava o aplicativo: os métodos estão lá,
+  // gravados antes de a lista de materiais existir. Sem esta normalização,
+  // anexar um PDF ao MSA estourava com "metodo.materiais is not iterable".
+  await app.pagina.evaluate(() => {
+    const estado = JSON.parse(localStorage.getItem('msa.escola.v2'));
+    for (const metodo of estado.metodos) delete metodo.materiais;
+    localStorage.setItem('msa.escola.v2', JSON.stringify(estado));
+  });
+  // A sessão do master continua aberta: quem vive isto é quem já estava usando
+  // o aplicativo, e é justamente no painel dele que o PDF é anexado.
+  await app.pagina.reload();
+  await app.pagina.waitForFunction(() => /Painel/.test(document.querySelector('#tela').textContent));
+
+  const materiais = await app.pagina.evaluate(() =>
+    __modulos['dados/repositorios'].metodos.listar().map((m) => m.materiais));
+  assert.ok(materiais.every((lista) => Array.isArray(lista)), 'todo método volta com a lista');
+
+  const erro = await app.pagina.evaluate(async () => {
+    const pdf = new File([new TextEncoder().encode('%PDF-1.4\n')], 'msa.pdf', { type: 'application/pdf' });
+    try { await __modulos['servicos/metodos'].anexarMaterial('msa', pdf); return null; }
+    catch (e) { return e.message; }
+  });
+  assert.equal(erro, null, 'anexar tem de funcionar num cadastro antigo');
+  assert.equal(await app.pagina.evaluate(() => __modulos['servicos/metodos'].metodoPorId('msa').materiais.length), 1);
+  assert.deepEqual(await app.pagina.evaluate(() => __modulos['dados/repositorios'].problemasDeEstrutura()), []);
+});
+
+test('a normalização da carga não mexe no que já estava certo', async () => {
+  const id = await autocadastrar(app);
+  await app.ir('#/fase/1/licao/0');
+  const antes = await app.pagina.evaluate(() => JSON.parse(localStorage.getItem('msa.escola.v2')));
+  await app.pagina.reload();
+  await app.pagina.waitForTimeout(400);
+  const depois = await app.pagina.evaluate(() => __modulos['dados/repositorios'].estadoAtual());
+
+  assert.equal(depois.alunos.length, antes.alunos.length);
+  assert.equal(depois.metodos.length, antes.metodos.length);
+  assert.equal(depois.fases.length, antes.fases.length);
+  assert.equal(depois.licoes.length, antes.licoes.length);
+  const aluno = depois.alunos.find((a) => a.id === id);
+  assert.equal(aluno.nome, 'Ana Teste');
+  assert.equal(aluno.instrumentoId, 'viola');
+  assert.equal(depois.progressos[0].licoesLidas.length, 1, 'o progresso atravessa a carga intacto');
+  assert.deepEqual(await app.pagina.evaluate(() => __modulos['dados/repositorios'].problemasDeEstrutura()), []);
+});
+
 test('remover um aluno leva junto o progresso, os certificados e o acesso', async () => {
   const id = await autocadastrar(app);
   await app.ir('#/fase/1/licao/0');
