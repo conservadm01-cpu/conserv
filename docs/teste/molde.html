@@ -178,7 +178,9 @@ main { flex: 1; min-width: 0; padding: 24px 28px 56px; }
 .faixa-ind {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 0 20px;
+  /* Sem espaço entre linhas, o rótulo da segunda fila colava no valor da
+     primeira quando os indicadores quebravam. */
+  gap: 20px;
   margin-bottom: 22px;
   border-top: 2px solid var(--ink);
   padding-top: 12px;
@@ -260,7 +262,68 @@ input[type="search"], select {
   padding: 7px 9px; border: 1px solid var(--line-forte); border-radius: var(--raio);
   background: var(--panel-2); font-size: 13px; min-width: 0;
 }
-.filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin: 12px 0; }
+.filtro-campo { display: flex; flex-direction: column; gap: 3px; }
+.filtro-campo > span {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+}
+.filtros input[type="date"] {
+  padding: 7px 9px; border: 1px solid var(--line-forte); border-radius: var(--raio);
+  background: var(--panel-2); color: var(--ink); font: inherit; font-size: 13px;
+}
+.periodos { display: inline-flex; border: 1px solid var(--line-forte); border-radius: var(--raio); overflow: hidden; }
+.periodos button {
+  padding: 7px 11px; border: 0; background: var(--panel-2); font: inherit; font-size: 12.5px;
+  color: var(--ink-2); cursor: pointer;
+}
+.periodos button + button { border-left: 1px solid var(--line-forte); }
+.periodos button.ativo { background: var(--ink); color: var(--panel); font-weight: 500; }
+.periodos button:hover:not(.ativo) { color: var(--ink); }
+.resumo-filtro {
+  font-size: 12.5px; color: var(--ink-3); margin: 0 0 14px;
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.resumo-filtro b { color: var(--ink); font-weight: 500; }
+
+/* ------------------------------------------------------ cadastro/CRUD --- */
+button.mini.primario {
+  background: var(--thread); border-color: var(--thread); color: #1C2333; font-weight: 500;
+}
+button.mini.primario:hover { filter: brightness(1.06); color: #1C2333; }
+button.mini.perigo { color: var(--ruim); }
+button.mini.perigo:hover { border-color: var(--ruim); color: var(--ruim); }
+td.acoes-col, th.acoes-col { white-space: nowrap; text-align: right; }
+td.acoes-col button + button { margin-left: 4px; }
+
+.aviso-erro {
+  background: var(--ruim-fundo); color: var(--ruim); border-radius: var(--raio);
+  padding: 9px 12px; font-size: 13px; margin: 0 0 14px;
+}
+
+/* Formulário da ficha: dois campos por linha, largo ocupa a linha inteira. */
+.campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.campo { display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.campo.largo { grid-column: 1 / -1; }
+.campo > span {
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3);
+}
+.campo input, .campo textarea {
+  padding: 8px 10px; border: 1px solid var(--line-forte); border-radius: var(--raio);
+  background: var(--panel-2); color: var(--ink); font: inherit; font-size: 13.5px; width: 100%;
+}
+.campo textarea { resize: vertical; }
+
+.gaveta.larga { width: min(760px, 100%); }
+.gaveta form { display: flex; flex-direction: column; height: 100%; }
+.gaveta form .gaveta-corpo { flex: 1; }
+.gaveta-pe {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 20px; border-top: 1px solid var(--line); background: var(--panel);
+}
+.gaveta-acoes {
+  display: flex; gap: 8px; margin-top: 24px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
 .filtros input[type="search"] { flex: 1 1 240px; }
 .marcar { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
 .painel-cab select { padding: 4px 8px; font-size: 12.5px; }

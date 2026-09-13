@@ -54,6 +54,33 @@ const ITENS = DADOS.itens.map(
 
 const HOJE = DADOS.gerado;
 
+/**
+ * Períodos rápidos, contados a partir da data da base.
+ *
+ * Todos recortam pela data do pedido — é quando a venda entrou. Recortar a
+ * carteira pela entrega esconderia justamente o pedido antigo que ainda não
+ * saiu, que é o que interessa olhar.
+ */
+const recuar = (meses) => {
+  const d = new Date(HOJE + 'T00:00:00Z');
+  d.setUTCMonth(d.getUTCMonth() - meses);
+  return d.toISOString().slice(0, 10);
+};
+
+const PERIODOS = {
+  '3M': { rotulo: '3 meses', de: () => recuar(3) },
+  '12M': { rotulo: '12 meses', de: () => recuar(12) },
+  ANO: { rotulo: 'Este ano', de: () => HOJE.slice(0, 4) + '-01-01' },
+  TUDO: { rotulo: 'Tudo', de: () => '' },
+};
+
+/** A janela em vigor: o preset escolhido, ou as datas digitadas à mão. */
+function janela() {
+  const f = estado.painel;
+  if (f.periodo === 'CUSTOM') return { de: f.de || '', ate: f.ate || '' };
+  return { de: PERIODOS[f.periodo]?.de() ?? '', ate: '' };
+}
+
 /* ------------------------------------------------------------- semáforo -- */
 /*
  * O §22 pede semáforo de prazo. Pedido entregue sai da conta — atraso de algo
@@ -119,7 +146,17 @@ const padrao = () => ({
   trocarSenha: false,
   erro: '',
   filtros: { busca: '', grupoCliente: '', vendedor: '', grupoProduto: '', linha: '', situacao: 'CARTEIRA' },
+  // O painel tem os seus: período, situação e cliente respondem juntos.
+  painel: { periodo: '12M', de: '', ate: '', status: '', cliente: '' },
   pedidoAberto: null,
+  // Cadastro de clientes: só o que mudou fica guardado, não as 448 fichas.
+  clientes: { novos: [], edicoes: {}, inativos: [] },
+  clienteAberto: null,   // código em visualização
+  clienteEditando: null, // código em edição, ou '' para um novo
+  // O que foi digitado no formulário. Sem isto, uma validação recusada
+  // reconstruiria a ficha em branco e a pessoa perderia tudo.
+  rascunho: null,
+  falha: '',
 });
 
 function carregar() {
@@ -127,7 +164,12 @@ function carregar() {
     const bruto = localStorage.getItem(CHAVE);
     if (!bruto) return padrao();
     const salvo = JSON.parse(bruto);
-    return { ...padrao(), sessao: salvo.sessao ?? null, trocarSenha: Boolean(salvo.trocarSenha) };
+    return {
+      ...padrao(),
+      sessao: salvo.sessao ?? null,
+      trocarSenha: Boolean(salvo.trocarSenha),
+      clientes: salvo.clientes ?? padrao().clientes,
+    };
   } catch { return padrao(); }
 }
 
@@ -136,7 +178,7 @@ let estado = carregar();
 function salvar() {
   try {
     localStorage.setItem(CHAVE, JSON.stringify({
-      sessao: estado.sessao, trocarSenha: estado.trocarSenha,
+      sessao: estado.sessao, trocarSenha: estado.trocarSenha, clientes: estado.clientes,
     }));
   } catch { /* navegador sem armazenamento: a sessão vale só nesta aba */ }
 }
@@ -167,25 +209,105 @@ const vazio = (texto) => `<div class="vazio">${esc(texto)}</div>`;
 /* ==========================================================================
    1. PAINEL — o dashboard executivo do §4
    ========================================================================== */
+/** Aplica período, situação e cliente — os três filtros do painel. */
+function itensDoPainel() {
+  const f = estado.painel;
+  const { de, ate } = janela();
+  return ITENS.filter((i) => {
+    if (de && (!i.dataPedido || i.dataPedido < de)) return false;
+    if (ate && (!i.dataPedido || i.dataPedido > ate)) return false;
+    if (f.status && i.status !== f.status) return false;
+    if (f.cliente && i.cliente !== f.cliente) return false;
+    return true;
+  });
+}
+
+function barraPainel(base) {
+  const f = estado.painel;
+  const { de, ate } = janela();
+
+  // Só os clientes que aparecem na janela, e os maiores primeiro: a lista
+  // inteira de 448 nomes em ordem alfabética não ajuda ninguém.
+  const porCliente = agrupar(base, (i) => i.cliente);
+  const clientes = [...porCliente.entries()].sort((a, b) => b[1].valor - a[1].valor);
+  const statusPresentes = [...new Set(base.map((i) => i.status))].sort();
+
+  const ativos = [
+    f.periodo !== 'TUDO' && (f.periodo === 'CUSTOM'
+      ? `${de ? dataBR(de) : 'início'} a ${ate ? dataBR(ate) : 'hoje'}`
+      : PERIODOS[f.periodo].rotulo.toLowerCase()),
+    f.status && (ROTULO_STATUS[f.status] ?? f.status),
+    f.cliente,
+  ].filter(Boolean);
+
+  return painel('Filtros', `
+    <div class="filtros">
+      <div class="filtro-campo">
+        <span>Período do pedido</span>
+        <div class="periodos">
+          ${Object.entries(PERIODOS).map(([k, v]) =>
+            `<button data-acao="periodo" data-periodo="${k}"
+                     class="${f.periodo === k ? 'ativo' : ''}">${esc(v.rotulo)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="filtro-campo">
+        <span>De</span>
+        <input type="date" value="${esc(f.de)}" data-painel="de" max="${esc(HOJE)}" />
+      </div>
+      <div class="filtro-campo">
+        <span>Até</span>
+        <input type="date" value="${esc(f.ate)}" data-painel="ate" max="${esc(HOJE)}" />
+      </div>
+      <div class="filtro-campo">
+        <span>Situação</span>
+        <select data-painel="status">
+          <option value="">Todas</option>
+          ${statusPresentes.map((st) =>
+            `<option value="${esc(st)}"${st === f.status ? ' selected' : ''}>${
+              esc(ROTULO_STATUS[st] ?? st)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="filtro-campo">
+        <span>Cliente</span>
+        <select data-painel="cliente">
+          <option value="">Todos (${num(clientes.length)})</option>
+          ${clientes.map(([nome, v]) =>
+            `<option value="${esc(nome)}"${nome === f.cliente ? ' selected' : ''}>${
+              esc(nome)} — ${moedaCurta(v.valor)}</option>`).join('')}
+        </select>
+      </div>
+      <button class="mini" data-acao="limpar-painel">Limpar</button>
+    </div>
+    ${ativos.length
+      ? `<p class="resumo-filtro">Mostrando <b>${num(base.length)}</b> de ${num(ITENS.length)} itens ·
+          ${ativos.map((a) => `<b>${esc(a)}</b>`).join(' · ')}</p>`
+      : `<p class="resumo-filtro">Mostrando todos os <b>${num(ITENS.length)}</b> itens da base.</p>`}`);
+}
+
 function telaPainel() {
-  const carteira = ITENS.filter(emCarteira);
+  const base = itensDoPainel();
+  const carteira = base.filter(emCarteira);
   const valor = carteira.reduce((s, i) => s + i.total, 0);
   const pecas = carteira.reduce((s, i) => s + i.qtd, 0);
   const atrasados = carteira.filter((i) => (farol(i).dias ?? 1) < 0);
   const semana = carteira.filter((i) => { const d = farol(i).dias; return d !== null && d >= 0 && d <= 7; });
-  const entregue = ITENS.filter((i) => !emCarteira(i));
+  const entregue = base.filter((i) => !emCarteira(i));
   const faturado = entregue.reduce((s, i) => s + i.total, 0);
 
   const porStatus = agrupar(carteira, (i) => i.status);
   const porGrupo = agrupar(carteira, (i) => i.grupo);
-  const porVendedor = agrupar(ITENS, (i) => i.vendedor);
-  const porMes = agrupar(ITENS.filter((i) => i.dataPedido), (i) => i.dataPedido.slice(0, 7));
+  const porVendedor = agrupar(base, (i) => i.vendedor);
+  const porMes = agrupar(base.filter((i) => i.dataPedido), (i) => i.dataPedido.slice(0, 7));
 
-  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-14);
+  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-18);
   const maiorMes = Math.max(1, ...meses.map(([, v]) => v.valor));
 
   return `
     ${cabecalho('Painel', `Posição de ${dataBR(HOJE)} — carteira, prazo e faturamento`)}
+
+    ${barraPainel(base)}
+
+    ${base.length === 0 ? vazio('Nenhum item no período e nos filtros escolhidos.') : ''}
 
     <div class="faixa-ind">
       ${indicador('Peças em carteira', num(pecas), `${num(carteira.length)} itens em aberto`)}
@@ -195,8 +317,8 @@ function telaPainel() {
       ${indicador('Entregar em 7 dias', num(semana.length),
         moeda(semana.reduce((s, i) => s + i.total, 0)), semana.length ? 'aviso' : 'bom')}
       ${indicador('Já faturado', moedaCurta(faturado), `${num(entregue.length)} itens entregues`)}
-      ${indicador('Base migrada', num(DADOS.contagem.itens),
-        `${num(DADOS.contagem.pedidos)} pedidos · ${num(DADOS.contagem.clientes)} clientes`)}
+      ${indicador('Itens no filtro', num(base.length),
+        `de ${num(DADOS.contagem.itens)} na base`)}
     </div>
 
     <div class="grade-2">
@@ -232,7 +354,7 @@ function telaPainel() {
             <span class="coluna-barra" style="height:${(v.valor / maiorMes * 100).toFixed(1)}%"></span>
             <span class="coluna-rot">${esc(mes.slice(5))}/${esc(mes.slice(2, 4))}</span>
           </div>`).join('')}
-      </div>`, `<small>${meses.length} meses · passe o mouse</small>`)}
+      </div>`, `<small>${meses.length} ${meses.length === 1 ? 'mês' : 'meses'} · passe o mouse</small>`)}
 
     ${painel('Atrasados — os dez mais antigos', atrasados.length === 0
       ? vazio('Nenhum item atrasado.')
@@ -367,40 +489,261 @@ function telaCarteira() {
 /* ==========================================================================
    3. CLIENTES  ·  4. PRODUTOS
    ========================================================================== */
+/* ==========================================================================
+   CLIENTES — inserir, ver, editar e excluir
+   ========================================================================== */
+
+/**
+ * Campos do §6. O que a migração trouxe é nome, código, grupo e vendedor; o
+ * resto nasce vazio e é preenchido aqui — por isso o formulário existe.
+ */
+const CAMPOS_CLIENTE = [
+  { chave: 'razao_social', rotulo: 'Razão social', exigido: true, largo: true },
+  { chave: 'nome_fantasia', rotulo: 'Nome fantasia', largo: true },
+  { chave: 'cnpj', rotulo: 'CNPJ' },
+  { chave: 'cpf', rotulo: 'CPF' },
+  { chave: 'inscricao_estadual', rotulo: 'Inscrição estadual' },
+  { chave: 'grupo', rotulo: 'Grupo', tipo: 'lista', opcoes: () => GC },
+  { chave: 'vendedor', rotulo: 'Vendedor', tipo: 'lista', opcoes: () => V },
+  { chave: 'contato', rotulo: 'Contato' },
+  { chave: 'telefone', rotulo: 'Telefone' },
+  { chave: 'whatsapp', rotulo: 'WhatsApp' },
+  { chave: 'email', rotulo: 'E-mail', tipo: 'email' },
+  { chave: 'cep', rotulo: 'CEP' },
+  { chave: 'endereco', rotulo: 'Endereço', largo: true },
+  { chave: 'numero', rotulo: 'Número' },
+  { chave: 'bairro', rotulo: 'Bairro' },
+  { chave: 'cidade', rotulo: 'Cidade' },
+  { chave: 'uf', rotulo: 'UF' },
+  { chave: 'condicao_pagamento', rotulo: 'Condição de pagamento' },
+  { chave: 'prazo_pagamento_dias', rotulo: 'Prazo (dias)', tipo: 'numero' },
+  { chave: 'limite_credito', rotulo: 'Limite de crédito', tipo: 'numero' },
+  { chave: 'observacao', rotulo: 'Observação', largo: true, area: true },
+];
+
+/** A base migrada, já como objeto. */
+const CLIENTES_BASE = DADOS.cadastroClientes.map(
+  ([razao_social, codigo, grupo, vendedor, pedidos, valor, ultimo]) =>
+    ({ razao_social, codigo, grupo, vendedor, pedidos, valor, ultimo, ativo: 1 })
+);
+
+/**
+ * Lista em vigor: a base, com as edições por cima, os novos no fim e os
+ * inativados marcados. Nada some da lista — inativo continua visível, porque
+ * cliente com histórico não se apaga.
+ */
+function clientesLista() {
+  const { novos, edicoes, inativos } = estado.clientes;
+  const inativo = new Set(inativos);
+  const base = CLIENTES_BASE.map((c) => ({
+    ...c, ...(edicoes[c.codigo] ?? {}), ativo: inativo.has(c.codigo) ? 0 : 1,
+  }));
+  const criados = novos
+    .filter((c) => !estado.clientes.removidosDeVez?.includes(c.codigo))
+    .map((c) => ({ pedidos: 0, valor: 0, ultimo: null, ...c,
+                   ...(edicoes[c.codigo] ?? {}), ativo: inativo.has(c.codigo) ? 0 : 1 }));
+  return [...criados, ...base];
+}
+
+const acharCliente = (codigo) => clientesLista().find((c) => c.codigo === codigo) ?? null;
+
+/** Próximo código livre, no mesmo formato da migração. */
+function proximoCodigoCliente() {
+  const maior = clientesLista().reduce((m, c) => {
+    const n = Number(String(c.codigo).replace(/\D/g, ''));
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return 'CLI-' + String(maior + 1).padStart(6, '0');
+}
+
 function telaClientes() {
   const termo = (estado.filtros.busca ?? '').trim().toLowerCase();
-  const lista = DADOS.cadastroClientes
-    .map(([nome, codigo, grupo, vendedor, pedidos, valor, ultimo]) =>
-      ({ nome, codigo, grupo, vendedor, pedidos, valor, ultimo }))
-    .filter((c) => !termo || `${c.nome} ${c.codigo}`.toLowerCase().includes(termo));
+  const todos = clientesLista();
+  const lista = todos.filter((c) =>
+    !termo || `${c.razao_social} ${c.codigo} ${c.nome_fantasia ?? ''} ${c.cidade ?? ''}`
+      .toLowerCase().includes(termo));
+
+  const ativos = todos.filter((c) => c.ativo).length;
+  const criados = estado.clientes.novos.length;
+  const editados = Object.keys(estado.clientes.edicoes).length;
 
   return `
-    ${cabecalho('Clientes', 'Cadastro com código próprio, grupo e vendedor — vindo da migração')}
+    ${cabecalho('Clientes', 'Cadastro completo: inserir, abrir, editar e inativar')}
+
     <div class="faixa-ind">
-      ${indicador('Clientes', num(DADOS.cadastroClientes.length))}
+      ${indicador('Clientes', num(todos.length), `${num(ativos)} ativos`)}
       ${indicador('Listados', num(lista.length))}
       ${indicador('Grupos', num(GC.length))}
+      ${indicador('Alterados por você', num(criados + editados),
+        criados || editados ? `${criados} novos · ${editados} editados` : 'nada alterado ainda')}
     </div>
+
+    ${estado.falha && estado.clienteEditando === null
+      ? `<div class="aviso-erro">${esc(estado.falha)}</div>` : ''}
+
     ${painel('Cadastro', `
       <div class="filtros">
-        <input type="search" placeholder="Nome ou código" value="${esc(estado.filtros.busca)}"
-          data-filtro="busca" />
+        <input type="search" placeholder="Nome, código, fantasia ou cidade"
+               value="${esc(estado.filtros.busca)}" data-filtro="busca" />
+        <button class="mini primario" data-acao="novo-cliente">+ Novo cliente</button>
       </div>
       <div class="rolagem alta">
         <table>
           <thead><tr><th>Código</th><th>Cliente</th><th>Grupo</th><th>Vendedor</th>
-            <th class="n">Pedidos</th><th class="n">Valor</th><th>Último pedido</th></tr></thead>
-          <tbody>${lista.slice(0, 300).map((c) => `<tr>
+            <th class="n">Pedidos</th><th class="n">Valor</th><th>Último pedido</th>
+            <th class="acoes-col">Ações</th></tr></thead>
+          <tbody>${lista.slice(0, 300).map((c) => `<tr class="${c.ativo ? '' : 'apagada'}">
             <td class="mono">${esc(c.codigo)}</td>
-            <td>${esc(c.nome)}</td>
+            <td>${esc(c.razao_social)}
+              ${c.nome_fantasia ? `<span class="sub">${esc(c.nome_fantasia)}</span>` : ''}
+              ${c.ativo ? '' : ' ' + pastilha('inativo', '')}
+              ${estado.clientes.edicoes[c.codigo] ? ' ' + pastilha('editado', 'aviso') : ''}
+            </td>
             <td>${esc(c.grupo ?? '—')}</td>
             <td>${esc(c.vendedor ?? '—')}</td>
             <td class="n mono">${num(c.pedidos)}</td>
             <td class="n mono">${moeda(c.valor)}</td>
             <td class="mono">${dataBR(c.ultimo)}</td>
+            <td class="acoes-col">
+              <button class="mini" data-acao="ver-cliente" data-codigo="${esc(c.codigo)}">Abrir</button>
+              <button class="mini" data-acao="editar-cliente" data-codigo="${esc(c.codigo)}">Editar</button>
+              <button class="mini perigo" data-acao="excluir-cliente" data-codigo="${esc(c.codigo)}">
+                ${c.pedidos > 0 ? 'Inativar' : 'Excluir'}</button>
+            </td>
           </tr>`).join('')}</tbody>
         </table>
-      </div>`, `<small>${lista.length > 300 ? '300 primeiros' : ''}</small>`)}`;
+      </div>`,
+      `<small>${lista.length > 300 ? '300 primeiros de ' + num(lista.length) : num(lista.length) + ' clientes'}</small>`)}`;
+}
+
+/* ---------------------------------------------------- ficha e formulário -- */
+
+function gavetaCliente() {
+  const codigo = estado.clienteAberto;
+  const c = acharCliente(codigo);
+  if (!c) return '';
+  const pedidos = ITENS.filter((i) => i.cliente === c.razao_social);
+  const emAberto = pedidos.filter(emCarteira);
+
+  const linha = (rotulo, valor) => valor
+    ? `<tr><td>${esc(rotulo)}</td><td class="n">${esc(valor)}</td></tr>` : '';
+
+  return `
+    <div class="gaveta-fundo" data-acao="fechar-cliente"></div>
+    <aside class="gaveta" role="dialog" aria-label="Cliente ${esc(c.razao_social)}">
+      <header class="gaveta-cab">
+        <div>
+          <span class="gaveta-op mono">${esc(c.codigo)}</span>
+          <h2>${esc(c.razao_social)}</h2>
+          <p>${esc(c.nome_fantasia || c.grupo || '—')}${c.vendedor ? ` · ${esc(c.vendedor)}` : ''}</p>
+        </div>
+        <button class="fechar" data-acao="fechar-cliente" aria-label="Fechar">×</button>
+      </header>
+      <div class="gaveta-corpo">
+        <div class="faixa-ind compacta">
+          ${indicador('Pedidos', num(c.pedidos))}
+          ${indicador('Valor', moedaCurta(c.valor), moeda(c.valor))}
+          ${indicador('Em aberto', num(emAberto.length),
+            emAberto.length ? moeda(emAberto.reduce((s, i) => s + i.total, 0)) : 'nada pendente')}
+        </div>
+
+        <h3>Ficha</h3>
+        <table class="compacta">
+          <tbody>
+            ${linha('Grupo', c.grupo)}
+            ${linha('Vendedor', c.vendedor)}
+            ${linha('CNPJ', c.cnpj)}
+            ${linha('CPF', c.cpf)}
+            ${linha('Inscrição estadual', c.inscricao_estadual)}
+            ${linha('Contato', c.contato)}
+            ${linha('Telefone', c.telefone)}
+            ${linha('WhatsApp', c.whatsapp)}
+            ${linha('E-mail', c.email)}
+            ${linha('Endereço', [c.endereco, c.numero, c.bairro].filter(Boolean).join(', '))}
+            ${linha('Cidade', [c.cidade, c.uf].filter(Boolean).join('/'))}
+            ${linha('CEP', c.cep)}
+            ${linha('Condição de pagamento', c.condicao_pagamento)}
+            ${linha('Prazo', c.prazo_pagamento_dias ? c.prazo_pagamento_dias + ' dias' : '')}
+            ${linha('Limite de crédito', c.limite_credito ? moeda(c.limite_credito) : '')}
+            ${linha('Situação', c.ativo ? 'Ativo' : 'Inativo')}
+          </tbody>
+        </table>
+        ${c.observacao ? `<h3>Observação</h3><p class="ajuda">${esc(c.observacao)}</p>` : ''}
+
+        <h3>Últimos pedidos</h3>
+        ${pedidos.length === 0 ? vazio('Nenhum pedido para este cliente.') : `
+          <table class="compacta">
+            <thead><tr><th>Entrega</th><th>Produto</th><th class="n">Peças</th><th class="n">Valor</th></tr></thead>
+            <tbody>${pedidos.slice(0, 12).map((i) => `<tr>
+              <td class="mono">${dataBR(i.dataEntrega)}</td>
+              <td>${esc(i.produto.slice(0, 30))}</td>
+              <td class="n mono">${num(i.qtd)}</td>
+              <td class="n mono">${moeda(i.total)}</td>
+            </tr>`).join('')}</tbody>
+          </table>`}
+
+        <div class="gaveta-acoes">
+          <button class="mini" data-acao="editar-cliente" data-codigo="${esc(c.codigo)}">Editar</button>
+          <button class="mini perigo" data-acao="excluir-cliente" data-codigo="${esc(c.codigo)}">
+            ${c.pedidos > 0 ? 'Inativar' : 'Excluir'}</button>
+        </div>
+      </div>
+    </aside>`;
+}
+
+function gavetaFormulario() {
+  const codigo = estado.clienteEditando;
+  const novo = codigo === '';
+  const base = novo ? { codigo: proximoCodigoCliente(), ativo: 1 } : acharCliente(codigo);
+  if (!base) return '';
+  // O rascunho só vale para o formulário que está aberto.
+  const c = estado.rascunho && estado.rascunho.codigo === base.codigo
+    ? { ...base, ...estado.rascunho.dados }
+    : base;
+
+  const campo = (def) => {
+    const valor = c[def.chave] ?? '';
+    const id = 'cli-' + def.chave;
+    if (def.area) {
+      return `<label class="campo largo" for="${id}"><span>${esc(def.rotulo)}</span>
+        <textarea id="${id}" name="${def.chave}" rows="2">${esc(valor)}</textarea></label>`;
+    }
+    if (def.tipo === 'lista') {
+      const opcoes = def.opcoes();
+      return `<label class="campo" for="${id}"><span>${esc(def.rotulo)}</span>
+        <input id="${id}" name="${def.chave}" list="lista-${def.chave}" value="${esc(valor)}" />
+        <datalist id="lista-${def.chave}">${opcoes.map((o) =>
+          `<option value="${esc(o)}"></option>`).join('')}</datalist></label>`;
+    }
+    const tipo = def.tipo === 'numero' ? 'number' : def.tipo === 'email' ? 'email' : 'text';
+    return `<label class="campo${def.largo ? ' largo' : ''}" for="${id}">
+      <span>${esc(def.rotulo)}${def.exigido ? ' *' : ''}</span>
+      <input id="${id}" name="${def.chave}" type="${tipo}" value="${esc(valor)}"
+             ${def.exigido ? 'required' : ''} ${def.tipo === 'numero' ? 'step="any" min="0"' : ''} /></label>`;
+  };
+
+  return `
+    <div class="gaveta-fundo" data-acao="cancelar-cliente"></div>
+    <aside class="gaveta larga" role="dialog" aria-label="${novo ? 'Novo cliente' : 'Editar cliente'}">
+      <form data-form="cliente" data-codigo="${esc(c.codigo)}" data-novo="${novo ? '1' : ''}">
+        <header class="gaveta-cab">
+          <div>
+            <span class="gaveta-op mono">${esc(c.codigo)}</span>
+            <h2>${novo ? 'Novo cliente' : 'Editar cliente'}</h2>
+            <p>${novo ? 'O código é gerado pelo sistema' : esc(c.razao_social)}</p>
+          </div>
+          <button type="button" class="fechar" data-acao="cancelar-cliente" aria-label="Fechar">×</button>
+        </header>
+        <div class="gaveta-corpo">
+          ${estado.falha ? `<div class="aviso-erro">${esc(estado.falha)}</div>` : ''}
+          <div class="campos">${CAMPOS_CLIENTE.map(campo).join('')}</div>
+        </div>
+        <footer class="gaveta-pe">
+          <button type="button" class="mini" data-acao="cancelar-cliente">Cancelar</button>
+          <button type="submit" class="mini primario">${novo ? 'Criar cliente' : 'Salvar alterações'}</button>
+        </footer>
+      </form>
+    </aside>`;
 }
 
 function telaProdutos() {
@@ -772,7 +1115,12 @@ function render() {
     <div class="sessao"><b>${esc(estado.sessao.nome)}</b><span>${esc(estado.sessao.perfil)}</span></div>
     <button data-acao="sair">Sair</button>`;
   document.getElementById('area').innerHTML = TELAS[estado.tela].render();
-  document.getElementById('gaveta').innerHTML = estado.pedidoAberto ? gavetaPedido() : '';
+  document.getElementById('gaveta').innerHTML =
+      estado.clienteEditando !== null ? gavetaFormulario()
+    : estado.clienteAberto ? gavetaCliente()
+    : estado.pedidoAberto ? gavetaPedido()
+    : '';
+  document.querySelector('.gaveta input, .gaveta textarea')?.focus();
   document.getElementById('area').scrollTop = 0;
 }
 
@@ -797,6 +1145,11 @@ document.addEventListener('submit', (ev) => {
     estado.tela = 'painel';
     salvar();
     render();
+    return;
+  }
+
+  if (form.dataset.form === 'cliente') {
+    salvarCliente(form);
     return;
   }
 
@@ -838,6 +1191,10 @@ document.addEventListener('click', (ev) => {
   } else if (acao === 'tela') {
     estado.tela = alvo.dataset.tela;
     estado.pedidoAberto = null;
+    estado.clienteAberto = null;
+    estado.clienteEditando = null;
+    estado.rascunho = null;
+    estado.falha = '';
     estado.filtros.busca = '';
     render();
   } else if (acao === 'abrir-pedido') {
@@ -852,6 +1209,40 @@ document.addEventListener('click', (ev) => {
   } else if (acao === 'limpar-filtros') {
     estado.filtros = padrao().filtros;
     render();
+  } else if (acao === 'periodo') {
+    estado.painel.periodo = alvo.dataset.periodo;
+    estado.painel.de = '';
+    estado.painel.ate = '';
+    render();
+  } else if (acao === 'limpar-painel') {
+    estado.painel = padrao().painel;
+    render();
+  } else if (acao === 'novo-cliente') {
+    estado.clienteEditando = '';
+    estado.clienteAberto = null;
+    estado.rascunho = null;
+    estado.falha = '';
+    render();
+  } else if (acao === 'ver-cliente') {
+    estado.clienteAberto = alvo.dataset.codigo;
+    estado.clienteEditando = null;
+    render();
+  } else if (acao === 'editar-cliente') {
+    estado.clienteEditando = alvo.dataset.codigo;
+    estado.clienteAberto = null;
+    estado.rascunho = null;
+    estado.falha = '';
+    render();
+  } else if (acao === 'cancelar-cliente') {
+    estado.clienteEditando = null;
+    estado.rascunho = null;
+    estado.falha = '';
+    render();
+  } else if (acao === 'fechar-cliente') {
+    estado.clienteAberto = null;
+    render();
+  } else if (acao === 'excluir-cliente') {
+    excluirCliente(alvo.dataset.codigo);
   } else if (acao === 'tema') {
     const atual = document.documentElement.dataset.tema;
     const novo = atual === 'escuro' ? 'claro' : 'escuro';
@@ -859,6 +1250,85 @@ document.addEventListener('click', (ev) => {
     try { localStorage.setItem(CHAVE + '.tema', novo); } catch { /* sem armazenamento */ }
   }
 });
+
+/**
+ * Gravar o cliente.
+ *
+ * Razão social é o mínimo, e não pode repetir — dois cadastros com o mesmo
+ * nome é exatamente o problema que a tela de qualidade existe para limpar.
+ */
+function salvarCliente(form) {
+  const dados = {};
+  for (const def of CAMPOS_CLIENTE) {
+    const bruto = form.elements[def.chave]?.value?.trim() ?? '';
+    dados[def.chave] = def.tipo === 'numero' ? (Number(bruto) || 0) : bruto;
+  }
+  const codigo = form.dataset.codigo;
+  const novo = form.dataset.novo === '1';
+  // Guardado antes de validar: se a validação recusar, o formulário volta
+  // com o que a pessoa escreveu, não em branco.
+  estado.rascunho = { codigo, dados };
+
+  if (!dados.razao_social) {
+    estado.falha = 'Informe a razão social.';
+    render();
+    return;
+  }
+  const repetido = clientesLista().find((c) =>
+    c.codigo !== codigo &&
+    c.razao_social.toLocaleUpperCase('pt-BR') === dados.razao_social.toLocaleUpperCase('pt-BR'));
+  if (repetido) {
+    estado.falha = `Já existe o cliente "${repetido.razao_social}" (${repetido.codigo}).`;
+    render();
+    return;
+  }
+
+  if (novo) {
+    estado.clientes.novos.unshift({ codigo, ...dados, ativo: 1 });
+  } else {
+    estado.clientes.edicoes[codigo] = { ...(estado.clientes.edicoes[codigo] ?? {}), ...dados };
+  }
+  estado.falha = '';
+  estado.rascunho = null;
+  estado.clienteEditando = null;
+  estado.clienteAberto = codigo;
+  salvar();
+  render();
+}
+
+/**
+ * Cliente com pedido vira inativo; sem pedido, sai da lista.
+ *
+ * Apagar quem tem histórico deixaria pedido órfão — a mesma regra que o banco
+ * do sistema aplica com ON DELETE RESTRICT.
+ */
+function excluirCliente(codigo) {
+  const c = acharCliente(codigo);
+  if (!c) return;
+
+  if (c.pedidos > 0) {
+    if (!confirm(`"${c.razao_social}" tem ${c.pedidos} pedido(s).\n\n` +
+                 'Cadastro com histórico não é apagado: ele fica inativo e some das listas ' +
+                 'de escolha, mas os pedidos continuam apontando para ele. Inativar?')) return;
+    const jaInativo = estado.clientes.inativos.includes(codigo);
+    estado.clientes.inativos = jaInativo
+      ? estado.clientes.inativos.filter((x) => x !== codigo)
+      : [...estado.clientes.inativos, codigo];
+  } else {
+    if (!confirm(`Excluir "${c.razao_social}"?\n\nNão tem pedido nenhum, então some de vez.`)) return;
+    const eraNovo = estado.clientes.novos.some((x) => x.codigo === codigo);
+    if (eraNovo) {
+      estado.clientes.novos = estado.clientes.novos.filter((x) => x.codigo !== codigo);
+    } else {
+      estado.clientes.inativos = [...new Set([...estado.clientes.inativos, codigo])];
+    }
+    delete estado.clientes.edicoes[codigo];
+  }
+  estado.clienteAberto = null;
+  estado.clienteEditando = null;
+  salvar();
+  render();
+}
 
 document.addEventListener('input', (ev) => {
   const campo = ev.target.closest('[data-filtro]');
@@ -872,13 +1342,27 @@ document.addEventListener('input', (ev) => {
 
 document.addEventListener('change', (ev) => {
   const campo = ev.target.closest('select[data-filtro]');
-  if (!campo) return;
-  estado.filtros[campo.dataset.filtro] = campo.value;
+  if (campo) {
+    estado.filtros[campo.dataset.filtro] = campo.value;
+    render();
+    return;
+  }
+  const doPainel = ev.target.closest('[data-painel]');
+  if (!doPainel) return;
+  const qual = doPainel.dataset.painel;
+  estado.painel[qual] = doPainel.value;
+  // Digitar uma data manda no botão de período: os dois não podem discordar.
+  if (qual === 'de' || qual === 'ate') estado.painel.periodo = 'CUSTOM';
   render();
 });
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && estado.pedidoAberto) { estado.pedidoAberto = null; render(); }
+  if (ev.key !== 'Escape') return;
+  if (estado.clienteEditando !== null) {
+    estado.clienteEditando = null; estado.rascunho = null; estado.falha = ''; render();
+  }
+  else if (estado.clienteAberto) { estado.clienteAberto = null; render(); }
+  else if (estado.pedidoAberto) { estado.pedidoAberto = null; render(); }
 });
 
 /* dica flutuante do gráfico de meses */
