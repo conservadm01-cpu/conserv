@@ -82,6 +82,9 @@ etapa('Fábrica: equipe, máquinas, custo fixo e tempo padrão', 'seed-fabrica.j
 etapa('Financeiro: contas a pagar e a receber', 'seed-financeiro.js');
 etapa('Comercial: funil, oportunidades e orçamentos', 'seed-comercial.js');
 etapa('Compras: requisições, pedidos e recebimentos', 'seed-compras.js');
+// Base de avaliação pede mais de um par de olhos: entrar como PCP ou como chão
+// de fábrica é o que mostra que a permissão por área funciona.
+etapa('Acessos de teste (um por nível)', 'acessos-teste.js');
 
 /* ------------------------------------------- o que é próprio da ficha */
 
@@ -346,5 +349,11 @@ console.log(
     `${db.prepare('SELECT numero FROM ordens_producao WHERE id = ?').get(ordemVitrine).numero} ` +
     `(pedido DEMO-238)\n` +
     `Abra em Produção (PCP) → a ordem → aba "Ficha de produção" → Abrir ficha para impressão.\n`
+);
+console.log(
+  `Acessos de teste (senha "teste123" em todos): total@teste.local, gerencial@teste.local,\n` +
+    `pcp@teste.local, comercial@teste.local, almoxarifado@teste.local, financeiro@teste.local,\n` +
+    `chao-de-fabrica@teste.local e consulta@teste.local — cada um enxerga só a sua parte.\n` +
+    `O administrador continua sendo ${process.env.ADMIN_EMAIL || 'admin@conserv.com.br'}.\n`
 );
 console.log('Suba o sistema com "npm run build && npm start" e entre em http://localhost:3333');

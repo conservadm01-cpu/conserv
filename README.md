@@ -318,7 +318,7 @@ npm run build && npm start
 
 Monta em sequência tudo o que dá para avaliar: usuário administrador, a carteira da planilha de
 origem (1.022 pedidos), materiais com ficha técnica e estoque, a fábrica com equipe e custo por
-minuto, financeiro, funil comercial e compras. No fim prepara o que é próprio da ficha —
+minuto, financeiro, funil comercial, compras e os **acessos de teste** (abaixo). No fim prepara o que é próprio da ficha —
 grade de tamanhos em algumas ordens, arte, instruções por setor e horários apontados — e deixa
 uma **ordem-vitrine** (pedido `DEMO-238`) com o dossiê completo: abra em *Produção (PCP)* → a
 ordem → aba **Ficha de produção** → *Abrir ficha para impressão*.
@@ -334,6 +334,38 @@ npm run db:demo -- --recriar         # apaga o banco atual e monta a demonstraç
 
 Os números de custo, folha e aluguel são exemplo, não a sua realidade — troque-os antes de
 tirar conclusão de margem.
+
+### Acessos de teste (um por nível)
+
+Testar tudo como administrador não prova nada sobre permissão — ele enxerga o sistema inteiro.
+O comando abaixo cria um usuário para cada nível de acesso, com senha conhecida e **sem troca
+exigida na entrada**, para você ver o sistema pelos olhos de quem vai usá-lo:
+
+```bash
+npm run db:acessos-teste                    # cria (ou devolve ao estado original) os acessos
+npm run db:acessos-teste -- --senha=outra   # escolhe a senha
+npm run db:acessos-teste -- --remover       # apaga todos eles
+```
+
+| E-mail | Senha | O que enxerga |
+|---|---|---|
+| `total@teste.local` | `teste123` | tudo, inclusive permissões e valores sensíveis |
+| `gerencial@teste.local` | `teste123` | a operação inteira, sem mexer em usuários |
+| `pcp@teste.local` | `teste123` | planeja e acompanha a fábrica; não vê salário nem financeiro |
+| `comercial@teste.local` | `teste123` | funil, orçamento e pedido; vê custo para precificar, não a folha |
+| `almoxarifado@teste.local` | `teste123` | estoque, compras e recebimento |
+| `financeiro@teste.local` | `teste123` | títulos e baixas; não vê a produção |
+| `chao-de-fabrica@teste.local` | `teste123` | só apontamento e ocorrência |
+| `consulta@teste.local` | `teste123` | vê a operação, não altera nada |
+
+Entre como `pcp@teste.local` e repare que o menu não tem financeiro; como
+`chao-de-fabrica@teste.local`, e só o apontamento abre. A API barra do mesmo jeito, não só o
+menu: o PCP recebe `403` em `/api/financeiro/resumo`.
+
+São **contas descartáveis de avaliação**, com senha impressa na tela e domínio `teste.local`,
+que não existe — nunca se confundem com a conta de alguém de verdade. Por isso o script se
+recusa a rodar com `NODE_ENV=production`: em produção, acesso se cria em *Usuários e
+permissões* → *Novo acesso*, com senha provisória que a pessoa troca na primeira entrada.
 
 ### Dados de exemplo (peça por peça)
 

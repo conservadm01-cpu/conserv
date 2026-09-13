@@ -14,6 +14,7 @@
     "db:seed-comercial": "node src/scripts/seed-comercial.js",
     "db:seed-compras": "node src/scripts/seed-compras.js",
     "db:demo": "node src/scripts/seed-demo.js",
+    "db:acessos-teste": "node src/scripts/acessos-teste.js",
     "import": "node src/scripts/import-xlsx.js",
     "test": "node --test test/*.test.js"
   },
