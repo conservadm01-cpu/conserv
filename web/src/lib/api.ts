@@ -1,6 +1,6 @@
-const CHAVE_TOKEN = 'conserv.token';
-const CHAVE_USUARIO = 'conserv.usuario';
-const CHAVE_PERMISSOES = 'conserv.permissoes';
+const CHAVE_TOKEN = 'csvsist.token';
+const CHAVE_USUARIO = 'csvsist.usuario';
+const CHAVE_PERMISSOES = 'csvsist.permissoes';
 
 export type Perfil = 'ADMIN' | 'GESTOR' | 'PCP' | 'ALMOXARIFE' | 'VENDEDOR' | 'OPERADOR';
 export type Usuario = {
@@ -86,8 +86,37 @@ export function query(params: Record<string, unknown>): string {
   return str ? `?${str}` : '';
 }
 
+/**
+ * Busca um recurso que não é JSON — a ficha impressa e os relatórios em CSV.
+ * Passa pelo mesmo cabeçalho de autorização das outras chamadas.
+ */
+async function baixar(caminho: string): Promise<Blob> {
+  const token = sessao.token();
+  const resposta = await fetch(`/api${caminho}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (resposta.status === 401) {
+    sessao.sair();
+    window.location.hash = '#/login';
+    throw new ApiError(401, 'Sessão expirada. Entre novamente.');
+  }
+  if (!resposta.ok) {
+    const texto = await resposta.text();
+    let mensagem = 'Falha ao gerar o documento';
+    try {
+      mensagem = JSON.parse(texto)?.erro ?? mensagem;
+    } catch {
+      /* resposta sem JSON: fica a mensagem padrão */
+    }
+    throw new ApiError(resposta.status, mensagem);
+  }
+  return resposta.blob();
+}
+
 export const api = {
   get: <T,>(caminho: string) => requisicao<T>(caminho),
+  patch: <T,>(caminho: string, corpo?: unknown) =>
+    requisicao<T>(caminho, { method: 'PATCH', body: JSON.stringify(corpo ?? {}) }),
   post: <T,>(caminho: string, corpo?: unknown) =>
     requisicao<T>(caminho, { method: 'POST', body: JSON.stringify(corpo ?? {}) }),
   put: <T,>(caminho: string, corpo?: unknown) =>
@@ -95,4 +124,32 @@ export const api = {
   delete: <T,>(caminho: string) => requisicao<T>(caminho, { method: 'DELETE' }),
   upload: <T,>(caminho: string, dados: FormData) =>
     requisicao<T>(caminho, { method: 'POST', body: dados }),
+
+  /**
+   * Abre um documento do servidor numa aba nova, já pronto para imprimir.
+   * O arquivo vem por fetch (e não por link direto) porque a rota exige o
+   * token da sessão, que um <a href> não carregaria.
+   */
+  async abrirDocumento(caminho: string) {
+    const url = URL.createObjectURL(await baixar(caminho));
+    const janela = window.open(url, '_blank');
+    if (!janela) {
+      URL.revokeObjectURL(url);
+      throw new ApiError(0, 'O navegador bloqueou a janela. Libere os pop-ups deste site para imprimir.');
+    }
+    // Revogar cedo demais mata a aba recém-aberta; um minuto cobre o carregamento.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
+
+  /** Baixa um arquivo (CSV dos relatórios) com o nome informado. */
+  async baixarArquivo(caminho: string, nomeArquivo: string) {
+    const url = URL.createObjectURL(await baixar(caminho));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = nomeArquivo;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };

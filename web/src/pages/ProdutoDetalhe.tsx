@@ -4,12 +4,16 @@ import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { decimal, moeda } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Vazio, Campo, Indicador, Etiqueta } from '../components/ui';
+import FichaProduto from '../components/FichaProduto';
 import type { ItemFicha, Produto, PosicaoEstoque, CustoProduto, Etapa, Equipamento } from '../tipos';
+
+const ABAS = ['Custo e processo', 'Ficha impressa'] as const;
 
 export default function ProdutoDetalhe() {
   const { id } = useParams();
   const [mensagem, setMensagem] = useState('');
   const [falha, setFalha] = useState('');
+  const [aba, setAba] = useState<(typeof ABAS)[number]>('Custo e processo');
 
   const { dados: produto } = useApi<Produto>(`/produtos/${id}`);
   const { dados: ficha, carregando, recarregar: recarregarFicha } = useApi<ItemFicha[]>(`/produtos/${id}/ficha-tecnica`);
@@ -103,6 +107,16 @@ export default function ProdutoDetalhe() {
       <Aviso tipo="ok">{mensagem}</Aviso>
       {custo?.avisos.map((a, i) => <Aviso key={i} tipo="info">{a}</Aviso>)}
 
+      <div className="abas">
+        {ABAS.map((a) => (
+          <button key={a} className={`aba${aba === a ? ' ativa' : ''}`} onClick={() => setAba(a)}>{a}</button>
+        ))}
+      </div>
+
+      {aba === 'Ficha impressa' && <FichaProduto produtoId={Number(id)} />}
+
+      {aba === 'Custo e processo' && (
+      <>
       <div className="grade c4">
         <Indicador rotulo="Material / peça" valor={moeda(custo?.material ?? 0)} nota={`${ficha?.length ?? 0} materiais`} />
         <Indicador rotulo="Mão de obra / peça" valor={moeda(custo?.mao_de_obra ?? 0)}
@@ -224,6 +238,8 @@ export default function ProdutoDetalhe() {
           </div>
         </Cartao>
       </div>
+      </>
+      )}
     </>
   );
 }

@@ -17,7 +17,7 @@ export type OrdemMaterial = {
 };
 
 export type Ordem = {
-  id: number; numero: string; quantidade: number; status: string;
+  id: number; numero: string; quantidade: number; status: string; pedido_item_id: number;
   data_abertura: string; data_prevista: string | null; data_conclusao: string | null;
   observacao: string | null;
   cliente: string; produto: string; grupo: string | null; linha: string;
@@ -567,4 +567,129 @@ export type SituacaoAcesso = {
 export type ResumoAcessos = {
   por_evento: Array<{ evento: EventoSenha; total: number; ultimo: string }>;
   falhas_24h: number; provisorias: number; sem_troca: number; nunca_entraram: number;
+};
+
+/* ------------------------------------------------- fichas de produção */
+
+export type Setor = 'PRODUCAO' | 'PREPARACAO' | 'CORTE' | 'SILK' | 'MODELAGEM' | 'COSTURA' | 'EMBALAGEM';
+
+export type Via = { id: Setor; titulo: string };
+
+export type LinhaGrade = { tamanho: string; quantidade: number | null };
+
+export type Grade = { grade: LinhaGrade[]; total: number; lancada: boolean };
+
+export type OperacaoOrdem = {
+  id: number; ordem_id: number; setor: Setor; sequencia: number; nome: string;
+  maquina: string | null; inicio: string | null; termino: string | null;
+  operador: string | null; observacao: string | null;
+};
+
+export type Logo = {
+  id: number; produto_id: number; descricao: string; posicao: string | null;
+  largura_cm: number | null; altura_cm: number | null; cor: string | null;
+  cor_hex: string | null; ordem: number;
+};
+
+export type CorTinta = {
+  id?: number; produto_id?: number; sequencia: number; nome: string;
+  referencia: string | null; hex: string | null;
+};
+
+export type Arte = {
+  produto_id: number;
+  personalizacao: 'SILK' | 'TRANSFER' | 'BORDADO' | 'SUBLIMACAO' | 'SEM';
+  origem_arte: 'VETOR' | 'IMAGEM';
+  base_tinta: 'AGUA' | 'VINILICA' | null;
+  tinta_pronta: number;
+  observacao: string | null;
+  logos: Logo[];
+  cores: CorTinta[];
+};
+
+export type Instrucao = {
+  id: number; produto_id: number; setor: Setor; texto: string; destaque: number; ordem: number;
+};
+
+export type ImagemFicha = {
+  id: number; produto_id: number; setor: Setor; titulo: string | null;
+  arquivo: string; ordem: number; criado_em: string;
+};
+
+export type FichaProduto = {
+  produto: { id: number; codigo: string | null; descricao: string };
+  arte: Arte;
+  instrucoes: Record<string, Instrucao[]>;
+  imagens: Record<string, ImagemFicha[]>;
+};
+
+export type MaterialFicha = {
+  id: number; descricao: string; tipo: string; unidade: string; setor: Setor;
+  consumo_por_peca: number; quantidade_total: number; observacao: string | null;
+  fornecedor: string | null; pedido_compra: string | null; entrega_compra: string | null;
+  custo_previsto: number;
+};
+
+export type DocumentoFicha = {
+  setor: Setor; titulo: string; materiais: MaterialFicha[];
+  sequencia: OperacaoOrdem[]; instrucoes: Instrucao[]; imagens: ImagemFicha[];
+  assinaturas: string[];
+};
+
+export type Ficha = {
+  sistema: string; emitido_em: string;
+  ordem: { id: number; numero: string; quantidade: number; status: string;
+           data_abertura: string; data_prevista: string | null; data_conclusao: string | null;
+           observacao: string | null };
+  pedido: { id: number; numero: string; data_pedido: string; data_entrega: string | null;
+            nota_fiscal: string | null; data_nota_fiscal: string | null;
+            condicao_pagamento: string | null; situacao: string;
+            preco_unitario: number; valor_total: number };
+  cliente: { nome: string; contato: string | null; cidade: string | null; uf: string | null; categoria: string | null };
+  vendedor: string;
+  produto: { id: number; codigo: string | null; descricao: string; grupo: string | null; linha: string };
+  grade: LinhaGrade[]; total_grade: number; grade_lancada: boolean;
+  materiais: MaterialFicha[];
+  operacoes: Array<{ numero: number; etapa: string; codigo: string; quantidade: number;
+                     custo_unitario: number; custo_total: number }>;
+  total_mo: number;
+  controle: Array<{ etapa: string; codigo: string; status: string; responsavel: string | null;
+                    iniciado_em: string | null; concluido_em: string | null }>;
+  arte: Arte;
+  documentos: DocumentoFicha[];
+};
+
+/* ------------------------------------------------- relatórios gerenciais */
+
+export type LinhaPcpMo = {
+  item_id: number; pedido_numero: string; data_pedido: string; categoria: string | null;
+  cliente: string; cliente_id: number; produto: string; grupo: string | null; linha: string;
+  vendedor: string | null; quantidade: number; preco_unitario: number; total: number;
+  liquidacao: number; data_entrega: string | null; situacao: string;
+  ordem_id: number | null; ordem_numero: string | null; ordem_status: string | null;
+  semana_pedido: number | null; semana_entrega: number | null;
+  etapas: Record<string, { status: string; custo_mo: number }>;
+  mo_total: number; margem_bruta: number;
+};
+
+export type CarteiraConsolidada = {
+  pecas: number; faturar: number; liquidar: number; itens: number; pedidos: number; ticket_medio: number;
+  por_grupo: Array<{ grupo: string; pecas: number; faturar: number; liquidar: number }>;
+  mo_em_producao: Array<{ codigo: string; etapa: string; custo_mo: number; ordens: number }>;
+  mo_em_producao_total: number;
+};
+
+export type RelatorioCliente = {
+  itens: Array<{ pedido_numero: string; data_pedido: string; cliente: string; produto: string;
+                 grupo: string | null; quantidade: number; preco_unitario: number; total: number;
+                 situacao: string; data_entrega: string | null;
+                 ordem_numero: string | null; ordem_status: string | null }>;
+  por_mes: Array<{ mes: string; pecas: number; valor: number }>;
+  total: { itens: number; pecas: number; valor: number };
+};
+
+export type LinhaPedidoMes = {
+  pedido_id: number; pedido_numero: string; data_pedido: string; cliente: string;
+  vendedor: string | null; categoria: string | null; pecas: number; valor: number;
+  itens: number; semana: number | null;
 };

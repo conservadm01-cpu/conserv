@@ -260,3 +260,44 @@ button.pequeno { padding: 5px 9px; font-size: 12.5px; }
 
 /* Linha de cadastro inativo: presente na lista, mas discreta */
 tr.apagada td { opacity: .55; }
+
+/* ---------- Fichas de produção ---------- */
+.grade-tamanhos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grade-tamanhos label { display: flex; flex-direction: column; gap: 3px; }
+.grade-tamanhos span { font-size: 12px; color: var(--texto-fraco); font-weight: 600; }
+
+.vias { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.via-opcao { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+/* O input do formulário é 100% de largura por padrão; a caixa de marcar não. */
+.via-opcao input[type='checkbox'], .marcador input[type='checkbox'] { width: auto; margin: 0; }
+
+.linha-acoes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.linha-acoes b { margin-right: auto; }
+
+.ajuda { margin: 10px 0 0; font-size: 12.5px; color: var(--texto-fraco); }
+.nota-celula { color: var(--texto-suave); }
+
+.marcador { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+
+.bloco-setor { margin-bottom: 16px; }
+.bloco-setor h4 { margin-bottom: 6px; font-size: 13px; color: var(--texto-fraco); text-transform: uppercase;
+                  letter-spacing: .04em; }
+
+.formulario-linha { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.formulario-linha input, .formulario-linha select { flex: 1 1 130px; min-width: 90px; }
+.formulario-linha input[type='color'] { flex: 0 0 46px; padding: 2px; }
+.formulario-linha .marcador { flex: 0 0 auto; }
+.ordem-cor { font-size: 12.5px; color: var(--texto-fraco); min-width: 44px; }
+
+.lista-instrucoes { list-style: none; margin: 0; padding: 0; }
+.lista-instrucoes li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px;
+                       background: var(--superficie-2); margin-bottom: 4px; font-size: 13px; }
+.lista-instrucoes li span { flex: 1; }
+.lista-instrucoes li.destaque { background: var(--alerta-clara); color: var(--alerta); font-weight: 600; }
+
+.galeria-ficha { display: flex; flex-wrap: wrap; gap: 12px; }
+.galeria-ficha figure { margin: 0; width: 160px; border: 1px solid var(--borda); border-radius: var(--raio);
+                        padding: 8px; background: var(--superficie-2); }
+.galeria-ficha img { width: 100%; height: 110px; object-fit: contain; }
+.galeria-ficha figcaption { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 11.5px;
+                            color: var(--texto-fraco); }

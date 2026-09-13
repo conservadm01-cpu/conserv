@@ -26,6 +26,7 @@ export function migrate(db = getDb()) {
   aplicarMigracoes(db);
   seedEtapas(db);
   seedEstruturaFabrica(db);
+  seedOperacoesSetor(db);
   return db;
 }
 
@@ -100,4 +101,54 @@ function seedEtapas(db) {
     for (const e of etapas) insert.run(e.codigo, e.nome, e.ordem, e.consome_material);
   });
   tx(ETAPAS_PADRAO);
+}
+
+/**
+ * Sequência operacional padrão de cada setor.
+ *
+ * É o roteiro interno que aparece na via impressa — o corte não recebe "corte",
+ * recebe preparar o tecido, conferir o risco, enfestar e cortar, cada passo com
+ * a sua máquina e o seu horário. Serve de ponto de partida: a tabela é editável
+ * e a ordem guarda a cópia do dia em que foi aberta.
+ */
+export const OPERACOES_SETOR_PADRAO = [
+  { setor: 'CORTE', sequencia: 1, nome: 'Preparação do tecido', maquina: 'MANUAL' },
+  { setor: 'CORTE', sequencia: 2, nome: 'Conferência do risco', maquina: 'MANUAL' },
+  { setor: 'CORTE', sequencia: 3, nome: 'Enfesto', maquina: 'MANUAL' },
+  { setor: 'CORTE', sequencia: 4, nome: 'Corte', maquina: 'MAQUINA DE CORTE' },
+
+  { setor: 'SILK', sequencia: 1, nome: 'Conferência do fotolito', maquina: 'MANUAL' },
+  { setor: 'SILK', sequencia: 2, nome: 'Gravação das telas', maquina: 'MESA/LUZ' },
+  { setor: 'SILK', sequencia: 3, nome: 'Preparação das tintas', maquina: 'MANUAL' },
+  { setor: 'SILK', sequencia: 4, nome: 'Preparar peças nos berços', maquina: 'MANUAL' },
+  { setor: 'SILK', sequencia: 5, nome: 'Estampar', maquina: 'MANUAL' },
+
+  { setor: 'PREPARACAO', sequencia: 1, nome: 'Separação do material', maquina: 'MANUAL' },
+  { setor: 'PREPARACAO', sequencia: 2, nome: 'Conferência das peças cortadas', maquina: 'MANUAL' },
+  { setor: 'PREPARACAO', sequencia: 3, nome: 'Preparação de partes e alças', maquina: 'MANUAL' },
+
+  { setor: 'MODELAGEM', sequencia: 1, nome: 'Conferência da ficha e do molde', maquina: 'MANUAL' },
+  { setor: 'MODELAGEM', sequencia: 2, nome: 'Risco do molde', maquina: 'MANUAL' },
+  { setor: 'MODELAGEM', sequencia: 3, nome: 'Peça piloto', maquina: 'RETA' },
+
+  { setor: 'COSTURA', sequencia: 1, nome: 'Preparação das máquinas', maquina: 'RETA/OVERLOQUE' },
+  { setor: 'COSTURA', sequencia: 2, nome: 'Costura em série', maquina: 'RETA/OVERLOQUE' },
+  { setor: 'COSTURA', sequencia: 3, nome: 'Arremate e limpeza de linhas', maquina: 'MANUAL' },
+  { setor: 'COSTURA', sequencia: 4, nome: 'Revisão da peça', maquina: 'MANUAL' },
+
+  { setor: 'EMBALAGEM', sequencia: 1, nome: 'Conferência da quantidade', maquina: 'MANUAL' },
+  { setor: 'EMBALAGEM', sequencia: 2, nome: 'Dobra', maquina: 'MANUAL' },
+  { setor: 'EMBALAGEM', sequencia: 3, nome: 'Ensacamento', maquina: 'MANUAL' },
+  { setor: 'EMBALAGEM', sequencia: 4, nome: 'Encaixotamento e pesagem', maquina: 'BALANCA' },
+];
+
+function seedOperacoesSetor(db) {
+  const insert = db.prepare(
+    `INSERT INTO operacoes_setor (setor, sequencia, nome, maquina) VALUES (?, ?, ?, ?)
+     ON CONFLICT(setor, nome) DO NOTHING`
+  );
+  const tx = db.transaction((linhas) => {
+    for (const o of linhas) insert.run(o.setor, o.sequencia, o.nome, o.maquina);
+  });
+  tx(OPERACOES_SETOR_PADRAO);
 }

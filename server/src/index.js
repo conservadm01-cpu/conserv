@@ -21,6 +21,8 @@ import { router as financeiroRouter } from './routes/financeiro.js';
 import { crm as crmRouter, orcamentos as orcamentosRouter } from './routes/comercial.js';
 import { router as comprasRouter } from './routes/compras.js';
 import { router as qualidadeRouter } from './routes/qualidade.js';
+import { router as fichasRouter, operacoesPadrao as operacoesPadraoRouter } from './routes/fichas.js';
+import { router as relatoriosRouter } from './routes/relatorios.js';
 
 export function criarApp() {
   migrate();
@@ -52,6 +54,10 @@ export function criarApp() {
   app.use('/api/orcamentos', exigir('orcamentos.ver'), orcamentosRouter);
   app.use('/api/compras', exigir('compras.ver'), comprasRouter);
   app.use('/api/qualidade', exigir('cadastros.ver'), qualidadeRouter);
+  // Fichas de produção: quem acompanha a produção lê; a escrita é conferida rota a rota.
+  app.use('/api/fichas', exigir('producao.ver'), fichasRouter);
+  app.use('/api/operacoes-setor', exigir('engenharia.ver', 'producao.ver'), operacoesPadraoRouter);
+  app.use('/api/relatorios', exigir('pedidos.ver', 'producao.ver'), relatoriosRouter);
   app.use('/api/indicadores', exigir('producao.ver', 'pedidos.ver', 'financeiro.ver', 'orcamentos.ver'), indicadoresRouter);
   app.use('/api', cadastrosRouter);
 
@@ -70,7 +76,7 @@ export function criarApp() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const app = criarApp();
   app.listen(config.port, () => {
-    console.log(`ERP Conserv rodando em http://localhost:${config.port}`);
+    console.log(`CSVSIST rodando em http://localhost:${config.port}`);
     console.log(`Banco de dados: ${config.dbPath}`);
   });
 }

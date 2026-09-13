@@ -4,7 +4,10 @@ import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { data, decimal, moeda, numero } from '../lib/formato';
 import { Cartao, Carregando, Aviso, Etiqueta, Indicador, Vazio } from '../components/ui';
+import FichaProducao from '../components/FichaProducao';
 import type { Ordem, OrdemEtapa } from '../tipos';
+
+const ABAS = ['Roteiro e materiais', 'Ficha de produção'] as const;
 
 const STATUS_ETAPA = [
   { valor: 'PENDENTE', rotulo: 'Pendente' },
@@ -19,6 +22,7 @@ export default function OrdemDetalhe() {
   const [mensagem, setMensagem] = useState('');
   const [falha, setFalha] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [aba, setAba] = useState<(typeof ABAS)[number]>('Roteiro e materiais');
 
   async function acao(fn: () => Promise<Ordem | void>, sucesso: string) {
     setOcupado(true);
@@ -78,6 +82,18 @@ export default function OrdemDetalhe() {
       <Aviso tipo="erro">{falha}</Aviso>
       <Aviso tipo="ok">{mensagem}</Aviso>
 
+      <div className="abas">
+        {ABAS.map((a) => (
+          <button key={a} className={`aba${aba === a ? ' ativa' : ''}`} onClick={() => setAba(a)}>{a}</button>
+        ))}
+      </div>
+
+      {aba === 'Ficha de produção' && (
+        <FichaProducao ordemId={ordem.id} itemId={ordem.pedido_item_id} />
+      )}
+
+      {aba === 'Roteiro e materiais' && (
+      <>
       <div className="grade c4">
         <Indicador rotulo="Quantidade" valor={`${numero(ordem.quantidade)} pç`} nota={ordem.grupo ?? ''} />
         <Indicador rotulo="Receita do item" valor={moeda(ordem.valor_item)} nota={`${moeda(ordem.preco_unitario)}/pç`} />
@@ -160,6 +176,8 @@ export default function OrdemDetalhe() {
           )}
         </Cartao>
       </div>
+      </>
+      )}
     </>
   );
 }

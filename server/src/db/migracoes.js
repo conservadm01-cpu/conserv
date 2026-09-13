@@ -67,6 +67,13 @@ export function aplicarMigracoes(db) {
     ['pix', 'TEXT'], ['contato_emergencia', 'TEXT'], ['data_demissao', 'TEXT'],
   ]) alterar('colaboradores', coluna, tipo);
 
+  // Ficha de produção: o material passa a dizer em que setor é consumido, para
+  // a via do corte não vir com saco plástico e a da embalagem não vir com tecido.
+  alterar('ficha_tecnica', 'setor', 'TEXT');
+
+  // A capa da ordem de produção imprime a nota fiscal e a data em que ela saiu.
+  alterar('pedidos', 'data_nota_fiscal', 'TEXT');
+
   // O pedido passa a saber de onde veio: do orçamento aprovado e da oportunidade.
   alterar('pedidos', 'orcamento_id', 'INTEGER REFERENCES orcamentos(id) ON DELETE SET NULL');
   alterar('pedidos', 'oportunidade_id', 'INTEGER REFERENCES oportunidades(id) ON DELETE SET NULL');

@@ -28,7 +28,7 @@ export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) 
   return (
     <div className="login-tela">
       <form className="login-caixa" onSubmit={enviar}>
-        <h1>ERP Conserv</h1>
+        <h1>CSVSIST</h1>
         <p className="sub">Controle de materiais e processos</p>
         <Aviso tipo="erro">{erro}</Aviso>
         <Campo rotulo="E-mail">
