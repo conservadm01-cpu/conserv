@@ -258,6 +258,44 @@ npm run dev          # API em :3333 e interface em :5173 com recarga automática
 npm test             # 157 testes de PCP, programação, importação, fichas, custeio e permissões
 ```
 
+### Publicando: interface na Vercel, API num host com disco
+
+O banco é um **arquivo SQLite**, e é isso que decide a arquitetura: a API precisa de um disco
+que sobreviva ao deploy. Serverless (Vercel Functions e semelhantes) não tem disco persistente —
+o sistema até sobe, mas o pedido lançado hoje some no deploy de amanhã. Por isso a interface vai
+para a Vercel e a API para um host com volume.
+
+**1. A API.** O `Dockerfile` na raiz serve para Render, Railway, Fly ou uma VPS. No Render, o
+`render.yaml` já descreve tudo — inclusive o disco de 1 GB montado em `/dados`, que é para onde
+`DB_PATH` aponta. Monte o volume **antes** do primeiro acesso: sem ele, cada deploy recomeça do
+zero. Defina `ADMIN_EMAIL` e `ADMIN_SENHA` no painel antes de subir; são lidos uma vez, na
+criação do administrador.
+
+```bash
+docker build -t csvsist-api .
+docker run -p 3333:3333 -v csvsist-dados:/dados   -e JWT_SECRET=troque-isto -e ADMIN_SENHA=defina-a-sua csvsist-api
+```
+
+**2. A interface.** Abra `vercel.json` e troque o destino do rewrite pela URL da API:
+
+```json
+"destination": "https://csvsist-api.onrender.com/api/:caminho*"
+```
+
+A Vercel faz o resto: o `vercel.json` já traz o comando de instalação (que pula as dependências
+do servidor, inclusive o módulo nativo do SQLite), o de build e a pasta de saída. O front chama
+`/api` no mesmo domínio e a Vercel encaminha — não há CORS no caminho, e o navegador nunca vê o
+endereço da API. Deixe o *Root Directory* da Vercel na raiz do repositório.
+
+**3. Depois de no ar.** Entre com o administrador e troque a senha; importe a planilha em
+*Importar planilha* (simule antes); confira em *Engenharia* a jornada e a equipe, que é de onde
+sai a capacidade da programação semanal.
+
+Duas coisas que **não** se roda no servidor de produção: `npm run db:demo`, que monta dados de
+exemplo, e `npm run db:acessos-teste`, que cria contas de senha conhecida — com
+`NODE_ENV=production` o segundo se recusa a rodar. Num ambiente de homologação, os dois são
+justamente o que você quer.
+
 ---
 
 ## Trazendo seus dados
@@ -415,6 +453,9 @@ de cada produto.
 ## Estrutura
 
 ```
+Dockerfile         imagem da API (o banco fica num volume, fora da imagem)
+render.yaml        serviço da API no Render, com o disco do banco
+vercel.json        build da interface e o rewrite de /api para a API
 server/            API em Node + Express + SQLite
   src/db/          schema.sql e conexão
   src/services/    regras de negócio (PCP, estoque/MRP, compras, custeio, comercial)

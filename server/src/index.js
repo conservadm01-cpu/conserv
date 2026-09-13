@@ -67,6 +67,17 @@ export function criarApp() {
   if (fs.existsSync(config.webDist)) {
     app.use(express.static(config.webDist));
     app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(config.webDist, 'index.html')));
+  } else {
+    // Instalação em que a interface é servida por outro host (Vercel, por
+    // exemplo). Sem isso a raiz responde "Cannot GET /" e parece quebrada.
+    app.get('/', (_req, res) =>
+      res.json({
+        sistema: 'CSVSIST',
+        api: 'no ar',
+        saude: '/api/saude',
+        interface: 'servida por outro host — esta instalação responde só a /api',
+      })
+    );
   }
 
   app.use(tratarErros);

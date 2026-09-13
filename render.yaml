@@ -1,0 +1,32 @@
+# API do CSVSIST no Render (Blueprint).
+#
+# O banco é um arquivo SQLite, então o serviço precisa de disco: sem o bloco
+# `disk` abaixo, cada deploy sobe com a base vazia. Disco não existe no plano
+# gratuito do Render — confira o preço do plano antes de aplicar.
+services:
+  - type: web
+    name: csvsist-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/saude
+    disk:
+      name: dados
+      mountPath: /dados
+      sizeGB: 1
+    envVars:
+      # O caminho tem de cair dentro do disco montado.
+      - key: DB_PATH
+        value: /dados/csvsist.db
+      - key: NODE_ENV
+        value: production
+      # Gerado pelo Render e nunca commitado: trocar o segredo derruba as
+      # sessões abertas, que é o comportamento certo.
+      - key: JWT_SECRET
+        generateValue: true
+      # Preenchidos no painel, na primeira vez. São lidos só na criação do
+      # administrador; depois disso, a senha se troca pela tela.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_SENHA
+        sync: false
