@@ -301,3 +301,34 @@ tr.apagada td { opacity: .55; }
 .galeria-ficha img { width: 100%; height: 110px; object-fit: contain; }
 .galeria-ficha figcaption { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 11.5px;
                             color: var(--texto-fraco); }
+
+/* ---------- Programação semanal (carga × capacidade) ---------- */
+.plano { overflow-x: auto; }
+.plano table { min-width: 720px; }
+.plano th.setor, .plano td.setor {
+  position: sticky; left: 0; z-index: 2; background: var(--superficie);
+  font-weight: 600; white-space: nowrap;
+}
+.plano th.setor { background: var(--superficie-2); z-index: 3; }
+.plano thead th { text-align: center; }
+.plano thead th small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.plano th.semana-atual { color: var(--primaria-escura); }
+.plano td { padding: 6px; }
+
+.carga { display: block; width: 100%; border: 1px solid transparent; background: var(--neutra-clara);
+         border-radius: 7px; padding: 6px 7px; text-align: left; cursor: pointer; line-height: 1.35; }
+.carga:hover { border-color: var(--primaria); }
+.carga .horas { font-size: 12.5px; font-variant-numeric: tabular-nums; display: flex;
+                justify-content: space-between; gap: 6px; }
+.carga .horas b { font-weight: 600; }
+.carga .medidor { height: 5px; border-radius: 999px; background: rgba(16, 24, 40, 0.09); margin-top: 5px;
+                  overflow: hidden; }
+.carga .medidor span { display: block; height: 100%; border-radius: 999px; background: var(--primaria); }
+.carga.folgada { background: var(--sucesso-clara); color: var(--sucesso); }
+.carga.folgada .medidor span { background: var(--sucesso); }
+.carga.apertada { background: var(--alerta-clara); color: var(--alerta); }
+.carga.apertada .medidor span { background: var(--alerta); }
+.carga.excedida { background: var(--perigo-clara); color: var(--perigo); }
+.carga.excedida .medidor span { background: var(--perigo); }
+.carga.sem-capacidade { background: var(--superficie-2); color: var(--texto-suave); }
+.plano td.vazia { color: var(--texto-suave); text-align: center; font-size: 12px; }

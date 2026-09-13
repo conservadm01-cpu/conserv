@@ -41,3 +41,35 @@ export function diasAtraso(dataPrevista, referencia = hoje()) {
   const diff = (new Date(`${referencia}T00:00:00Z`) - new Date(`${dataPrevista}T00:00:00Z`)) / 86400000;
   return diff > 0 ? Math.floor(diff) : 0;
 }
+
+/** Soma dias a uma data 'YYYY-MM-DD' (aceita negativo). */
+export function somarDias(isoDate, dias) {
+  if (!isoDate) return null;
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Segunda-feira da semana ISO em que a data cai. */
+export function inicioSemana(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const diaSemana = d.getUTCDay() || 7; // domingo (0) é o 7º dia
+  return somarDias(d.toISOString().slice(0, 10), 1 - diaSemana);
+}
+
+/** Domingo que fecha a semana ISO da data. */
+export const fimSemana = (isoDate) => somarDias(inicioSemana(isoDate), 6);
+
+/** Ano ISO da semana — 29/12/2025 é semana 1 de 2026, não semana 1 de 2025. */
+export function anoISO(isoDate) {
+  if (!isoDate) return null;
+  const quinta = somarDias(inicioSemana(isoDate), 3);
+  return Number(quinta.slice(0, 4));
+}
+
+/** Diferença em semanas inteiras entre duas segundas-feiras. */
+export const semanasEntre = (deIso, ateIso) =>
+  Math.round((new Date(`${ateIso}T00:00:00Z`) - new Date(`${deIso}T00:00:00Z`)) / (86400000 * 7));

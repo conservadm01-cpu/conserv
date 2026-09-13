@@ -8,6 +8,7 @@ import Carteira from './pages/Carteira';
 import Pedidos from './pages/Pedidos';
 import PedidoDetalhe from './pages/PedidoDetalhe';
 import Producao from './pages/Producao';
+import Programacao from './pages/Programacao';
 import OrdemDetalhe from './pages/OrdemDetalhe';
 import Materiais from './pages/Materiais';
 import Estoque from './pages/Estoque';
@@ -56,6 +57,7 @@ const MENU = [
     grupo: 'Processos',
     itens: [
       { para: '/producao', rotulo: 'Produção (PCP)', icone: '⚙', area: 'producao.ver' },
+      { para: '/programacao', rotulo: 'Programação semanal', icone: '▥', area: 'producao.ver' },
       { para: '/pedidos', rotulo: 'Pedidos', icone: '✎', area: 'pedidos.ver' },
       { para: '/apontamento', rotulo: 'Apontamento', icone: '⏱', area: 'producao.ver' },
     ],
@@ -159,6 +161,7 @@ function Area({ usuario, aoSair }: { usuario: Usuario; aoSair: () => void }) {
           <Route path="/carteira" element={<Carteira />} />
           <Route path="/relatorios" element={<Relatorios />} />
           <Route path="/producao" element={<Producao />} />
+          <Route path="/programacao" element={<Programacao />} />
           <Route path="/producao/:id" element={<OrdemDetalhe />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/pedidos/:id" element={<PedidoDetalhe />} />

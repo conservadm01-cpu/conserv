@@ -11,6 +11,7 @@ import {
   recalcularCustosMO,
 } from '../services/producao.js';
 import { baixarMateriaisDaOrdem } from '../services/estoque.js';
+import { programacaoSemanal, ordensDaSemana, capacidadeSemanal } from '../services/programacao.js';
 import { exigir } from '../middleware/auth.js';
 import { montarFiltros, montarOrdem, limitar } from '../lib/filtros.js';
 
@@ -102,6 +103,38 @@ router.get(
       }))
     );
   })
+);
+
+/**
+ * Programação semanal: carga prometida × capacidade de cada setor.
+ * Precisa vir antes de '/:id', senão o Express lê "programacao" como número de OP.
+ */
+router.get(
+  '/programacao',
+  asyncHandler((req, res) =>
+    res.json(programacaoSemanal({ semanas: Number(req.query.semanas) || 8, de: req.query.de || null }))
+  )
+);
+
+/** Capacidade semanal por setor, sem a carga — usada na engenharia e nos avisos. */
+router.get(
+  '/programacao/capacidade',
+  asyncHandler((_req, res) => res.json(capacidadeSemanal()))
+);
+
+/** Ordens de uma semana do plano (a célula aberta da grade). */
+router.get(
+  '/programacao/semana',
+  asyncHandler((req, res) =>
+    res.json(
+      ordensDaSemana({
+        inicio: req.query.inicio || null,
+        setor: req.query.setor || null,
+        atrasadas: req.query.atrasadas === 'true',
+        limite: req.query.limite,
+      })
+    )
+  )
 );
 
 router.get(

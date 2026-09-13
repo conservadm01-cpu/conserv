@@ -693,3 +693,53 @@ export type LinhaPedidoMes = {
   vendedor: string | null; categoria: string | null; pecas: number; valor: number;
   itens: number; semana: number | null;
 };
+
+/* ------------------------------------------------- programação semanal (PCP) */
+
+export type SetorCapacidade = {
+  departamento_id: number; setor: string; pessoas: number;
+  minutos_semana: number; horas_semana: number; minutos_extra_semana: number; sem_equipe: boolean;
+};
+
+export type CargaSetor = {
+  setor: string; ordens: number; pecas: number; minutos: number; horas: number; sem_tempo: number;
+  capacidade_minutos: number; capacidade_horas: number;
+  ocupacao_percentual: number | null; excedente_horas: number; sem_capacidade: boolean;
+};
+
+export type SemanaPlano = {
+  indice: number; semana: number; ano: number; rotulo: string; inicio: string; fim: string;
+  atrasadas: number; ordens: number; pecas: number; valor: number; horas: number;
+  setores: CargaSetor[];
+};
+
+export type AlertaPlano = {
+  tipo: 'EXCEDIDA' | 'SEM_EQUIPE' | 'SEM_TEMPO';
+  setor: string; semana?: number; ordens?: number; texto: string;
+};
+
+export type FilaSetor = {
+  setor: string; ordens: number; horas: number; capacidade_horas: number; semanas_fila: number | null;
+};
+
+export type Programacao = {
+  gerado_em: string; de: string; ate: string; semanas: number;
+  jornada: { minutos_dia: number; dias_uteis_semana: number; ocupacao_percentual: number };
+  capacidade: SetorCapacidade[];
+  plano: SemanaPlano[];
+  fora_do_horizonte: { ordens: number; pecas: number; valor: number; horas: number };
+  sem_data: { ordens: number; pecas: number; valor: number; horas: number };
+  fila: FilaSetor[];
+  alertas: AlertaPlano[];
+};
+
+export type OrdemDaSemana = {
+  ordem_id: number; numero: string; cliente: string; produto: string; grupo: string | null;
+  pedido_numero: string; quantidade: number; valor: number; data_prevista: string;
+  status: string; atrasada: boolean; horas: number;
+  etapas: Array<{ etapa: string; codigo: string; setor: string; status: string; horas: number; custo_mo: number }>;
+};
+
+export type SemanaDetalhe = {
+  inicio: string; fim: string; semana: number; ano: number; setor: string | null; ordens: OrdemDaSemana[];
+};

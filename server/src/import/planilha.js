@@ -25,6 +25,7 @@ const COLUNAS = {
   total: ['TOTAL'],
   liquidacao: ['LIQUIDACAO'],
   data_entrega: ['DATA ENTREGA', 'DATA DE ENTREGA'],
+  data_saida: ['DATA DE SAIDA', 'DATA SAIDA', 'SAIDA'],
   materia_prima: ['MATERIA PRIMA'],
   corte: ['CORTE', 'MO CORTE'],
   silk: ['SILK', 'MO SILK'],
@@ -257,6 +258,14 @@ function importarAba(ctx) {
     const nf = limpar(valor(row, 'nf'));
     const entregue = chave(valor(row, 'entrega')) === 'ENTREGUE';
 
+    // "DATA DE SAIDA" tanto traz a data em que a peça saiu quanto o motivo de não
+    // ter saído ("FALTA MATERIAL", "FALTA 54 PEÇAS"). A data fecha a entrega com o
+    // dia real — sem ela o prazo cumprido vira o prazo prometido, e o indicador de
+    // atraso mente; o texto vira observação da ordem, que é onde o PCP vai procurar.
+    const saidaBruta = valor(row, 'data_saida');
+    const dataSaida = toISODate(saidaBruta);
+    const motivoParada = dataSaida ? null : limpar(saidaBruta);
+
     let pedidoId = buscarPedido.get(numero, clienteId, dataPedido)?.id;
     if (!pedidoId) {
       pedidoId = inserirPedido.run(
@@ -265,7 +274,7 @@ function importarAba(ctx) {
         resolverVendedor(valor(row, 'vendedor')),
         dataPedido,
         dataEntrega,
-        entregue ? 'ENTREGUE' : 'ABERTO',
+        entregue || dataSaida ? 'ENTREGUE' : 'ABERTO',
         nf && /^\d+$/.test(nf) ? nf : null
       ).lastInsertRowid;
       resumo.pedidos++;
@@ -292,10 +301,14 @@ function importarAba(ctx) {
 
     // --- ordem de produção + roteiro ---------------------------------------
     if (abrirOrdens) {
-      const ordem = abrirOrdem(itemId, { dataPrevista: dataEntrega }, db);
+      const ordem = abrirOrdem(
+        itemId,
+        { dataPrevista: dataEntrega, observacao: motivoParada },
+        db
+      );
       resumo.ordens++;
       relatorio.totais.ordens++;
-      aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf });
+      aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf, dataSaida });
     }
   }
 
@@ -306,7 +319,7 @@ function importarAba(ctx) {
  * Traduz as colunas de acompanhamento da planilha para o roteiro da OP:
  * célula "OK" (ou valor de MO preenchido) = etapa concluída; vazia = pendente.
  */
-function aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf }) {
+function aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf, dataSaida = null }) {
   const atualizar = db.prepare(
     `UPDATE ordem_etapas SET status = ?, custo_mo = ?, concluido_em = ? WHERE ordem_id = ? AND etapa_id = ?`
   );
@@ -342,7 +355,7 @@ function aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf })
   }
 
   marcar('NF', Boolean(nf), null);
-  marcar('ENTREGA', entregue, null);
+  marcar('ENTREGA', entregue || Boolean(dataSaida), null, dataSaida);
 
   const etapasFinais = db
     .prepare(
@@ -352,6 +365,7 @@ function aplicarRoteiro({ db, row, valor, ordem, etapaPorCodigo, entregue, nf })
     .all(ordem.id);
   const todasOk = etapasFinais.every((e) => e.status === 'CONCLUIDA');
   const alguma = etapasFinais.some((e) => e.status === 'CONCLUIDA');
-  const status = entregue ? 'ENTREGUE' : todasOk ? 'CONCLUIDA' : alguma ? 'EM_PRODUCAO' : 'ABERTA';
-  db.prepare(`UPDATE ordens_producao SET status = ? WHERE id = ?`).run(status, ordem.id);
+  const status = entregue || dataSaida ? 'ENTREGUE' : todasOk ? 'CONCLUIDA' : alguma ? 'EM_PRODUCAO' : 'ABERTA';
+  db.prepare(`UPDATE ordens_producao SET status = ?, data_conclusao = COALESCE(?, data_conclusao) WHERE id = ?`)
+    .run(status, dataSaida, ordem.id);
 }

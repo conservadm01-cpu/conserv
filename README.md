@@ -18,6 +18,26 @@ recebe em papel.
 - A situação da OP é derivada do roteiro (não é digitada), e a situação do pedido acompanha
   as OPs dos seus itens.
 
+### Programação semanal — carga × capacidade
+A planilha sempre planejou por semana (`SEMANA DO PEDIDO`, `SEMANA DE ENTREGA`). A tela
+**Programação semanal** transforma essas colunas em decisão: uma grade de setor × semana que
+responde se o que já foi prometido cabe na fábrica.
+
+- **Carga** é só o que ainda falta fazer — etapa concluída sai da conta — multiplicada pelo
+  tempo padrão da peça naquele setor (`produto_processo`). Ela é lançada na semana da entrega
+  prometida, que é quando tem de estar pronta.
+- **Capacidade** é gente produtiva do setor × jornada × dias da semana × ocupação, tudo vindo
+  dos parâmetros da engenharia. Sábado só conta quando está na jornada; hora extra fica de
+  fora, porque é folga que o PCP decide usar, não o normal.
+- **Ordem vencida não some do plano**: entra na primeira semana, porque disputa a mesma
+  máquina da semana que começa agora.
+- Cada célula abre a lista de ordens daquela semana naquele setor e permite **reprogramar** a
+  entrega — a carga muda de coluna na hora.
+- **Fila por setor** mostra quantas semanas de trabalho já estão prometidas: é o gargalo, e é a
+  resposta honesta para "dá para aceitar esse pedido para o dia 20?".
+- Avisa o que faz o plano mentir: semana acima de 100%, setor sem ninguém cadastrado e
+  **ordens sem tempo padrão** — nessas a carga aparece menor do que é.
+
 ### Fichas de produção (o dossiê impresso)
 Toda ordem gera o conjunto de vias que a fábrica já usa em papel, agora saindo do pedido, da
 ficha técnica e do custo de processo em vez de ser copiado à mão:
@@ -249,12 +269,32 @@ desmarque **Simular** e importe de verdade.
 ### Pelo terminal
 
 ```bash
-npm run import -- docs/PEDIDOS_EM_CARTEIRA.xlsx --simular
-npm run import -- docs/PEDIDOS_EM_CARTEIRA.xlsx
-npm run import -- caminho/arquivo.xlsx --abas="PCP + MO" --sem-ordens
+npm run import -- docs/PEDIDOS_EM_CARTEIRA_0926.xlsx --simular
+npm run import -- docs/PEDIDOS_EM_CARTEIRA_0926.xlsx
+npm run import -- caminho/arquivo.xlsx --abas="CARTEIRA" --sem-ordens
 ```
 
-A planilha atual importa assim:
+As abas são reconhecidas pelo **cabeçalho**, não pelo nome: a aba principal já se chamou
+`PCP + MO` e hoje se chama `CARTEIRA`, e as duas entram do mesmo jeito. Cada campo aceita as
+grafias que a planilha usa (`PEDIDO`/`Nº PEDIDO`, `QTD`/`QUANTIDADE`, `CORTE`/`MO CORTE`).
+
+`DATA DE SAIDA` é lida como o dia em que a peça realmente saiu: fecha a etapa *Entrega* com
+essa data e grava a conclusão da OP, para o indicador de atraso comparar o prometido com o
+cumprido em vez de comparar o prometido com ele mesmo. Quando a célula traz o motivo em lugar
+da data (`FALTA MATERIAL`, `FALTA 54 PEÇAS`), o texto vira **observação da ordem** e a ordem
+continua em aberto.
+
+A versão `docs/PEDIDOS_EM_CARTEIRA_0926.xlsx` (só as abas de dados) importa assim:
+
+| Aba | Resultado |
+|---|---|
+| `CARTEIRA` | 1.621 itens (base principal, com custo de MO por etapa) |
+| `Planilha1` | 180 itens do acompanhamento etapa a etapa, com a data de saída |
+| `Planilha2` | 1 item (o resto já veio de outra aba) |
+
+Total: **1.016 pedidos, 1.802 itens, 448 clientes, 354 produtos**.
+
+A planilha completa (`docs/PEDIDOS_EM_CARTEIRA.xlsx`, com as abas de relatório) importa assim:
 
 | Aba | Resultado |
 |---|---|
@@ -352,7 +392,7 @@ server/            API em Node + Express + SQLite
   test/            testes automatizados
 web/               interface em React + TypeScript + Vite
 data/              banco SQLite (não versionado)
-docs/              planilha de origem
+docs/              planilhas de origem (a completa e a versão só com as abas de dados)
 ```
 
 O banco é um arquivo SQLite em `data/csvsist.db` — para fazer backup, basta copiá-lo com o
@@ -369,6 +409,7 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 |---|---|
 | Sessão | `POST /api/auth/login`, `GET /api/auth/eu`, `PUT /api/auth/senha` |
 | Pedidos | `GET|POST|PUT|DELETE /api/pedidos`, `GET /api/pedidos/itens/carteira` |
+| Programação | `GET /api/ordens/programacao?semanas=`, `/programacao/capacidade`, `/programacao/semana?inicio=&setor=&atrasadas=` |
 | Produção | `GET /api/ordens`, `GET /api/ordens/quadro`, `PUT|DELETE /api/ordens/:id`, `PUT /api/ordens/:id/etapas/:etapaId`, `POST /api/ordens/:id/recalcular`, `POST /api/ordens/:id/baixar-materiais` |
 | Materiais | `GET|POST|PUT|DELETE /api/materiais`, `GET /api/materiais/estoque/posicao`, `GET /api/materiais/estoque/necessidade`, `POST /api/materiais/estoque/movimentos` |
 | Compras | `GET|POST|PUT|DELETE /api/compras/requisicoes`, `POST /api/compras/requisicoes/gerar-mrp`, `/gerar-minimo`, `/gerar-pedidos`, `GET|POST|PUT|DELETE /api/compras/pedidos`, `POST /api/compras/pedidos/:id/receber`, `DELETE /api/compras/recebimentos/:id`, `GET /api/compras/resumo` |
