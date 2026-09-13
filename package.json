@@ -15,6 +15,7 @@
     "db:seed-compras": "npm run -w server db:seed-compras",
     "db:demo": "npm run -w server db:demo --",
     "db:acessos-teste": "npm run -w server db:acessos-teste --",
+    "teste": "npm run -w server ambiente-teste --",
     "import": "npm run -w server import --",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run -w server dev",

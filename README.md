@@ -241,6 +241,25 @@ de mão de obra. Registros repetidos entre abas são descartados automaticamente
 
 Requisitos: **Node.js 20 ou superior**.
 
+### Em modo de teste, num comando
+
+Para usar o sistema — não só instalar:
+
+```bash
+npm install
+npm run teste        # monta a base, compila e sobe em http://localhost:3333
+```
+
+O comando monta a base de demonstração (carteira da planilha, fábrica, financeiro, compras e os
+acessos de teste), compila a interface, sobe o servidor e imprime as credenciais. Se o banco já
+tiver pedidos, ele **não semeia nada** — apenas sobe o que está lá. Para recomeçar do zero,
+`npm run teste -- --recriar`.
+
+Entre como `admin@conserv.com.br` / `conserv123`, ou como `pcp@teste.local` / `teste123` para ver
+o sistema pelos olhos de quem só cuida da produção.
+
+### Passo a passo, com a sua própria base
+
 ```bash
 npm install          # instala as dependências
 npm run db:init      # cria o banco e o usuário administrador
