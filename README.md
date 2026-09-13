@@ -321,3 +321,52 @@ Todas as rotas ficam sob `/api` e exigem `Authorization: Bearer <token>`, exceto
 **Todas as listagens aceitam os mesmos parâmetros**: `?busca=`, os recortes próprios de cada
 recurso (situação, período, faixa de valor), `?ordenar_por=` + `?direcao=` — que só aceitam
 colunas declaradas pela rota — e `?limite=`.
+
+---
+
+## Núcleo ERP-PCP 1.0
+
+A reconstrução da base, em `server/src/nucleo/`. Convive com o sistema atual num banco
+próprio (`data/nucleo.db`) enquanto os dois não estão em paridade — migrar não pode significar
+arriscar o que já roda.
+
+O documento de arquitetura (A a G, modelo de dados, plano de nove fases) está publicado à parte.
+
+### O que a base garante
+
+- **Identidade dupla**: `id` UUID interno e `codigo` humano (`PED-2026-001025`). O número do
+  pedido nunca é chave — a Conserv já tem o 1057 repetido para clientes diferentes.
+- **Versão congela o passado**: o item do pedido aponta para a versão da ficha vigente no dia da
+  venda. Índice único parcial garante uma só versão ativa por produto.
+- **Roteiro é configuração**: as operações saem da versão do produto, não de uma lista fixa.
+  Não existe "todo produto passa pelo silk".
+- **Nada é apagado**: cadastro se inativa, movimento se cancela ou estorna.
+- **Trilha por campo**: `auditoria` guarda valor anterior e novo, com o nome de quem fez
+  congelado na linha.
+- **Portável para PostgreSQL**: `NUMERIC(14,4)` para dinheiro e quantidade, `DATE` para
+  competência, UUID como chave. Os dois SQLite-ismos (`datetime('now')`, `date('now')`) estão
+  marcados com `-- [PORT]` no schema.
+
+Restrições que o banco recusa, não só o código: receber mais do que foi comprado, baixar mais do
+que o título vale, duas versões ativas da mesma ficha, chave estrangeira órfã.
+
+### Importador com mapeamento aprendido
+
+Prévia, validação e importação em passos separados. O mapa de colunas é reconhecido pela
+**assinatura dos cabeçalhos** — o arquivo muda de nome todo mês, os cabeçalhos não — e é
+aprendido: na segunda vez, as colunas já vêm ligadas. Reimportar atualiza, nunca duplica.
+
+Dois fatos que a planilha guardava na mesma coluna passam a ser separados: `OK` em NF vira
+"faturado, número desconhecido"; um número vira o número.
+
+### Migração da carteira 0926, conferida
+
+```
+1.623 linhas lidas · 1.621 itens · 2 recusadas (o rodapé de SUBTOTAL da própria planilha)
+valor  R$ 6.026.593,37   ← idêntico a QTD × VALOR UNID na origem
+peças  344.696           ← idêntico, descontado o subtotal do rodapé
+387 clientes · 288 produtos · 917 pedidos · 40 grupos
+```
+
+A mão de obra é colhida na importação e vira custo por peça por grupo e operação: corte a
+R$ 0,25 e embalagem a R$ 0,50 em toda peça; costura de R$ 0,80 (saco) a R$ 7,71 (jaleco).
