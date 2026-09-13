@@ -255,7 +255,7 @@ veja `.env.example`).
 
 ```bash
 npm run dev          # API em :3333 e interface em :5173 com recarga automática
-npm test             # 140 testes de PCP, fichas, relatórios, custeio, financeiro e permissões
+npm test             # 157 testes de PCP, programação, importação, fichas, custeio e permissões
 ```
 
 ---
