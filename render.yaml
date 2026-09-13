@@ -1,8 +1,18 @@
 # API do CSVSIST no Render (Blueprint).
 #
-# O banco é um arquivo SQLite, então o serviço precisa de disco: sem o bloco
-# `disk` abaixo, cada deploy sobe com a base vazia. Disco não existe no plano
-# gratuito do Render — confira o preço do plano antes de aplicar.
+# O banco é um arquivo SQLite, então existem duas formas de hospedar — e a
+# diferença entre elas é se o que você digitar continua lá amanhã.
+#
+#   COM DISCO (este arquivo, como está): o bloco `disk` monta um volume em
+#   /dados, para onde DB_PATH aponta, e o dado sobrevive a deploy e reinício.
+#   Disco não existe no plano gratuito do Render — confira o preço do plano
+#   antes de aplicar.
+#
+#   SEM DISCO (para só experimentar): apague o bloco `disk`, troque DB_PATH por
+#   /tmp/csvsist.db e ligue SEMEAR_DEMO. A cada partida o sistema remonta
+#   sozinho a base de demonstração com a carteira da planilha e os acessos de
+#   teste. O que for digitado se perde quando o serviço reinicia, e a primeira
+#   subida demora cerca de um minuto montando a base.
 services:
   - type: web
     name: csvsist-api
@@ -20,6 +30,11 @@ services:
         value: /dados/csvsist.db
       - key: NODE_ENV
         value: production
+      # Remonta a demonstração quando o banco está vazio. Com disco, isso
+      # acontece uma vez só; deixe "false" se quer começar com a base limpa e
+      # importar a sua planilha pela tela.
+      - key: SEMEAR_DEMO
+        value: "false"
       # Gerado pelo Render e nunca commitado: trocar o segredo derruba as
       # sessões abertas, que é o comportamento certo.
       - key: JWT_SECRET

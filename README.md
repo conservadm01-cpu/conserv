@@ -286,9 +286,21 @@ para a Vercel e a API para um host com volume.
 
 **1. A API.** O `Dockerfile` na raiz serve para Render, Railway, Fly ou uma VPS. No Render, o
 `render.yaml` já descreve tudo — inclusive o disco de 1 GB montado em `/dados`, que é para onde
-`DB_PATH` aponta. Monte o volume **antes** do primeiro acesso: sem ele, cada deploy recomeça do
-zero. Defina `ADMIN_EMAIL` e `ADMIN_SENHA` no painel antes de subir; são lidos uma vez, na
-criação do administrador.
+`DB_PATH` aponta. Defina `ADMIN_EMAIL` e `ADMIN_SENHA` no painel antes de subir; são lidos uma
+vez, na criação do administrador.
+
+Há duas formas de hospedar, e a diferença entre elas é se o que você digitar continua lá amanhã:
+
+| | Com disco | Sem disco (plano gratuito) |
+|---|---|---|
+| `DB_PATH` | `/dados/csvsist.db`, no volume | `/tmp/csvsist.db` |
+| `SEMEAR_DEMO` | `false` — você importa a sua planilha | `true` — remonta a demonstração sozinho |
+| O que digitar | fica | some no próximo reinício |
+| Serve para | usar | experimentar e mostrar |
+
+Sem disco, o contêiner sobe com a base vazia e, com `SEMEAR_DEMO=true`, remonta a carteira da
+planilha e os acessos de teste antes de servir — a primeira subida leva cerca de um minuto. É um
+ambiente de olhar, não de operar: nada do que for lançado ali sobrevive ao reinício.
 
 ```bash
 docker build -t csvsist-api .
@@ -473,6 +485,7 @@ de cada produto.
 
 ```
 Dockerfile         imagem da API (o banco fica num volume, fora da imagem)
+                   entrada: server/src/scripts/subir.js prepara o banco e serve
 render.yaml        serviço da API no Render, com o disco do banco
 vercel.json        build da interface e o rewrite de /api para a API
 server/            API em Node + Express + SQLite

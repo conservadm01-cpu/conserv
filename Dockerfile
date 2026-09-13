@@ -17,13 +17,15 @@ COPY web/package.json web/
 RUN npm ci --omit=dev --workspace @csvsist/server --include-workspace-root
 
 COPY server/ server/
+# A planilha viaja junto para que SEMEAR_DEMO consiga remontar a base sozinho
+# num host sem disco. São 900 KB.
+COPY docs/ docs/
 
 # O banco fica fora da imagem: a imagem é descartável, o dado não.
 ENV DB_PATH=/dados/csvsist.db
 VOLUME /dados
 EXPOSE 3333
 
-# init-db é idempotente: cria schema, administrador e plano de contas na
-# primeira subida e não faz nada nas seguintes. Sem ele, o banco sobe sem
-# nenhum usuário e ninguém consegue entrar.
-CMD ["sh", "-c", "node server/src/scripts/init-db.js && node server/src/index.js"]
+# Prepara o banco (administrador e plano de contas, sempre; base de demonstração
+# só quando SEMEAR_DEMO=true e o banco está vazio) e então serve.
+CMD ["node", "server/src/scripts/subir.js"]
