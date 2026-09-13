@@ -332,3 +332,8 @@ tr.apagada td { opacity: .55; }
 .carga.excedida .medidor span { background: var(--perigo); }
 .carga.sem-capacidade { background: var(--superficie-2); color: var(--texto-suave); }
 .plano td.vazia { color: var(--texto-suave); text-align: center; font-size: 12px; }
+
+/* Tabela em cartão estreito: quatro colunas de número não cabem no passo
+   normal da tabela, e o cartão do painel acabava rolando de lado. */
+.tabela-densa table { font-size: 12.5px; }
+.tabela-densa th, .tabela-densa td { padding: 7px 8px; }

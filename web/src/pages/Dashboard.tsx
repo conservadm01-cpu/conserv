@@ -88,18 +88,21 @@ export default function Dashboard() {
 
         <Cartao titulo="Carteira por grupo de produto">
           {por_grupo.length === 0 ? <Vazio texto="Carteira vazia." /> : (
-            <div className="tabela-rolagem" style={{ maxHeight: 260, overflowY: 'auto' }}>
+            <div className="tabela-rolagem tabela-densa" style={{ maxHeight: 260, overflowY: 'auto' }}>
               <table>
                 <thead>
-                  <tr><th>Grupo</th><th className="num">Peças</th><th className="num">A faturar</th><th className="num">A liquidar</th></tr>
+                  <tr><th>Grupo</th><th className="num">Peças</th><th className="num">Faturar</th><th className="num">Liquidar</th></tr>
                 </thead>
                 <tbody>
                   {por_grupo.map((g) => (
                     <tr key={g.grupo}>
                       <td>{g.grupo}</td>
                       <td className="num">{numero(g.pecas)}</td>
-                      <td className="num">{moeda(g.faturar)}</td>
-                      <td className="num">{moeda(g.liquidar)}</td>
+                      {/* Valor curto: são quatro colunas num cartão de um terço da
+                          largura, e em reais cheios a tabela só cabe rolando de lado
+                          na tela que mais se olha. O exato fica no título. */}
+                      <td className="num" title={moeda(g.faturar)}>{moedaCurta(g.faturar)}</td>
+                      <td className="num" title={moeda(g.liquidar)}>{moedaCurta(g.liquidar)}</td>
                     </tr>
                   ))}
                 </tbody>
