@@ -14144,6 +14144,25 @@ async function persistDb(db) {
   return null;
 }
 
+/* Entrega um arquivo a quem está usando o sistema.
+   No servidor da fábrica o próprio navegador baixa; na página publicada quem
+   entrega é o visualizador, que pede confirmação antes de salvar. */
+async function salvarArquivo(nome, conteudo, tipo) {
+  const entrega = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+  if (entrega) {
+    await entrega.save({ filename: nome, data: conteudo });
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 /* ---------------- small UI atoms ---------------- */
 function Field({
   label,
@@ -37104,43 +37123,16 @@ function Painel({
   const semSenha = ativos.filter(c => !temSenhaDefinida(c));
   const ultimosLogs = (db.logs || []).slice(-8).reverse();
   function exportar() {
-    try {
-      const blob = new Blob([JSON.stringify(db, null, 2)], {
-        type: 'application/json'
-      });
-      const url = URL.createObjectURL(blob);
-      const a2 = document.createElement('a');
-      a2.href = url;
-      a2.download = `backup-${todayISO()}.json`;
-      document.body.appendChild(a2);
-      a2.click();
-      document.body.removeChild(a2);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Não foi possível exportar: ' + (e && e.message));
-    }
+    salvarArquivo(`backup-${todayISO()}.json`, JSON.stringify(db, null, 2), 'application/json')
+      .catch(e => alert('Não foi possível exportar: ' + (e && e.message)));
   }
   /* Um atalho para a área de trabalho: o .url do Windows é um arquivo de
      texto simples que aponta para o endereço atual. Dois cliques nele e o
      sistema abre no navegador padrão, sem precisar procurar a pasta. */
   const enderecoAtual = window.location && window.location.href || '';
   function baixarAtalho() {
-    try {
-      const conteudo = '[InternetShortcut]\r\nURL=' + enderecoAtual + '\r\n' + 'IconIndex=0\r\n';
-      const blob = new Blob([conteudo], {
-        type: 'text/plain'
-      });
-      const url = URL.createObjectURL(blob);
-      const a2 = document.createElement('a');
-      a2.href = url;
-      a2.download = 'Confeccao ERP.url';
-      document.body.appendChild(a2);
-      a2.click();
-      document.body.removeChild(a2);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setAvisoDownload(true);
-    }
+    const conteudo = '[InternetShortcut]\r\nURL=' + enderecoAtual + '\r\n' + 'IconIndex=0\r\n';
+    salvarArquivo('CSVSIST.url', conteudo, 'text/plain').catch(() => setAvisoDownload(true));
   }
   function copiarEndereco() {
     try {
