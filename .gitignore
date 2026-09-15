@@ -7,3 +7,6 @@ data/*.db-wal
 .DS_Store
 *.log
 web/tsconfig.tsbuildinfo
+
+# HTML do Confecção ERP e o build da base de teste ficam fora do repositório
+docs/teste/confeccao/*.html

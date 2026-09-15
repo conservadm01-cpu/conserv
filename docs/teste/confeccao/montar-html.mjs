@@ -1,0 +1,72 @@
+/**
+ * Monta o HTML de teste: o Confecção ERP com a base já dentro.
+ *
+ *   node docs/teste/confeccao/montar-html.mjs <confeccao-erp.html> [saida.html] [base.json]
+ *
+ * O arquivo gerado é o sistema inteiro num só HTML — abre com dois cliques,
+ * sem servidor e sem instalar nada, já com almoxarifado, carteira de ordens e
+ * apontamento lançados.
+ *
+ * A base é gravada no armazenamento do navegador na primeira abertura. Depois
+ * disso o que vale é o que o testador fez: fechar e reabrir não desfaz nada.
+ * Para recomeçar do zero, abra com `?base=nova` no fim do endereço (repõe a
+ * base de teste) ou `?base=vazia` (apaga tudo e cai na tela de primeiro
+ * acesso).
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+
+const pasta = path.dirname(new URL(import.meta.url).pathname);
+const entrada = process.argv[2];
+const saida = process.argv[3] || path.join(pasta, 'confeccao-erp-teste.html');
+const arquivoBase = process.argv[4] || path.join(pasta, 'base-teste.json');
+
+if (!entrada) {
+  console.error('uso: node docs/teste/confeccao/montar-html.mjs <confeccao-erp.html> [saida.html] [base.json]');
+  process.exit(1);
+}
+
+const html = fs.readFileSync(entrada, 'utf8');
+const base = JSON.parse(fs.readFileSync(arquivoBase, 'utf8'));
+
+if (html.includes('__BASE_DE_TESTE__')) {
+  console.error('Este HTML já foi montado com uma base de teste. Use o original.');
+  process.exit(1);
+}
+
+/* O JSON entra como texto dentro de uma tag <script type="application/json">:
+   assim nenhum caractere do conteúdo é interpretado como código. Só o
+   `</script>` precisa ser escapado, senão fecharia a tag no meio do dado. */
+const dados = JSON.stringify(base).replace(/<\/script>/gi, '<\\/script>');
+
+const semente = `
+<script type="application/json" id="__BASE_DE_TESTE__">${dados}</script>
+<script>
+/* Base de teste — gravada no navegador antes de a aplicação subir.
+   ?base=nova  repõe a base de teste por cima do que estiver gravado
+   ?base=vazia apaga tudo e começa do primeiro acesso */
+(function () {
+  var CHAVE = 'confeccao-erp-db-v1';
+  try {
+    var pedido = (location.search.match(/[?&]base=([a-z]+)/i) || [])[1];
+    if (pedido === 'vazia') { localStorage.removeItem(CHAVE); return; }
+    if (pedido !== 'nova' && localStorage.getItem(CHAVE)) return;
+    var texto = document.getElementById('__BASE_DE_TESTE__').textContent;
+    localStorage.setItem(CHAVE, texto);
+  } catch (e) {
+    /* navegador sem armazenamento: a aplicação avisa e segue em memória */
+  }
+})();
+</script>
+`;
+
+/* antes do script da aplicação, que é quem lê o armazenamento ao subir */
+const marca = html.indexOf('<script>');
+if (marca < 0) throw new Error('não achei o script da aplicação no HTML.');
+const montado = html.slice(0, marca) + semente + html.slice(marca);
+
+fs.writeFileSync(saida, montado);
+const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
+console.log(`\nHTML de teste: ${saida}`);
+console.log(`  ${kb(montado.length)} (aplicação ${kb(html.length)} + base ${kb(dados.length)})`);
+console.log('  abra no navegador e entre com qualquer usuário da lista · senha teste123\n');
