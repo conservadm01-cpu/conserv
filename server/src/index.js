@@ -23,6 +23,7 @@ import { router as comprasRouter } from './routes/compras.js';
 import { router as qualidadeRouter } from './routes/qualidade.js';
 import { router as fichasRouter, operacoesPadrao as operacoesPadraoRouter } from './routes/fichas.js';
 import { router as relatoriosRouter } from './routes/relatorios.js';
+import { router as appRouter } from './routes/app.js';
 
 export function criarApp() {
   migrate();
@@ -31,7 +32,13 @@ export function criarApp() {
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
 
-  app.get('/api/saude', (_req, res) => res.json({ ok: true, versao: '1.0.0' }));
+  app.get('/api/saude', (_req, res) => res.json({ ok: true, versao: '2.0.0' }));
+
+  /*
+   * A base do app tem sessão própria: quem entra é colaborador cadastrado
+   * dentro do documento, e não usuário da tabela do sistema anterior.
+   */
+  app.use('/api/app', appRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/usuarios', usuariosRouter);
   // Conversa aberta: quem registra uma sugestão ou um risco não precisa ter login.
@@ -63,10 +70,20 @@ export function criarApp() {
 
   app.use('/api', naoEncontrado);
 
-  // Em produção o mesmo processo serve o front compilado.
+  /*
+   * O sistema é o app: ele é servido na raiz. A interface anterior continua de
+   * pé em /legado enquanto os módulos que só existem lá — fichas impressas,
+   * financeiro, compras e a carteira de pedidos — não forem portados.
+   */
+  if (fs.existsSync(config.appDir)) {
+    app.use(express.static(config.appDir, { index: 'index.html' }));
+  }
   if (fs.existsSync(config.webDist)) {
-    app.use(express.static(config.webDist));
-    app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(config.webDist, 'index.html')));
+    app.use('/legado', express.static(config.webDist));
+    app.get(/^\/legado(?:\/.*)?$/, (_req, res) => res.sendFile(path.join(config.webDist, 'index.html')));
+  }
+  if (fs.existsSync(config.appDir)) {
+    app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(config.appDir, 'index.html')));
   }
 
   app.use(tratarErros);
@@ -77,6 +94,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const app = criarApp();
   app.listen(config.port, () => {
     console.log(`CSVSIST rodando em http://localhost:${config.port}`);
+    console.log(`Interface anterior (fichas, financeiro, compras): http://localhost:${config.port}/legado`);
     console.log(`Banco de dados: ${config.dbPath}`);
   });
 }

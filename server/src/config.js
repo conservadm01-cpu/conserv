@@ -28,6 +28,7 @@ export const config = {
   dbPath: process.env.DB_PATH || bancoPadrao(),
   jwtSecret: process.env.JWT_SECRET || 'csvsist-dev-secret-troque-em-producao',
   jwtExpires: process.env.JWT_EXPIRES || '12h',
+  appDir: path.join(rootDir, 'app'),
   webDist: path.join(rootDir, 'web', 'dist'),
   isProd: process.env.NODE_ENV === 'production',
 };

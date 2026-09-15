@@ -994,3 +994,22 @@ CREATE TABLE IF NOT EXISTS produto_imagens (
   criado_em  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_imagens_produto ON produto_imagens(produto_id, setor);
+
+-- ============================================================
+-- BASE DO APP (documento único, guardado no servidor)
+-- ============================================================
+
+/*
+ * O app trabalha com um documento só, e é assim que ele é guardado: inteiro,
+ * com número de versão. A versão é o que impede que duas pessoas gravando ao
+ * mesmo tempo apaguem o trabalho uma da outra sem ninguém perceber.
+ *
+ * Uma linha só (id = 1): é a base da fábrica.
+ */
+CREATE TABLE IF NOT EXISTS app_estado (
+  id             INTEGER PRIMARY KEY CHECK (id = 1),
+  documento      TEXT    NOT NULL,
+  versao         INTEGER NOT NULL DEFAULT 0,
+  atualizado_em  TEXT    NOT NULL DEFAULT (datetime('now')),
+  atualizado_por TEXT
+);

@@ -1,5 +1,24 @@
 # CSVSIST — ERP da ConServ Confecções
 
+> **A base do sistema mudou.** O CSVSIST passou a ser o app de confecção que
+> está em `app/` — materiais com saldo e reserva, corte com risco PLT,
+> engenharia com aferição, produção, conversa aberta e chat. Ele abre na raiz
+> (`http://localhost:3333`).
+>
+> A interface anterior continua de pé em **`/legado`** enquanto os módulos que
+> só existem lá não forem portados: fichas de produção impressas, financeiro,
+> compras/MRP, carteira de pedidos, funil, orçamentos e os relatórios da
+> planilha. Os dois usam o mesmo banco (`data/csvsist.db`), em tabelas
+> separadas — nada do que já está lançado se perdeu.
+>
+> **O que a mudança trouxe de imediato:** o app guardava tudo no navegador
+> (`localStorage`), o que significava um computador, sem backup e sem duas
+> pessoas vendo o mesmo estoque. Agora a base vive no servidor: a fábrica
+> inteira enxerga o mesmo dado, o backup é copiar um arquivo, a senha é
+> conferida no servidor (antes do login nada da empresa chega ao navegador) e
+> duas gravações simultâneas não se atropelam em silêncio — quem grava informa
+> a versão que leu, e a que chegou velha é recusada.
+
 ERP web para confecção, construído a partir da planilha **PEDIDOS EM CARTEIRA** e do dossiê de
 produção que a ConServ imprime para o chão de fábrica. Cobre o caminho completo de um pedido:
 entrada comercial → ordem de produção com o roteiro **Matéria-prima → Corte → Silk → Costura →
@@ -223,13 +242,22 @@ Requisitos: **Node.js 20 ou superior**.
 
 ```bash
 npm install          # instala as dependências
-npm run db:init      # cria o banco e o usuário administrador
-npm run build        # compila a interface
+npm run db:init      # cria o banco
+npm run build        # compila a interface anterior (a de /legado)
 npm start            # sobe em http://localhost:3333
 ```
 
-Acesso inicial: **admin@conserv.com.br** / **conserv123** (troque em `.env` antes de usar de verdade —
-veja `.env.example`).
+**Primeiro acesso ao sistema novo:** a base nasce vazia. Abra
+`http://localhost:3333`, escolha *Administrador* e clique em **Definir senha** —
+é o próprio app que conduz o primeiro acesso. A partir daí a senha é conferida
+no servidor, e quem entra de outra máquina vê a mesma base.
+
+**Interface anterior:** `http://localhost:3333/legado`, com o login de antes
+(`admin@conserv.com.br` / `conserv123`, trocável no `.env`). É onde estão, por
+enquanto, as fichas impressas, o financeiro, as compras e a carteira.
+
+**Backup:** pare o servidor e copie `data/csvsist.db`. As duas bases — a do app
+e a da interface anterior — estão nesse arquivo.
 
 ### Desenvolvimento
 
@@ -343,6 +371,10 @@ de cada produto.
 ## Estrutura
 
 ```
+app/               o sistema: um app React servido pelo próprio servidor
+  index.html       o ERP inteiro (materiais, engenharia, produtos, produção, canal)
+  ponte.js         troca o localStorage pelo servidor: sessão, base e versão
+  vendor/          React servido localmente — a fábrica não depende de internet
 server/            API em Node + Express + SQLite
   src/db/          schema.sql e conexão
   src/services/    regras de negócio (PCP, estoque/MRP, compras, custeio, comercial)
@@ -350,10 +382,23 @@ server/            API em Node + Express + SQLite
   src/routes/      endpoints REST
   src/import/      leitor da planilha
   test/            testes automatizados
-web/               interface em React + TypeScript + Vite
+web/               interface anterior (React + TypeScript + Vite), servida em /legado
 data/              banco SQLite (não versionado)
 docs/              planilha de origem
 ```
+
+### O que ainda vai ser portado para a base nova
+
+Por ordem do que a fábrica usa todo dia:
+
+1. **Fichas de produção impressas** — o dossiê de 7 vias do chão de fábrica.
+2. **Carteira de pedidos e o importador da planilha** — o app tem *Cadastros →
+   Importar carteira*, que ainda precisa encontrar o leitor do `.xlsx`.
+3. **Compras e MRP** — requisição, pedido de compra e recebimento.
+4. **Financeiro** — contas a pagar e receber, baixas, fluxo e aging.
+5. **Comercial** — funil, orçamento precificado pelo custo e conversão em pedido.
+
+Enquanto um módulo não chega, ele continua funcionando em `/legado`.
 
 O banco é um arquivo SQLite em `data/csvsist.db` — para fazer backup, basta copiá-lo com o
 servidor parado. Instalações que já rodavam com o arquivo antigo (`data/conserv.db`) continuam
