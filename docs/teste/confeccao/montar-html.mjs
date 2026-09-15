@@ -17,16 +17,67 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const pasta = path.dirname(new URL(import.meta.url).pathname);
-const entrada = process.argv[2];
-const saida = process.argv[3] || path.join(pasta, 'confeccao-erp-teste.html');
-const arquivoBase = process.argv[4] || path.join(pasta, 'base-teste.json');
+const argumentos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const opcao = (nome) => {
+  const achado = process.argv.slice(2).find((a) => a.startsWith(`--${nome}=`));
+  return achado ? achado.split('=').slice(1).join('=') : '';
+};
+
+const entrada = argumentos[0];
+const saida = argumentos[1] || path.join(pasta, 'confeccao-erp-teste.html');
+const arquivoBase = argumentos[2] || path.join(pasta, 'base-teste.json');
+/* módulos que não vão para esta montagem, por id (ex.: produtos,producao) */
+const semModulos = opcao('sem-modulos').split(',').map((x) => x.trim()).filter(Boolean);
 
 if (!entrada) {
-  console.error('uso: node docs/teste/confeccao/montar-html.mjs <confeccao-erp.html> [saida.html] [base.json]');
+  console.error('uso: node docs/teste/confeccao/montar-html.mjs <confeccao-erp.html> [saida.html] [base.json]'
+    + ' [--sem-modulos=produtos,producao]');
   process.exit(1);
 }
 
-const html = fs.readFileSync(entrada, 'utf8');
+/**
+ * Tira módulos da montagem.
+ *
+ * O sistema monta o menu a partir de `ABAS_SISTEMA` e decide o que desenhar
+ * pela aba escolhida. Tirar o módulo da lista — e da lista de abas de cada
+ * nível de acesso — é o que basta: sem entrada no menu, não há como chegar à
+ * tela. O código do módulo continua no arquivo, intocado, para a montagem
+ * seguinte poder trazê-lo de volta.
+ */
+function removerModulos(texto, ids) {
+  if (ids.length === 0) return { html: texto, removidos: [] };
+  const inicio = texto.indexOf('const ABAS_SISTEMA = [');
+  if (inicio < 0) throw new Error('não achei ABAS_SISTEMA no HTML.');
+  const fim = texto.indexOf('}];', inicio);
+  if (fim < 0) throw new Error('ABAS_SISTEMA sem fim reconhecível.');
+
+  let lista = texto.slice(inicio, fim + 3);
+  const removidos = [];
+  for (const id of ids) {
+    const entrada = new RegExp(`\\{\\s*id: '${id}',\\s*label: '[^']*'\\s*\\}(,\\s*)?`);
+    if (!entrada.test(lista)) throw new Error(`módulo "${id}" não existe em ABAS_SISTEMA.`);
+    lista = lista.replace(entrada, '');
+    removidos.push(id);
+  }
+  /* a lista pode ficar com vírgula sobrando quando o módulo era o último */
+  lista = lista.replace(/,(\s*)\}\];$/, '$1}];');
+
+  let saidaTexto = texto.slice(0, inicio) + lista + texto.slice(fim + 3);
+
+  /* cada nível de acesso guarda as abas que enxerga */
+  saidaTexto = saidaTexto.replace(/abas: \[([^\]]*)\]/g, (todo, dentro) => {
+    const restantes = dentro
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .filter((x) => !ids.some((id) => x === `'${id}'`));
+    return `abas: [${restantes.join(', ')}]`;
+  });
+
+  return { html: saidaTexto, removidos };
+}
+
+let html = fs.readFileSync(entrada, 'utf8');
 const base = JSON.parse(fs.readFileSync(arquivoBase, 'utf8'));
 
 if (html.includes('__BASE_DE_TESTE__')) {
@@ -60,6 +111,9 @@ const semente = `
 </script>
 `;
 
+const corte = removerModulos(html, semModulos);
+html = corte.html;
+
 /* antes do script da aplicação, que é quem lê o armazenamento ao subir */
 const marca = html.indexOf('<script>');
 if (marca < 0) throw new Error('não achei o script da aplicação no HTML.');
@@ -69,4 +123,5 @@ fs.writeFileSync(saida, montado);
 const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
 console.log(`\nHTML de teste: ${saida}`);
 console.log(`  ${kb(montado.length)} (aplicação ${kb(html.length)} + base ${kb(dados.length)})`);
+if (corte.removidos.length) console.log(`  módulos fora desta montagem: ${corte.removidos.join(', ')}`);
 console.log('  abra no navegador e entre com qualquer usuário da lista · senha teste123\n');

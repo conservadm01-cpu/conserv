@@ -19,7 +19,7 @@ quando a última etapa cumpre a quantidade). O que não passa na regra não entr
 | Cadastros | 8 clientes, 6 fornecedores (2 de serviço: facção de costura e bordado) |
 | Almoxarifado | 27 materiais com grupo, unidade, custo e localização · 60+ movimentações · 2 itens abaixo do mínimo |
 | Produtos | 6 produtos com ficha técnica, roteiro e engenharia congelada em versão — 5 liberados e 1 ainda em desenvolvimento, que só abre ordem de amostra |
-| Produção | 9 ordens: uma concluída, uma amostra, uma atrasada, quatro em andamento e duas que nem começaram · 70+ apontamentos com refugo, parada e motivo de atraso |
+| Produção | 9 ordens: uma concluída, uma amostra, uma atrasada, quatro em andamento e duas que nem começaram · 70+ apontamentos com refugo, parada e motivo de atraso (visível só quando o módulo Produção entra na montagem) |
 | Chão de fábrica | 3 ocorrências (máquina parada, falta de material, falta de pessoa) |
 | Canal do colaborador | 5 manifestações (elogio, sugestão, problema, risco — duas anônimas), 15 notas de clima, 2 vagas e 3 indicações |
 
@@ -55,7 +55,17 @@ node docs/teste/confeccao/conferir-base.mjs ~/confeccao-erp.html
 
 # 3. monta o HTML de teste com a base dentro
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/confeccao-erp-teste.html
+
+# a montagem pode deixar módulos de fora — eles somem do menu e dos níveis de acesso
+node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
+  --sem-modulos=produtos,producao
 ```
+
+`--sem-modulos` recebe os ids de `ABAS_SISTEMA`: `painel`, `pessoas`, `materiais`,
+`engenharia`, `produtos`, `producao`, `canal`, `recados`. O código do módulo continua no
+arquivo, intocado — o que sai é a entrada do menu e a permissão de cada nível de acesso, e a
+montagem seguinte traz o módulo de volta. Os dados do módulo continuam na base: tirar
+**Produtos** e **Produção** do menu não apaga as ordens nem a ficha técnica.
 
 | arquivo | o que é |
 |---|---|
