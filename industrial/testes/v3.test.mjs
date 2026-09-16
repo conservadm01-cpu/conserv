@@ -14,7 +14,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { prepararIndustrial, migrarIndustrialV3, num } from '../modelo.mjs';
-import { explodirBOM, calcularMRP } from '../motores.mjs';
+import {
+  explodirBOM, calcularMRP, executarTransformacao, custoDoItemAgora,
+  conferirEntradasDaOrdem, liberarParaCostura,
+} from '../motores.mjs';
 import { conferirEngenharia, custoPadrao } from '../cadastro.mjs';
 import { montarDemonstracao } from '../demonstracao.mjs';
 import {
@@ -595,4 +598,73 @@ test('Agrupar: recusa ordem já agrupada, de outro produto ou já apontada', () 
 
   /* e o que já foi agrupado sai da lista de agrupáveis */
   assert.ok(!ordensAgrupaveis(db).some((g) => g.codigos.includes('OP-0002')));
+});
+
+/* ============================== a ficha de produção */
+
+test('Produção: perda apontada na tela não custa zero', () => {
+  const db = nova();
+  const cenario = montarDemonstracao(db);
+  const usuario = { nome: 'Teste' };
+
+  /* item comprado vale o custo do almoxarifado */
+  const malha = custoDoItemAgora(db, cenario.itens.malha.id);
+  assert.ok(malha > 0);
+  assert.equal(malha, num(db.materiais.find(
+    (m) => m.id === cenario.itens.malha.materialId).custoMedio));
+
+  /* subproduto ainda não produzido cai no custo padrão — que é zero */
+  assert.equal(num(cenario.itens.frente.custoPadrao), 0);
+
+  /* o estoque da base dá para um lote pequeno: 105 kg de malha rendem
+     ~190 peças a 0,55 kg. Corta-se 100. */
+  const corte = executarTransformacao(db, {
+    transformacaoId: cenario.transformacoes.corte.id,
+    saidas: [
+      { itemId: cenario.itens.frente.id, quantidade: 100 },
+      { itemId: cenario.itens.costas.id, quantidade: 100 },
+      { itemId: cenario.itens.manga.id, quantidade: 200 },
+      { itemId: cenario.itens.golaCortada.id, quantidade: 100 },
+    ],
+  }, usuario);
+  assert.ok(!corte.erro, corte.erro);
+  const frente = custoDoItemAgora(db, cenario.itens.frente.id);
+  assert.ok(frente > 0, 'a frente cortada continuou valendo zero depois do corte');
+
+  /* e a perda registrada com esse item custa de verdade */
+  const silk = executarTransformacao(db, {
+    transformacaoId: cenario.transformacoes.silk.id,
+    saidas: [{ itemId: cenario.itens.frenteEstampada.id, quantidade: 90 }],
+    perdas: [{ itemId: cenario.itens.frente.id, quantidade: 10, motivo: 'erro_estampa' }],
+  }, usuario);
+  assert.ok(!silk.erro, silk.erro);
+  const perda = db.industrial.perdas[db.industrial.perdas.length - 1];
+  assert.equal(perda.itemId, cenario.itens.frente.id);
+  assert.ok(num(perda.custo) > 0,
+    'perda sem custo informado voltou a custar zero — é perda que não aparece em lugar nenhum');
+  assert.equal(num(perda.custo), Number((10 * frente).toFixed(2)));
+});
+
+test('Produção: conferir componentes não escreve nada na base', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const r = abrirOrdemDeProducao(db, { produtoId: prd.id, quantidade: 100 }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  const etapa = r.plano.ordens.find((o) => o.dependeDe.length > 0);
+  assert.ok(etapa, 'a cadeia precisa ter etapa com dependência');
+
+  const foto = JSON.stringify(db);
+  const leitura = conferirEntradasDaOrdem(db, etapa.id);
+  assert.ok(!leitura.erro, leitura.erro);
+  assert.equal(JSON.stringify(db), foto, 'só conferir já mexeu na base');
+
+  /* a etapa que espera o setor anterior é fila, não falta de material */
+  assert.ok(leitura.faltas.length > 0);
+  assert.ok(leitura.faltas.every((f) => f.esperando),
+    'componente que o setor anterior ainda vai entregar apareceu como falta de material');
+
+  /* liberar, aí sim, grava */
+  const antes = etapa.status;
+  liberarParaCostura(db, etapa.id, { nome: 'Teste' });
+  assert.equal(etapa.status, antes, 'com falta, liberar não pode mudar o status');
 });

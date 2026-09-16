@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 78 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
+node --test "industrial/testes/*.test.mjs"        # 80 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=producao --com-industrial
@@ -225,6 +225,35 @@ mostra **Ver ficha do produto**; a carteira consolidada vira ordem e o botão le
 carteira consolidada no Plano e uma ordem aberta em Ordens são a mesma coisa para a fábrica —
 as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem anotada.
 
+## A ficha de produção
+
+A aba **Produção** é do chão de fábrica, não de uma ordem. Ela lista **todas as etapas em
+aberto de todas as ordens**, agrupadas por setor, com filtro por setor e um atalho para "só o
+que pode começar". Antes ela mostrava apenas a ordem escolhida no seletor do topo — e parecia
+vazia quando o seletor apontava para outra.
+
+Cada linha diz em uma palavra em que pé está, e a diferença entre as duas situações que a
+fábrica confunde:
+
+| situação | o que quer dizer |
+|---|---|
+| **pode começar** | todo componente na mão |
+| **espera `<peça>`** | fila normal: o setor anterior ainda vai entregar |
+| **falta material** | problema: material que não existe no almoxarifado |
+| **parcial · faltam N** | começou e não terminou |
+
+`conferirEntradasDaOrdem` é a leitura pura dessa situação — não grava nada, o que permite
+mostrar o estado de 41 etapas sem escrever na base. `liberarParaCostura` continua sendo a
+que libera, e grava.
+
+No apontamento: a quantidade que falta aparece ao lado do campo, o saldo de cada componente
+aparece **inclusive para o material do almoxarifado** (antes só dizia "· almoxarifado", e a
+falta só aparecia ao lançar), e a perda passou a perguntar **o que** se perdeu — antes ela era
+sempre atribuída à primeira linha da receita, custeada pelo `custoPadrao` do item, que para
+subproduto é zero: perda registrada pela tela não custava nada. Agora `custoDoItemAgora` dá o
+valor real — custo do almoxarifado para o comprado, custo médio do estoque de processo para o
+subproduto — e a tela mostra quanto a perda vai custar antes de lançar.
+
 ## Cinco lugares, um por pergunta
 
 | aba | a pergunta que ela responde | o que tem dentro |
@@ -232,7 +261,7 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 | **Painel** | como estamos? | carteira, produzido, WIP, budget × realizado, compras, caixa, gargalo e alertas |
 | **Ordens** | o que produzir, e o que isso exige? | abrir a ordem a partir do produto, planejar as que já existiam, agrupar ordens do mesmo produto num lote, e — dentro da ordem aberta — as etapas, o MRP, os quatro budgets, a capacidade e a simulação |
 | **Compras** | o que falta comprar? | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial) e o que está atrasado |
-| **Produção** | o que a fábrica fez? | as demandas por processo, o apontamento, o estoque entre setores e as perdas |
+| **Produção** | o que há para fazer, e o que a fábrica fez? | todas as etapas em aberto de todas as ordens, filtradas por setor, com o apontamento, o estoque entre setores e as perdas |
 | **Conferência** | está tudo ligado e rastreado? | saúde da cadeia, rastreio do lote, ficha industrial derivada e a auditoria com as baterias de teste |
 
 Eram dez abas — Carteira, Plano e budget, Ficha industrial, Rastreio, Integração e Auditoria

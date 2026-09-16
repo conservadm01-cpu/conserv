@@ -17,7 +17,8 @@ import {
 } from './modelo.mjs';
 import {
   explodirBOM, calcularCapacidade, executarTransformacao, liberarParaCostura,
-  wipDaCarteira, realizadoVersusBudget, simular, budgetsDaCarteira,
+  wipDaCarteira, realizadoVersusBudget, simular, budgetsDaCarteira, custoDoItemAgora,
+  disponivelDoItem, conferirEntradasDaOrdem,
 } from './motores.mjs';
 import { gerarRequisicoes, painelCompras } from './compras.mjs';
 import { auditarIndustrial } from './auditoria.mjs';
@@ -541,39 +542,107 @@ export function TelaPlano({ db, ind, atual, item, mexer, usuario, setSub }) {
 
 /* ============================================= §34/§35/§36 chão de fábrica */
 
-function TelaProducao({ db, ind, atual, item, depNome, mexer, usuario, setApontando }) {
-  if (!atual) return vazio('Gere o plano de produção primeiro.');
-  const demandas = (ind.demandas || []).filter((d) => d.consolidacaoId === atual.id)
-    .sort((a, b) => b.nivel - a.nivel);
-  if (demandas.length === 0) return vazio('Esta carteira ainda não tem demanda gerada.');
+/** Tira do nome do subproduto o código do produto e o setor que a linha já diz. */
+const enxugarSaida = (nome, setor) => {
+  let texto = String(nome).replace(/^PRD-\d+\s+/, '');
+  if (setor) texto = texto.replace(new RegExp(`\\s+—\\s+${setor}$`, 'i'), '');
+  return texto;
+};
 
-  const conferir = (ordem) => {
-    const r = mexer((base) => liberarParaCostura(base, ordem.id, usuario));
-    if (!r) return;
-    if (r.liberada === false) mexer(() => ({ erro: r.alertas.map((a) => a.mensagem).join(' ') }));
-    else if (r.liberada) mexer(() => ({}), `${ordem.codigo} liberada: todos os componentes disponíveis.`);
+function TelaProducao({ db, ind, item, depNome, mexer, usuario, setApontando }) {
+  const [setor, setSetor] = React.useState('');
+  const [soLiberadas, setSoLiberadas] = React.useState(false);
+
+  /* A ficha de produção é do chão de fábrica, não de uma ordem: o corte quer
+     ver tudo o que há para cortar hoje, de todas as ordens abertas. Antes esta
+     tela mostrava só a ordem escolhida no seletor do topo, e parecia vazia. */
+  const consolidacoes = new Map((ind.consolidacoes || []).map((c) => [c.id, c]));
+  const emAberto = (ind.demandas || []).filter((d) => {
+    if (d.status === 'cancelada') return false;
+    const c = consolidacoes.get(d.consolidacaoId);
+    return c && c.status !== 'cancelada' && c.status !== 'concluida';
+  });
+
+  const etapas = emAberto.map((d) => {
+    const ordemProcesso = (ind.ordens || []).find((o) => o.demandaId === d.id) || null;
+    const conferencia = ordemProcesso ? conferirEntradasDaOrdem(db, ordemProcesso.id) : null;
+    const faltas = conferencia && !conferencia.erro ? conferencia.faltas : [];
+    const naFila = faltas.filter((f) => f.esperando);
+    const semMaterial = faltas.filter((f) => !f.esperando);
+    const consolidacao = consolidacoes.get(d.consolidacaoId) || {};
+    return {
+      demanda: d,
+      ordemProcesso,
+      codigo: ordemProcesso ? ordemProcesso.codigo : '—',
+      ordem: consolidacao.codigoOrdem || consolidacao.codigo || '—',
+      setor: depNome(d.departamentoId) || 'Sem setor',
+      saida: (item(d.itemId) || {}).nome || '—',
+      /* "PRD-0003 JASLECO MANGA LONGA — Corte" numa linha que já diz Corte é
+         ruído: fica o nome da peça, que é o que o setor precisa ler */
+      saidaCurta: enxugarSaida((item(d.itemId) || {}).nome || '—', depNome(d.departamentoId)),
+      quantidade: num(d.quantidade),
+      produzido: num(d.produzido),
+      falta: arredondar(num(d.quantidade) - num(d.produzido), 3),
+      minutos: num(d.minutos),
+      pronta: d.status === 'atendida',
+      podeComecar: faltas.length === 0,
+      naFila, semMaterial,
+      nivel: num(d.nivel),
+    };
+  }).sort((a, b) => a.setor.localeCompare(b.setor) || b.nivel - a.nivel
+    || String(a.ordem).localeCompare(String(b.ordem)));
+
+  const setores = [...new Set(etapas.map((e) => e.setor))].sort();
+  const visiveis = etapas.filter((e) => (!setor || e.setor === setor)
+    && (!soLiberadas || (e.podeComecar && !e.pronta)));
+
+  const situacao = (e) => {
+    if (e.pronta) return selo('ok', 'pronta');
+    if (e.semMaterial.length) return selo('bad', 'falta material');
+    if (e.naFila.length) return selo('warn', `espera ${e.naFila[0].nome}`);
+    if (e.produzido > 0) return selo('warn', `parcial · faltam ${inteiro(e.falta)}`);
+    return selo('idle', 'pode começar');
   };
 
-  const linhasDemanda = demandas.map((d) => {
-    const ordem = (ind.ordens || []).find((o) => o.demandaId === d.id) || null;
-    const pronto = d.status === 'atendida';
-    const acoes = h('div', { className: 'row-actions' },
-      ordem && ordem.dependeDe.length > 0 && ordem.status !== 'concluida'
-        ? h('button', { className: 'btn ghost sm', onClick: () => conferir(ordem) }, 'Conferir componentes')
-        : null,
-      pronto ? null : h('button', { className: 'btn sm', onClick: () => setApontando(d) }, 'Apontar produção'));
-    return linha(d.id, [
-      ordem ? ordem.codigo : '—',
-      depNome(d.departamentoId),
-      (item(d.itemId) || {}).nome || '—',
-      [inteiro(d.quantidade), 'num'],
-      [inteiro(d.produzido), 'num'],
-      [inteiro(d.minutos), 'num'],
-      selo(pronto ? 'ok' : d.produzido > 0 ? 'warn' : 'idle',
-        pronto ? 'atendida' : d.produzido > 0 ? 'parcial' : 'aberta'),
-      acoes,
-    ]);
-  });
+  const linhasEtapa = visiveis.map((e) => linha(e.demanda.id, [
+    h('div', null, e.setor,
+      h('div', { className: 'small muted' }, `${e.ordem} · ${e.codigo}`)),
+    h('div', null, e.saidaCurta,
+      e.semMaterial.length
+        ? h('div', { className: 'small', style: { color: 'var(--bad)' } },
+          `faltam ${e.semMaterial.map((f) => `${decimal(f.falta)} ${f.nome}`).join(' · ')}`)
+        : null),
+    [inteiro(e.falta), 'num'],
+    [e.produzido > 0 ? inteiro(e.produzido) : '—', 'num'],
+    [`${inteiro(e.minutos)} min`, 'num', { whiteSpace: 'nowrap' }],
+    situacao(e),
+    e.pronta ? null : h('button', {
+      className: e.podeComecar ? 'btn sm' : 'btn ghost sm',
+      onClick: () => setApontando(e.demanda),
+    }, 'Apontar'),
+  ]));
+
+  const cartoes = h('div', { className: 'kpis' },
+    kpi('Pode começar', inteiro(etapas.filter((e) => e.podeComecar && !e.pronta).length),
+      'com todo o componente na mão'),
+    kpi('Esperando o setor anterior', inteiro(etapas.filter((e) => e.naFila.length).length),
+      'fila normal da produção'),
+    kpi('Falta material', inteiro(etapas.filter((e) => e.semMaterial.length).length),
+      'material que não existe', etapas.some((e) => e.semMaterial.length)),
+    kpi('Prontas', inteiro(etapas.filter((e) => e.pronta).length), 'etapas atendidas'));
+
+  const filtros = h('div', { className: 'row-actions', style: { marginBottom: 14 } },
+    h('button', {
+      className: setor === '' ? 'btn sm' : 'btn ghost sm', onClick: () => setSetor(''),
+    }, `Todos os setores (${etapas.length})`),
+    ...setores.map((nome) => h('button', {
+      key: nome, className: setor === nome ? 'btn sm' : 'btn ghost sm',
+      onClick: () => setSetor(nome),
+    }, `${nome} (${etapas.filter((e) => e.setor === nome).length})`)),
+    h('button', {
+      className: soLiberadas ? 'btn sm' : 'btn ghost sm',
+      onClick: () => setSoLiberadas(!soLiberadas),
+    }, 'Só o que pode começar'));
 
   const emProcesso = (ind.estoques || []).filter((s) => num(s.quantidade) > 0);
   const tabelaEstoque = emProcesso.length === 0 ? vazio('Nada em processo ainda.') : tabela(
@@ -592,7 +661,7 @@ function TelaProducao({ db, ind, atual, item, depNome, mexer, usuario, setAponta
   const perdas = ind.perdas || [];
   const blocoPerdas = perdas.length === 0 ? null : bloco('Perdas registradas', '§22', [tabela(
     ['Data', 'Setor', 'Item', ['Quantidade', 'num'], 'Motivo', ['Custo', 'num']],
-    perdas.map((p) => linha(p.id, [
+    perdas.slice().reverse().map((p) => linha(p.id, [
       dataBR(p.data),
       depNome(p.departamentoId),
       p.nome,
@@ -602,12 +671,20 @@ function TelaProducao({ db, ind, atual, item, depNome, mexer, usuario, setAponta
     ])))]);
 
   return h('div', null,
-    bloco('Demandas por processo', '§34', [
-      pequeno('A ordem de cada setor nasce da explosão da estrutura, na sequência em que a fábrica '
-        + 'produz. A costura só é liberada quando todos os componentes existem.', { marginTop: -6 }),
-      tabela(['Ordem', 'Setor', 'Entrega', ['Planejado', 'num'], ['Produzido', 'num'],
-        ['Minutos', 'num'], 'Situação', ''], linhasDemanda),
-    ]),
+    cartoes,
+    etapas.length === 0
+      ? vazio('Nenhuma etapa em aberto. Planeje uma ordem na aba Ordens.')
+      : h('div', null,
+        filtros,
+        bloco('O que há para fazer', '§34', [
+          pequeno('Todas as etapas em aberto, de todas as ordens, na ordem em que a fábrica '
+            + 'produz. "Espera" é fila normal — o setor seguinte aguardando o anterior. "Falta '
+            + 'material" é problema: material que não existe.', { marginTop: -6 }),
+          linhasEtapa.length === 0
+            ? vazio('Nada neste filtro.')
+            : tabela(['Setor e etapa', 'O que sai daqui', ['A fazer', 'num'], ['Feito', 'num'],
+              ['Tempo', 'num'], 'Situação', ''], linhasEtapa),
+        ])),
     bloco('Estoque entre processos', '§18', [tabelaEstoque]),
     blocoPerdas);
 }
@@ -623,6 +700,10 @@ export function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onCon
   const [quantidade, setQuantidade] = React.useState(restante);
   const [perdaQtd, setPerdaQtd] = React.useState('');
   const [perdaMotivo, setPerdaMotivo] = React.useState(MOTIVOS_PERDA[0].id);
+  /* o que se perde é o que entrou, e quase nunca é a primeira linha da
+     receita: no silk quem refuga é a frente cortada, não a tinta */
+  const perdiveis = trf ? (trf.entradas || []).map((e) => e.itemId) : [];
+  const [perdaItem, setPerdaItem] = React.useState(perdiveis[0] || '');
   if (!trf) return null;
 
   const principal = trf.saidas.find((s) => s.principal) || trf.saidas[0];
@@ -631,20 +712,31 @@ export function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onCon
   const consumos = trf.entradas.map((e) => {
     const it = item(e.itemId);
     const precisa = arredondar(rodadas * num(e.quantidade) * (1 + num(e.perda) / 100), 3);
-    const tem = it && it.materialId ? null : arredondar(disponivelEmProcesso(db, e.itemId), 3);
-    const marca = tem === null
-      ? h('span', { className: 'small muted' }, ' · almoxarifado')
-      : h('span', { className: 'small', style: { color: tem + 0.0001 < precisa ? 'var(--bad)' : 'var(--ok)' } },
-        ` · em processo: ${decimal(tem)}`);
-    return h('div', { key: e.id }, `${decimal(precisa)} ${it ? it.unidade : ''} de ${it ? it.nome : '?'}`, marca);
+    /* o saldo aparece para os dois: material do almoxarifado também acaba, e
+       descobrir isso no "Lançar execução" é descobrir tarde */
+    const tem = it
+      ? arredondar(it.materialId
+        ? num(disponivelDoItem(db, it, demanda.consolidacaoId))
+        : num(disponivelEmProcesso(db, e.itemId)), 3)
+      : 0;
+    const falta = tem + 0.0001 < precisa;
+    return h('div', { key: e.id },
+      `${decimal(precisa)} ${it ? it.unidade : ''} de ${it ? it.nome : '?'}`,
+      h('span', {
+        className: 'small', style: { color: falta ? 'var(--bad)' : 'var(--ok)' },
+      }, ` · tem ${decimal(tem)}${it && it.materialId ? ' no almoxarifado' : ' em processo'}`),
+      falta ? h('span', { className: 'small', style: { color: 'var(--bad)' } },
+        ` · faltam ${decimal(arredondar(precisa - tem, 3))}`) : null);
   });
 
   const entregas = trf.saidas.map((s) => h('div', { key: s.id },
     `${decimal(arredondar(rodadas * num(s.quantidade), 3))} ${(item(s.itemId) || {}).nome || '?'}`));
 
+  const custoDaPerda = perdaItem ? custoDoItemAgora(db, perdaItem) : 0;
+  const valorDaPerda = arredondar(num(perdaQtd) * custoDaPerda, 2);
+
   const confirmar = () => {
-    const entrada = trf.entradas[0];
-    const itemPerda = entrada ? item(entrada.itemId) : null;
+    const itemPerda = perdaItem ? item(perdaItem) : null;
     onConfirmar({
       transformacaoId: trf.id,
       demandaId: demanda.id,
@@ -655,7 +747,7 @@ export function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onCon
       })),
       perdas: num(perdaQtd) > 0 && itemPerda
         ? [{ itemId: itemPerda.id, quantidade: num(perdaQtd), motivo: perdaMotivo,
-            custoUnitario: num(itemPerda.custoPadrao) }]
+            custoUnitario: custoDaPerda }]
         : [],
       colaboradorId: (usuario && usuario.id) || '',
     });
@@ -665,23 +757,33 @@ export function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onCon
     pequeno('O que entra sai do estoque do processo anterior; o que sai entra no estoque deste setor, '
       + 'com lote próprio e o custo acumulado de tudo o que veio antes.'),
     h('div', { className: 'field' },
-      h('label', null, `Quantidade produzida de ${(item(principal.itemId) || {}).nome || ''}`),
+      h('label', null, 'Quantidade produzida'),
       h('input', { type: 'number', value: quantidade, min: 0,
-        onChange: (e) => setQuantidade(e.target.value) })),
+        onChange: (e) => setQuantidade(e.target.value) }),
+      pequeno(`${(item(principal.itemId) || {}).nome || ''} · `
+        + `faltam ${decimal(restante)} de ${decimal(demanda.quantidade)} nesta etapa`)),
     h('div', { className: 'panel', style: { background: '#fff' } },
       h('strong', { className: 'small' }, 'Vai consumir'),
       h('div', { className: 'small', style: { lineHeight: 1.8 } }, ...consumos),
       h('strong', { className: 'small', style: { display: 'block', marginTop: 10 } }, 'Vai entregar'),
       h('div', { className: 'small', style: { lineHeight: 1.8 } }, ...entregas)),
-    h('div', { className: 'grid2' },
+    h('div', { className: 'grid3' },
       h('div', { className: 'field' },
-        h('label', null, 'Perda (opcional)'),
+        h('label', null, 'Perdeu alguma coisa?'),
         h('input', { type: 'number', value: perdaQtd, min: 0, placeholder: '0',
           onChange: (e) => setPerdaQtd(e.target.value) })),
       h('div', { className: 'field' },
-        h('label', null, 'Motivo da perda'),
+        h('label', null, 'O que se perdeu'),
+        h('select', { value: perdaItem, onChange: (e) => setPerdaItem(e.target.value) },
+          perdiveis.map((id) => h('option', { key: id, value: id },
+            (item(id) || {}).nome || '?')))),
+      h('div', { className: 'field' },
+        h('label', null, 'Por quê'),
         h('select', { value: perdaMotivo, onChange: (e) => setPerdaMotivo(e.target.value) },
           MOTIVOS_PERDA.map((m) => h('option', { key: m.id, value: m.id }, m.nome))))),
+    num(perdaQtd) > 0 ? pequeno(`A perda custa ${moeda(valorDaPerda)} `
+      + `(${decimal(perdaQtd)} × ${moeda(custoDaPerda)}) e entra no realizado desta ordem.`,
+    { marginTop: -8, color: 'var(--bad)' }) : null,
     h('div', { className: 'modal-actions' },
       h('button', { className: 'btn ghost', onClick: onFechar }, 'Cancelar'),
       h('button', { className: 'btn accent', onClick: confirmar }, 'Lançar execução')));

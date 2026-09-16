@@ -1195,7 +1195,9 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
       nome: it ? it.nome : '', quantidade: num(perda.quantidade), unidade: it ? it.unidade : '',
       motivo: perda.motivo, motivoNome: (motivoPerda(perda.motivo) || {}).nome || perda.motivo,
       esperada: !!(motivoPerda(perda.motivo) || {}).esperada,
-      custo: arredondar(num(perda.quantidade) * num(perda.custoUnitario || (it || {}).custoPadrao), 2),
+      /* sem custo informado, vale o que o item vale agora — nunca zero */
+      custo: arredondar(num(perda.quantidade)
+        * (num(perda.custoUnitario) || custoDoItemAgora(db, perda.itemId)), 2),
       observacao: String(perda.observacao || '').trim(),
     });
   }
@@ -1435,7 +1437,7 @@ export function custoAcumulado(db, loteId, contexto = null) {
  * precisa dizer o que falta e quanto: "faltam 350 mangas" resolve; "material
  * insuficiente" manda a encarregada procurar sozinha.
  */
-export function liberarParaCostura(db, ordemId, usuario) {
+export function conferirEntradasDaOrdem(db, ordemId) {
   const ordem = (db.industrial.ordens || []).find((o) => o.id === ordemId);
   if (!ordem) return { erro: 'Ordem não encontrada.' };
   const trf = (db.industrial.transformacoes || []).find((t) => t.id === ordem.transformacaoId);
@@ -1455,9 +1457,26 @@ export function liberarParaCostura(db, ordemId, usuario) {
       : disponivelEmProcesso(db, it.id);
     conferidos.push({ itemId: it.id, nome: it.nome, precisa, tem: arredondar(tem, 3), unidade: it.unidade });
     if (tem + 0.0001 < precisa) {
-      faltas.push({ itemId: it.id, nome: it.nome, falta: arredondar(precisa - tem, 3), unidade: it.unidade });
+      faltas.push({
+        itemId: it.id, nome: it.nome, unidade: it.unidade,
+        falta: arredondar(precisa - tem, 3),
+        /* falta que o setor anterior ainda vai entregar é fila, não problema */
+        esperando: !it.materialId,
+      });
     }
   }
+  return { ordem, transformacao: trf, conferidos, faltas, completo: faltas.length === 0 };
+}
+
+/**
+ * §35 — a conferência que libera a etapa. A leitura é a mesma de
+ * `conferirEntradasDaOrdem`; o que esta função acrescenta é a liberação, que
+ * grava. Quem só quer saber se pode começar usa a de cima e não escreve nada.
+ */
+export function liberarParaCostura(db, ordemId, usuario) {
+  const conferencia = conferirEntradasDaOrdem(db, ordemId);
+  if (conferencia.erro) return conferencia;
+  const { ordem, conferidos, faltas } = conferencia;
 
   if (faltas.length) {
     return {
@@ -1591,6 +1610,34 @@ export function realizadoVersusBudget(db, consolidacaoId) {
     desvio: arredondar(realizado - budget.custoIndustrial, 2),
     alertas,
   };
+}
+
+/**
+ * O que um item vale agora — para custear perda, refugo e ajuste.
+ *
+ * Matéria-prima vale o custo do almoxarifado; subproduto vale o custo médio
+ * do que está no estoque de processo, que já carrega tudo o que veio antes.
+ * `custoPadrao` é o último recurso: para item produzido ele é zero, e perda
+ * custeada a zero é perda que não aparece em lugar nenhum.
+ */
+export function custoDoItemAgora(db, itemId) {
+  const it = item(db, itemId);
+  if (!it) return 0;
+  if (it.materialId) return num(resolverMaterialIndustrial(db, it.id).custo) || num(it.custoPadrao);
+
+  const saldos = (db.industrial.estoques || []).filter(
+    (s) => s.itemId === it.id && num(s.quantidade) > 0 && num(s.custoUnitario) > 0);
+  const quantidade = saldos.reduce((soma, s) => soma + num(s.quantidade), 0);
+  if (quantidade > 0) {
+    return arredondar(saldos.reduce(
+      (soma, s) => soma + num(s.quantidade) * num(s.custoUnitario), 0) / quantidade, 4);
+  }
+
+  /* nada em processo: o último lote produzido dele diz quanto custou */
+  const lotes = (db.industrial.lotes || []).filter(
+    (l) => l.itemId === it.id && num(l.custoUnitario) > 0);
+  if (lotes.length) return num(lotes[lotes.length - 1].custoUnitario);
+  return num(it.custoPadrao);
 }
 
 /* ========================================================= §32 rastro */
