@@ -15,9 +15,11 @@ const pasta = path.dirname(new URL(import.meta.url).pathname);
 
 /* a ordem importa: quem define vem antes de quem usa */
 const ARQUIVOS = [
-  'modelo.mjs', 'reservas.mjs', 'compras.mjs', 'motores.mjs', 'cadastro.mjs', 'ordens.mjs',
-  'auditoria.mjs', 'demonstracao.mjs', 'testes-v2.mjs',
+  'modelo.mjs', 'reservas.mjs', 'compras.mjs', 'integracao.mjs', 'motores.mjs',
+  'cadastro.mjs', 'ordens.mjs', 'auditoria.mjs', 'demonstracao.mjs',
+  'testes-v2.mjs', 'testes-v3.mjs',
   'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs', 'telas-compras.mjs',
+  'telas-integracao.mjs',
 ];
 
 /** Tira `import ... from '...';` e o prefixo `export` das declarações. */
@@ -69,7 +71,7 @@ ${partes.join('\n')}
     preparar: prepararIndustrial,
     /* a carga do sistema chama isto: prepara as coleções e migra para a V2,
        devolvendo a própria base para a cadeia de semeadura continuar */
-    carregar: (base) => { prepararIndustrial(base); migrarIndustrialV2(base); return base; },
+    carregar: (base) => { prepararIndustrial(base); migrarIndustrialV3(base); return base; },
     montarDemonstracao,
     consolidarCarteira, explodirBOM, calcularMRP, calcularCapacidade, calcularBudget,
     planoDeProducao, executarTransformacao, liberarParaCostura, wipDaCarteira,
@@ -89,6 +91,12 @@ ${partes.join('\n')}
     receberPedido, cancelarPedido, painelCompras, entradaDeMaterial, dataLimiteDeCompra,
     budgetsDaCarteira, custoHoraEquipamento, custoMinutoColaborador, rastrearParaFrente,
     auditarIndustrial, reconciliarEstoqueIndustrial, testarIndustrialV2,
+    /* V3: a cadeia material → engenharia → industrial como uma coisa só */
+    migrarIndustrialV3,
+    resolverMaterialIndustrial, custoVigenteDoMaterial, converterUnidadeMaterial,
+    auditarIntegracaoMateriaisEngenhariaIndustrial, indicadoresDeIntegracao,
+    mapaDaCadeia, itensDaArvore, lotesDeCompraDisponiveis,
+    testarFluxoCompletoERPIndustrial,
   };
   window.GrupoIndustrial = GrupoIndustrial;
   window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;

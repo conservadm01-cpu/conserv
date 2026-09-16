@@ -17,6 +17,7 @@ import {
   num, arredondar, uid, agoraISO, proximoCodigo, normalizar, tempos, TIPOS_TEMPO,
 } from './modelo.mjs';
 import { explodirBOM, calcularBudget, minutosDaTransformacao } from './motores.mjs';
+import { resolverMaterialIndustrial } from './integracao.mjs';
 
 const achar = (db, id) => (db.industrial.itens || []).find((i) => i.id === id) || null;
 
@@ -294,13 +295,18 @@ export function conferirEngenharia(db, itemId, visitados = new Set()) {
       }
     }
   } else {
-    const material = item.materialId
-      ? (db.materiais || []).find((m) => m.id === item.materialId)
-      : null;
-    const custo = num(material?.custoMedio) || num(item.custoPadrao);
+    /* V3 §4 — a mesma ponte que o MRP usa; a conferência não pode enxergar
+       um material que o cálculo não enxerga. */
+    const resolvido = resolverMaterialIndustrial(db, item.id);
+    const custo = num(resolvido.custo) || num(item.custoPadrao);
     if (!(custo > 0)) pendencias.push(`${item.nome}: sem custo — o budget sairia incompleto.`);
-    if (!material && !num(item.custoPadrao)) {
+    if (!resolvido.material && !num(item.custoPadrao)) {
       pendencias.push(`${item.nome}: não está ligado a nenhum material do almoxarifado.`);
+    }
+    /* V3 §9 — comprar em rolo e consumir em metro exige conversão cadastrada */
+    if (resolvido.unidadeDivergente) {
+      pendencias.push(`${item.nome}: unidade ${item.unidade} diferente da do material `
+        + `(${resolvido.unidade}) — cadastre a conversão.`);
     }
   }
   return { pronto: pendencias.length === 0, pendencias: [...new Set(pendencias)] };

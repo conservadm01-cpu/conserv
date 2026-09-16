@@ -21,9 +21,13 @@ import {
   tipoItem, ehProduzido, minutosDaOperacao, tempos, TIPOS_TEMPO,
   transformacaoQueProduz, estruturaDe, disponivelEmProcesso, moverProcesso,
   localDoDepartamento, novoLote, registrarHistorico, alerta, motivoPerda,
+  lotesDeCompraDisponiveis,
 } from './modelo.mjs';
 import { disponivelParaOrdem, consumoDaReserva } from './reservas.mjs';
 import { entradasProgramadasDe, dataLimiteDeCompra } from './compras.mjs';
+/* V3 §4 — quem precisa saber material, custo, unidade ou saldo de um item
+   pergunta aqui. É a única ponte entre ENGENHARIA e MATERIAL. */
+import { resolverMaterialIndustrial } from './integracao.mjs';
 
 /* ===================================================== apoio da fábrica */
 
@@ -438,13 +442,10 @@ export function minutosDaTransformacao(transformacao, quantidade) {
 
 /** Quanto do item existe hoje: almoxarifado para o comprado, processo para o produzido. */
 export function disponivelDoItem(db, it, consolidacaoId) {
-  if (it.materialId) {
-    /* V2 §51 — o que está reservado para outra ordem não é disponível para
-       esta. Com a ordem no contexto, o que ela mesma reservou volta a contar. */
-    const posicao = disponivelParaOrdem(db, it.materialId, consolidacaoId);
-    return consolidacaoId ? posicao.paraAOrdem : posicao.livre;
-  }
-  return arredondar(disponivelEmProcesso(db, it.id), 4);
+  /* V2 §51 — o que está reservado para outra ordem não é disponível para
+     esta. Com a ordem no contexto, o que ela mesma reservou volta a contar.
+     V3 §4: a conta é a mesma para todo mundo, e mora em um lugar só. */
+  return arredondar(num(resolverMaterialIndustrial(db, it.id, { consolidacaoId }).disponivel), 4);
 }
 
 /**
@@ -452,8 +453,7 @@ export function disponivelDoItem(db, it, consolidacaoId) {
  * programada. V2: sai do pedido de compra, que agora existe de verdade.
  */
 export function entradasProgramadas(db, it) {
-  if (!it.materialId) return 0;
-  return entradasProgramadasDe(db, it.materialId);
+  return num(resolverMaterialIndustrial(db, it.id).programado);
 }
 
 /** §25 — cobertura mínima, em dias de consumo médio do próprio item. */
@@ -490,22 +490,27 @@ export function calcularMRP(db, explosao, opcoes = {}) {
   const linhas = explosao.necessidades
     .filter((l) => !ehProduzido(l.item) || l.comprar > 0)
     .map((l) => {
-      const material = l.item.materialId
-        ? (db.materiais || []).find((m) => m.id === l.item.materialId)
-        : null;
-      const custo = num(material?.custoMedio) || num(l.item.custoPadrao);
+      /* V3 §4 — material, custo, saldo e programado vêm da mesma ponte que a
+         tela de produtos e o recebimento usam. Duas contas de estoque em dois
+         arquivos é como MRP e almoxarifado passam a discordar. */
+      const resolvido = resolverMaterialIndustrial(db, l.itemId, { consolidacaoId });
+      const material = resolvido.material;
+      const custo = num(resolvido.custo) || num(l.item.custoPadrao);
       const fornecedor = material
         ? (db.fornecedores || []).find((f) => f.id === material.fornecedorPadraoId)
         : null;
 
       /* V2 §51 — as cinco quantidades que não podem virar uma só */
       const posicao = material
-        ? disponivelParaOrdem(db, material.id, consolidacaoId)
+        ? { fisico: num(resolvido.estoque), reservado: num(resolvido.reservado),
+            reservadoDaOrdem: num(resolvido.reservadoDaOrdem),
+            reservadoDeOutras: num(resolvido.reservadoDeOutras),
+            livre: num(resolvido.disponivel), paraAOrdem: num(resolvido.disponivel) }
         : { fisico: l.disponivel, reservado: 0, reservadoDaOrdem: 0, reservadoDeOutras: 0,
             livre: l.disponivel, paraAOrdem: l.disponivel };
-      const programadas = material ? entradasProgramadasDe(db, material.id) : 0;
+      const programadas = num(resolvido.programado);
       const seguranca = l.seguranca;
-      const disponivelParaEsta = consolidacaoId ? posicao.paraAOrdem : posicao.livre;
+      const disponivelParaEsta = material ? num(resolvido.disponivel) : l.disponivel;
 
       /* V2 §5: bruta − disponível − programadas + segurança = líquida */
       const comprar = arredondar(
@@ -718,10 +723,8 @@ export function calcularBudget(db, explosao, opcoes = {}) {
   const materiais = [];
   for (const linha of explosao.necessidades) {
     if (ehProduzido(linha.item) && !linha.item.materialId) continue;
-    const material = linha.item.materialId
-      ? (db.materiais || []).find((m) => m.id === linha.item.materialId)
-      : null;
-    const custo = num(material?.custoMedio) || num(linha.item.custoPadrao);
+    const custo = num(resolverMaterialIndustrial(db, linha.itemId).custo)
+      || num(linha.item.custoPadrao);
     const quantidade = opcoes.considerarEstoque === false ? linha.bruta : Math.max(linha.bruta, 0);
     if (!(quantidade > 0)) continue;
     materiais.push({
@@ -1068,7 +1071,7 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
         : baixarMaterialPadrao(db, it, consumo.quantidade, trf, usuario);
       if (baixa && baixa.erro) return { erro: baixa.erro };
       const custoUnitario = num(baixa?.custoUnitario)
-        || num((db.materiais || []).find((m) => m.id === it.materialId)?.custoMedio);
+        || num(resolverMaterialIndustrial(db, it.id).custo);
       custoAlmoxarifado += consumo.quantidade * custoUnitario;
       /* V2 §6 — o consumo baixa a reserva da ordem. O que passar do reservado
          sai do estoque livre, e é esse excedente que vira desvio de consumo. */
@@ -1077,8 +1080,17 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
         quantidade: consumo.quantidade,
         consolidacaoId: dados.consolidacaoId || '',
       }, usuario);
+      /* V3 §26 — o consumo carrega os lotes de compra de onde saiu, para o
+         rastro chegar ao rolo e à nota fiscal do fornecedor. */
+      const lotesConsumidos = (baixa?.lotes || []).map((l) => ({
+        loteId: l.loteId, codigo: l.codigo, quantidade: l.quantidade,
+        fornecedorId: l.fornecedorId || '', documento: l.documento || '',
+      }));
       consumosRegistrados.push({ itemId: it.id, nome: it.nome, quantidade: consumo.quantidade,
         unidade: it.unidade, custoUnitario: arredondar(custoUnitario, 4), origem: 'almoxarifado',
+        materialId: it.materialId, lotes: lotesConsumidos,
+        loteId: lotesConsumidos.length === 1 ? lotesConsumidos[0].loteId : '',
+        semLote: num(baixa?.semLote),
         daReserva: num(baixaReserva.daReserva), foraDaReserva: num(baixaReserva.doLivre) });
     } else {
       /* subproduto sai do estoque do processo anterior */
@@ -1097,7 +1109,8 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
         if (r.erro) return { erro: r.erro };
         custoProcesso += usar * num(s.custoUnitario);
         consumosRegistrados.push({ itemId: it.id, nome: it.nome, quantidade: arredondar(usar, 4),
-          unidade: it.unidade, custoUnitario: num(s.custoUnitario), loteId: s.loteId, origem: s.local });
+          unidade: it.unidade, custoUnitario: num(s.custoUnitario), loteId: s.loteId, origem: s.local,
+          lotes: s.loteId ? [{ loteId: s.loteId, quantidade: arredondar(usar, 4) }] : [] });
         restante -= usar;
       }
       if (restante > 0.0001) {
@@ -1242,10 +1255,37 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
   return { execucao };
 }
 
+/**
+ * V3 §26 — reparte uma baixa entre os lotes de compra do material, na ordem
+ * em que chegaram. O que o almoxarifado tinha antes de existir lote (saldo
+ * de abertura) sai sem lote, e é marcado como tal: inventar um rastro que não
+ * foi registrado seria pior do que admitir que ele não existe.
+ */
+function alocarLotesFifo(db, materialId, quantidade) {
+  const fila = lotesDeCompraDisponiveis(db, materialId);
+  const usados = [];
+  let restante = arredondar(num(quantidade), 4);
+  for (const lote of fila) {
+    if (restante <= 0.0001) break;
+    const usar = arredondar(Math.min(restante, num(lote.saldo)), 4);
+    if (!(usar > 0)) continue;
+    lote.saldo = arredondar(num(lote.saldo) - usar, 4);
+    usados.push({
+      loteId: lote.id, codigo: lote.codigo, quantidade: usar,
+      custoUnitario: num(lote.custoUnitario),
+      fornecedorId: lote.fornecedorId || '', documento: lote.documento || '',
+      data: lote.data || '',
+    });
+    restante = arredondar(restante - usar, 4);
+  }
+  return { lotes: usados, semLote: restante > 0.0001 ? restante : 0 };
+}
+
 /** Baixa de material no almoxarifado do sistema, quando não há gancho próprio. */
 function baixarMaterialPadrao(db, it, quantidade, trf, usuario) {
-  const material = (db.materiais || []).find((m) => m.id === it.materialId);
-  if (!material) return { erro: `Material de ${it.nome} não encontrado no almoxarifado.` };
+  const resolvido = resolverMaterialIndustrial(db, it.id);
+  const material = resolvido.material;
+  if (!material) return { erro: resolvido.erro || `Material de ${it.nome} não encontrado no almoxarifado.` };
   const estoque = (db.estoques || []).find((e) => e.padrao) || (db.estoques || [])[0];
   if (!estoque) return { erro: 'Nenhum local de estoque cadastrado.' };
   const saldo = (db.saldos || []).find((s) => s.materialId === material.id && s.estoqueId === estoque.id);
@@ -1257,6 +1297,7 @@ function baixarMaterialPadrao(db, it, quantidade, trf, usuario) {
     };
   }
   const custoUnitario = num(material.custoMedio);
+  const alocacao = alocarLotesFifo(db, material.id, quantidade);
   db.movimentacoes = db.movimentacoes || [];
   db.movimentacoes.push({
     id: uid(),
@@ -1274,10 +1315,11 @@ function baixarMaterialPadrao(db, it, quantidade, trf, usuario) {
     origemId: trf.id,
     documento: trf.codigo,
     observacao: `Consumo industrial: ${trf.nome}`,
+    lotes: alocacao.lotes.map((l) => ({ loteId: l.loteId, codigo: l.codigo, quantidade: l.quantidade })),
     usuario: usuario?.nome || '',
   });
   if (saldo) saldo.fisico = arredondar(num(saldo.fisico) - quantidade);
-  return { custoUnitario };
+  return { custoUnitario, lotes: alocacao.lotes, semLote: alocacao.semLote };
 }
 
 /* ============================================================ §43 custeio */
@@ -1553,6 +1595,17 @@ export function realizadoVersusBudget(db, consolidacaoId) {
 
 /* ========================================================= §32 rastro */
 
+/** Um consumo tocou este lote? Vale tanto o campo antigo quanto a lista V3. */
+const consumiuLote = (consumo, loteId) => consumo.loteId === loteId
+  || (consumo.lotes || []).some((l) => l.loteId === loteId);
+
+/** Quanto deste lote saiu num consumo. */
+const quantidadeDoLote = (consumo, loteId) => {
+  const naLista = (consumo.lotes || []).find((l) => l.loteId === loteId);
+  if (naLista) return num(naLista.quantidade);
+  return consumo.loteId === loteId ? num(consumo.quantidade) : 0;
+};
+
 /** A árvore de transformação de um lote, do tecido ao produto acabado. */
 export function rastrear(db, loteId, profundidade = 0) {
   const lote = (db.industrial.lotes || []).find((l) => l.id === loteId);
@@ -1564,33 +1617,83 @@ export function rastrear(db, loteId, profundidade = 0) {
   const origens = [];
   if (execucao) {
     for (const consumo of execucao.consumos) {
-      if (consumo.loteId) {
-        const anterior = rastrear(db, consumo.loteId, profundidade + 1);
-        if (!anterior.erro) origens.push(anterior);
-      } else {
+      const deLotes = (consumo.lotes || []).length
+        ? consumo.lotes
+        : (consumo.loteId ? [{ loteId: consumo.loteId, quantidade: num(consumo.quantidade) }] : []);
+      for (const l of deLotes) {
+        const anterior = rastrear(db, l.loteId, profundidade + 1);
+        if (anterior.erro) continue;
+        /* o lote do almoxarifado não tem item de engenharia próprio: quem dá
+           nome a ele na árvore é o item que o consumiu */
+        origens.push({
+          ...anterior,
+          item: anterior.itemId ? anterior.item : (consumo.nome || anterior.item),
+          consumido: num(l.quantidade),
+        });
+      }
+      /* V3 §26 — o que saiu sem lote (saldo de abertura do almoxarifado) é
+         mostrado como tal, e não escondido */
+      const semLote = arredondar(num(consumo.quantidade)
+        - deLotes.reduce((soma, l) => soma + num(l.quantidade), 0), 4);
+      if (!deLotes.length || semLote > 0.0001) {
         origens.push({
           tipo: 'almoxarifado',
           item: consumo.nome,
-          quantidade: consumo.quantidade,
+          quantidade: deLotes.length ? semLote : num(consumo.quantidade),
           unidade: consumo.unidade,
           custoUnitario: consumo.custoUnitario,
+          semLote: true,
         });
       }
     }
   }
   const destinos = (db.industrial.execucoes || [])
-    .filter((e) => (e.consumos || []).some((c) => c.loteId === lote.id))
+    .filter((e) => (e.consumos || []).some((c) => consumiuLote(c, lote.id)))
     .map((e) => ({ execucao: e.codigo, departamento: (departamento(db, e.departamentoId) || {}).nome || '',
                    data: e.data, saidas: e.saidas.map((s) => `${s.quantidade} ${s.nome}`) }));
+
+  /* V3 §13/§26 — a ponta de cima da árvore: o rolo comprado, com fornecedor
+     e documento. Sem isto o rastro pararia no almoxarifado. */
+  const material = lote.materialId
+    ? (db.materiais || []).find((m) => m.id === lote.materialId)
+    : null;
+  if (lote.origem === 'ajuste') {
+    /* saldo que já estava no almoxarifado quando o módulo começou: o rastro
+       termina aqui, e diz por quê */
+    origens.push({
+      tipo: 'abertura',
+      documento: lote.documento || 'Saldo de abertura',
+      data: lote.data,
+      quantidade: num(lote.quantidade),
+      custoUnitario: num(lote.custoUnitario),
+    });
+  }
+  if (lote.origem === 'compra') {
+    const fornecedor = (db.fornecedores || []).find((f) => f.id === lote.fornecedorId);
+    origens.push({
+      tipo: 'compra',
+      fornecedor: fornecedor ? (fornecedor.nomeFantasia || fornecedor.nome) : 'fornecedor não informado',
+      fornecedorId: lote.fornecedorId || '',
+      documento: lote.documento || '',
+      data: lote.data,
+      quantidade: num(lote.quantidade),
+      custoUnitario: num(lote.custoUnitario),
+      movimentoId: lote.movimentoId || '',
+    });
+  }
 
   return {
     tipo: 'lote',
     loteId: lote.id,
     lote: lote.codigo,
-    item: (item(db, lote.itemId) || {}).nome || '',
+    origem: lote.origem,
+    item: (item(db, lote.itemId) || {}).nome || (material ? material.nome : ''),
     quantidade: lote.quantidade,
+    saldo: num(lote.saldo),
     custoUnitario: lote.custoUnitario,
     data: lote.data,
+    fornecedorId: lote.fornecedorId || '',
+    documento: lote.documento || '',
     departamento: dep ? dep.nome : '',
     execucao: execucao ? execucao.codigo : '',
     origens,
@@ -1610,16 +1713,16 @@ export function rastrearParaFrente(db, loteId, profundidade = 0) {
   if (profundidade > 20) return { erro: 'Árvore de transformação longa demais.' };
 
   const consumidoPor = (db.industrial.execucoes || [])
-    .filter((e) => (e.consumos || []).some((c) => c.loteId === lote.id));
+    .filter((e) => (e.consumos || []).some((c) => consumiuLote(c, lote.id)));
 
   const destinos = consumidoPor.map((e) => {
     const dep = departamento(db, e.departamentoId);
-    const consumo = (e.consumos || []).find((c) => c.loteId === lote.id) || {};
+    const consumo = (e.consumos || []).find((c) => consumiuLote(c, lote.id)) || {};
     return {
       execucao: e.codigo,
       departamento: dep ? dep.nome : '',
       data: e.data,
-      consumido: num(consumo.quantidade),
+      consumido: quantidadeDoLote(consumo, lote.id),
       saidas: (e.saidas || []).map((s) => {
         const adiante = rastrearParaFrente(db, s.loteId, profundidade + 1);
         return {

@@ -12,7 +12,7 @@
 
 import {
   prepararIndustrial, registrarHistorico, proximoCodigo,
-  num, arredondar, uid, agoraISO, hojeISO, alerta,
+  num, arredondar, uid, agoraISO, hojeISO, alerta, novoLote,
 } from './modelo.mjs';
 import { reservarMaterial, disponivelParaOrdem } from './reservas.mjs';
 
@@ -93,7 +93,30 @@ export function entradaDeMaterial(db, dados, usuario) {
     }
     mat.ultimoCusto = arredondar(custoUnitario, 4);
   }
-  return { movimento };
+
+  /* V3 §13 — receber não é somar um número no saldo. O que chegou vira lote:
+     com fornecedor, documento, data, custo e saldo próprio. É esse registro
+     que, meses depois, responde "de onde veio o tecido desta camiseta?". */
+  prepararIndustrial(db);
+  const lote = novoLote(db, {
+    prefixo: 'LC',
+    materialId: mat.id,
+    quantidade,
+    saldo: quantidade,
+    unidade: mat.unidadeEstoque,
+    origem: 'compra',
+    origemId: movimento.origemId || movimento.id,
+    movimentoId: movimento.id,
+    fornecedorId: movimento.fornecedorId,
+    documento: movimento.documento,
+    custoUnitario,
+    data: movimento.data,
+  });
+  if (lote.erro) return { erro: lote.erro };
+  movimento.loteId = lote.registro.id;
+  movimento.loteCodigo = lote.registro.codigo;
+
+  return { movimento, lote: lote.registro };
 }
 
 /* ========================================================= requisições */

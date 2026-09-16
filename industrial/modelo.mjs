@@ -307,7 +307,7 @@ export function estadoIndustrial() {
     recebimentosCompra: [],   // V2 §7 — o que chegou, total ou parcial
     auditorias: [],           // V2 §33 — o resultado de cada auditoria rodada
     parametros: parametrosPadrao(),
-    versao: 2,
+    versao: 3,
   };
 }
 
@@ -431,6 +431,81 @@ export function migrarIndustrialV2(db) {
     });
   }
   return { de: antes, para: 2, feitas };
+}
+
+/**
+ * V3 §34 — migração para a versão 3. Só acrescenta: o lote antigo ganha o
+ * saldo e o material a que pertence, para entrar na fila FIFO sem que nenhum
+ * número histórico mude. Roda quantas vezes quiser.
+ */
+export function migrarIndustrialV3(db) {
+  migrarIndustrialV2(db);
+  const ind = db.industrial;
+  const antes = num(ind.versao) || 2;
+  const feitas = [];
+
+  /* 1. lotes ganham saldo e vínculo com o material do almoxarifado */
+  let lotes = 0;
+  for (const l of ind.lotes || []) {
+    if (l.saldo !== undefined && l.materialId !== undefined) continue;
+    if (l.materialId === undefined) {
+      const it = (ind.itens || []).find((i) => i.id === l.itemId);
+      l.materialId = it ? it.materialId || '' : '';
+    }
+    if (l.saldo === undefined) l.saldo = l.origem === 'compra' ? num(l.quantidade) : 0;
+    l.movimentoId = l.movimentoId || '';
+    l.fornecedorId = l.fornecedorId || '';
+    l.documento = l.documento || '';
+    lotes += 1;
+  }
+  if (lotes) feitas.push(`${lotes} lote(s) com saldo e material vinculados`);
+
+  /* 2. o que já estava no almoxarifado vira lote de abertura: sem isso o
+        primeiro consumo sairia sem rastro nenhum, e o indicador de integração
+        acusaria uma cadeia partida que na verdade é saldo herdado */
+  let aberturas = 0;
+  for (const saldo of db.saldos || []) {
+    if (!(num(saldo.fisico) > 0)) continue;
+    const material = (db.materiais || []).find((m) => m.id === saldo.materialId);
+    if (!material) continue;
+    const jaTem = (ind.lotes || []).some((l) => l.materialId === saldo.materialId);
+    if (jaTem) continue;
+    const r = novoLote(db, {
+      prefixo: 'LA',
+      materialId: material.id,
+      quantidade: num(saldo.fisico),
+      saldo: num(saldo.fisico),
+      unidade: material.unidadeEstoque,
+      origem: 'ajuste',
+      documento: 'Saldo de abertura',
+      custoUnitario: num(material.custoMedio),
+      data: hojeISO(),
+    });
+    if (!r.erro) aberturas += 1;
+  }
+  if (aberturas) feitas.push(`${aberturas} lote(s) de saldo de abertura`);
+
+  /* 3. consumos antigos ganham a lista de lotes, vazia: não se inventa rastro
+        que não foi registrado na época (§34 — nunca apagar histórico) */
+  let consumos = 0;
+  for (const e of ind.execucoes || []) {
+    for (const c of e.consumos || []) {
+      if (c.lotes !== undefined) continue;
+      c.lotes = c.loteId ? [{ loteId: c.loteId, quantidade: num(c.quantidade) }] : [];
+      consumos += 1;
+    }
+  }
+  if (consumos) feitas.push(`${consumos} consumo(s) com lista de lotes`);
+
+  ind.versao = 3;
+  if (antes < 3 && feitas.length) {
+    registrarHistorico(db, {
+      tipo: 'migracao', usuario: 'Sistema',
+      valorAnterior: `versão ${antes}`, valorNovo: 'versão 3',
+      motivo: feitas.join(' · '),
+    });
+  }
+  return { de: antes, para: 3, feitas };
 }
 
 /* =================================================== fábricas de registro
@@ -626,25 +701,52 @@ export function novaLinhaCarteira(db, dados) {
 
 /** §11/§32 — lote: a identidade que atravessa a fábrica inteira. */
 export function novoLote(db, dados) {
-  const item = (db.industrial.itens || []).find((i) => i.id === dados.itemId);
-  if (!item) return { erro: 'Item do lote não encontrado.' };
+  const item = (db.industrial.itens || []).find((i) => i.id === dados.itemId)
+    || (dados.materialId
+      ? (db.industrial.itens || []).find((i) => i.materialId === dados.materialId)
+      : null);
+  /* V3 §13 — o rolo que chega da compra também é um lote. Quando o material
+     ainda não tem item de engenharia, o lote nasce preso ao material: é ele
+     que sustenta o rastro até a nota fiscal. */
+  if (!item && !dados.materialId) return { erro: 'Item do lote não encontrado.' };
   const ano = (dados.data || hojeISO()).slice(0, 4);
   const doAno = (db.industrial.lotes || []).filter((l) => String(l.codigo).includes(`-${ano}-`));
+  const quantidade = num(dados.quantidade);
   const registro = {
     id: uid(),
     codigo: `${dados.prefixo || 'LT'}-${ano}-${String(doAno.length + 1).padStart(4, '0')}`,
-    itemId: item.id,
-    quantidade: num(dados.quantidade),
+    itemId: item ? item.id : '',
+    materialId: dados.materialId || (item ? item.materialId || '' : ''),
+    quantidade,
+    saldo: dados.saldo === undefined ? quantidade : num(dados.saldo),
     origem: dados.origem || 'producao',     // compra | producao | ajuste
     origemId: dados.origemId || '',
     execucaoId: dados.execucaoId || '',
     consolidacaoId: dados.consolidacaoId || '',
+    movimentoId: dados.movimentoId || '',
+    fornecedorId: dados.fornecedorId || '',
+    documento: String(dados.documento || '').trim(),
+    unidade: dados.unidade || (item ? item.unidade : ''),
     custoUnitario: num(dados.custoUnitario),
     data: dados.data || hojeISO(),
     criadoEm: agoraISO(),
   };
   db.industrial.lotes.push(registro);
   return { registro };
+}
+
+/**
+ * V3 §26 — os lotes de compra de um material, na ordem em que chegaram, com
+ * saldo ainda por consumir. É a fila que dá FIFO ao almoxarifado.
+ */
+export function lotesDeCompraDisponiveis(db, materialId) {
+  /* o saldo de abertura entra na fila junto com a compra: é material que
+     existe de verdade no almoxarifado, só sem nota fiscal para mostrar */
+  return (db.industrial?.lotes || [])
+    .filter((l) => ['compra', 'ajuste'].includes(l.origem)
+      && l.materialId === materialId && num(l.saldo) > 0.0001)
+    .sort((a, b) => String(a.data || a.criadoEm).localeCompare(String(b.data || b.criadoEm))
+      || String(a.criadoEm).localeCompare(String(b.criadoEm)));
 }
 
 /* ====================================== §18 estoque entre processos

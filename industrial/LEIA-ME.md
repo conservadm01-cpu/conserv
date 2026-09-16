@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 52 testes: fluxo, cadastro, ordens e V2
+node --test "industrial/testes/*.test.mjs"        # 62 testes: fluxo, cadastro, ordens, V2 e V3
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=produtos,producao --com-industrial
@@ -47,7 +47,10 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
 | `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
 | `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
-| `empacotar.mjs` | junta os quatro num `<script>` clássico, dentro de um IIFE, e recusa nome declarado duas vezes |
+| `integracao.mjs` | **V3**: `resolverMaterialIndustrial` (a ponte item ↔ material), custo vigente, conversão de unidade, auditoria da cadeia, indicadores de integração e o mapa dos elos |
+| `telas-integracao.mjs` | **V3**: a sub-aba Integração — saúde da engenharia industrial com a prova de cada ponto, mapa clicável e o botão do fluxo completo |
+| `testes-v3.mjs` | **V3**: `testarFluxoCompletoERPIndustrial` — 30 passos sobre uma cópia, do cadastro ao rastro |
+| `empacotar.mjs` | junta os arquivos num `<script>` clássico, dentro de um IIFE, e recusa nome declarado duas vezes |
 | `testes/fluxo-industrial.test.mjs` | o teste obrigatório do §54, com os 17 pontos de validação |
 
 ## Como entra no sistema (§50)
@@ -80,7 +83,8 @@ O que é novo mora em `db.industrial`, e é só o que não existia:
 
 `itens` · `estruturas` · `transformacoes` · `carteira` · `consolidacoes` · `demandas` ·
 `ordens` · `execucoes` · `lotes` · `estoques` · `movimentos` · `perdas` · `retalhos` ·
-`budgets` · `rastros` · `parametros`
+`budgets` · `rastros` · `reservas` · `requisicoesCompra` · `pedidosCompra` · `historico` ·
+`parametros`
 
 ## As contas
 
@@ -178,7 +182,8 @@ desvio — mais a conferência de que nenhum saldo de processo fica negativo e d
 
 Cadastro de produto e ordem de produção **não são módulos à parte**: são o que alimenta o
 módulo industrial, e por isso moram dentro dele. O menu do sistema tem uma aba — Industrial —
-e ela abre em: Painel · Produtos · Carteira · Ordens · Plano e budget · Produção · Rastreio.
+e ela abre em: Painel · Produtos · Carteira · Ordens · Plano e budget · Compras · Produção ·
+Rastreio · Integração · Auditoria.
 
 **Produtos** — a engenharia de cada peça. Cadastra o item (comprado, apontando para o material do
 almoxarifado, ou produzido, dizendo em que setor nasce), a estrutura (o que a peça leva dentro,
@@ -217,15 +222,36 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 | Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
 | Produção | as demandas por processo, o estoque entre processos e as perdas |
 | Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
+| Integração | a saúde da cadeia material → engenharia → industrial, com a prova de cada ponto, o mapa dos quinze elos e o fluxo completo de 30 passos rodando dentro do sistema |
 | Auditoria | erros e alertas da varredura, reconciliação de estoque e a bateria de 20 testes rodando dentro do sistema |
 
 Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000
 camisetas — é um clique, e serve para conhecer o módulo com número de verdade.
 
+## V3 — uma cadeia só
+
+MATERIAL → ENGENHARIA → INDUSTRIAL deixaram de ser três cadastros que se parecem e passaram
+a ser o mesmo dado, ligado por id.
+
+| o que mudou | onde |
+|---|---|
+| **uma ponte só** entre item industrial e material do almoxarifado: custo, unidade, saldo, reservado, programado e lead time saem de `resolverMaterialIndustrial` — MRP, budget, conferência de engenharia, baixa de produção e telas chamam a mesma função | `integracao.mjs` |
+| **recebimento cria lote**: entrar material gera movimentação **e** lote, com fornecedor, documento, data, custo e saldo próprio — nunca só um número de saldo que muda | `compras.mjs` |
+| **consumo FIFO por lote**: a baixa de produção reparte a quantidade entre os lotes na ordem em que chegaram e grava quais foram, e é isso que faz o rastro chegar ao rolo e à nota fiscal | `motores.mjs` |
+| **saldo de abertura vira lote**: o que já estava no almoxarifado quando o módulo começou entra como lote de abertura, declarado como tal — o rastro nunca termina em "apareceu do nada" | `modelo.mjs` (`migrarIndustrialV3`) |
+| **conversão de unidade** usa a conversão do próprio material antes da geral: comprar em rolo e consumir em metro é o mesmo cadastro, não dois | `integracao.mjs` |
+| **auditoria da cadeia**: item sem material, unidade divergente, dois itens para o mesmo material, lote sem origem, consumo sem lote, demanda sem engenharia | `auditarIntegracaoMateriaisEngenhariaIndustrial` |
+| **saúde da engenharia industrial**: um percentual que sai de seis provas contadas uma a uma — quebrar metade dos vínculos derruba o número, e o teste prova isso | `indicadoresDeIntegracao` |
+| **mapa da cadeia**: quinze elos com quantos registros cada um tem e quantos problemas, clicáveis para a aba onde o problema se conserta | `mapaDaCadeia` |
+| **fluxo completo em 30 passos**, com prova numérica: 10.000 camisetas do cadastro ao custo, realizado batendo com o budget | `testarFluxoCompletoERPIndustrial` |
+
+O MRP calcula e **não encosta no estoque** — há teste que fotografa saldos, extrato e lotes
+antes e depois de três cálculos e exige a mesma fotografia.
+
 ## Próxima etapa
 
 1. Dashboards por departamento (§29–§31), com a visão própria do corte, da preparação e da costura.
 2. Permissões por departamento (§51) sobre o cadastro de níveis que o sistema já tem.
-3. Compras: gravar pedido em aberto como entrada programada, fechando o ciclo do MRP — hoje o
-   recebimento é um atalho lançado direto no almoxarifado.
-4. Programação do dia: distribuir as etapas da ordem entre as pessoas e as máquinas do setor.
+3. Programação do dia: distribuir as etapas da ordem entre as pessoas e as máquinas do setor.
+4. Conversões de compra por material (rolo → kg) cadastradas pela tela — hoje a função já
+   converte, mas a conversão precisa existir no cadastro de materiais.

@@ -24,6 +24,8 @@ import {
 import { gerarRequisicoes, painelCompras } from './compras.mjs';
 import { auditarIndustrial } from './auditoria.mjs';
 import { TelaCompras, TelaAuditoria } from './telas-compras.mjs';
+import { TelaIntegracao } from './telas-integracao.mjs';
+import { indicadoresDeIntegracao } from './integracao.mjs';
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
 
 export const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
@@ -135,6 +137,9 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
       (r) => !['recebida', 'cancelada'].includes(r.status)).length})` },
     { id: 'producao', label: `Produção (${(ind.demandas || []).filter((d) => d.status !== 'atendida').length})` },
     { id: 'rastreio', label: `Rastreio (${(ind.lotes || []).length})` },
+    /* V3 §30 — a nota da cadeia fica na própria aba: quem abre o módulo já vê
+       se material, engenharia e industrial continuam ligados */
+    { id: 'integracao', label: `Integração (${saudeDaCadeia(db)}%)` },
     { id: 'auditoria', label: 'Auditoria' },
   ];
 
@@ -158,6 +163,7 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
     compras: () => h(TelaCompras, contexto),
     producao: () => h(TelaProducao, contexto),
     rastreio: () => h(TelaRastreio, contexto),
+    integracao: () => h(TelaIntegracao, contexto),
     auditoria: () => h(TelaAuditoria, contexto),
   };
 
@@ -177,6 +183,11 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
         if (r && !r.erro) setApontando(null);
       },
     }) : null);
+}
+
+/** A nota da integração no rótulo da aba, sem derrubar a tela se algo faltar. */
+function saudeDaCadeia(db) {
+  try { return num(indicadoresDeIntegracao(db).integracao); } catch (e) { return 0; }
 }
 
 /* ------------------------------------------------- base sem o módulo */
@@ -687,7 +698,22 @@ function TelaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
       return h('div', { key: chave, style: recuo },
         h('span', { className: 'small muted' }, '← '),
         h('span', { className: 'small' }, `${decimal(no.quantidade)} ${no.unidade} de ${no.item}`),
-        h('span', { className: 'small muted' }, ` · almoxarifado · ${moeda(no.custoUnitario)}`));
+        h('span', { className: 'small muted' }, ` · almoxarifado, sem lote · ${moeda(no.custoUnitario)}`));
+    }
+    /* V3 §26 — a ponta de cima: a nota fiscal do fornecedor, ou o saldo que
+       já estava lá quando o módulo começou */
+    if (no.tipo === 'compra') {
+      return h('div', { key: chave, style: recuo },
+        h('span', { className: 'small muted' }, '← '),
+        h('span', { className: 'small' }, `comprado de ${no.fornecedor}`),
+        h('span', { className: 'small muted' },
+          ` · ${no.documento || 'sem documento'} · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
+    }
+    if (no.tipo === 'abertura') {
+      return h('div', { key: chave, style: recuo },
+        h('span', { className: 'small muted' }, '← '),
+        h('span', { className: 'small' }, 'saldo de abertura do almoxarifado'),
+        h('span', { className: 'small muted' }, ` · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
     }
     const filhos = (no.origens || []).map((o, i) => desenhar(o, nivel + 1, `${chave}-${i}`));
     return h('div', { key: chave, style: recuo },
@@ -697,11 +723,21 @@ function TelaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
       ...filhos);
   };
 
-  const tabelaLotes = tabela(['Lote', 'Item', ['Quantidade', 'num'], ['Custo unitário', 'num'], 'Data', ''],
+  /* V3 §13 — o lote do almoxarifado é do material, não de um item produzido:
+     o nome vem do cadastro de materiais, e a origem diz se veio de nota
+     fiscal, de produção ou do saldo de abertura. */
+  const ORIGEM = { compra: ['ok', 'compra'], producao: ['idle', 'produção'], ajuste: ['warn', 'abertura'] };
+  const nomeDoLote = (l) => (item(l.itemId) || {}).nome
+    || ((db.materiais || []).find((m) => m.id === l.materialId) || {}).nome || '—';
+
+  const tabelaLotes = tabela(
+    ['Lote', 'Item', 'Origem', ['Quantidade', 'num'], ['Saldo', 'num'], ['Custo unitário', 'num'], 'Data', ''],
     lotes.map((l) => linha(l.id, [
       l.codigo,
-      (item(l.itemId) || {}).nome || '—',
+      nomeDoLote(l),
+      selo(...(ORIGEM[l.origem] || ['idle', l.origem || '—'])),
       [decimal(l.quantidade), 'num'],
+      [l.origem === 'producao' ? '—' : decimal(l.saldo), 'num'],
       [moeda(l.custoUnitario), 'num'],
       dataBR(l.data),
       h('button', { className: 'btn ghost sm', onClick: () => setLoteAberto(l.id) }, 'Ver árvore'),

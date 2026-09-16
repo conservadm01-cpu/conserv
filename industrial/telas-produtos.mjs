@@ -18,6 +18,7 @@ import {
   salvarItem, salvarEstrutura, salvarTransformacao, inativarItem, inativarTransformacao,
   conferirEngenharia, custoPadrao, arvoreDoProduto, clonarProduto,
 } from './cadastro.mjs';
+import { resolverMaterialIndustrial } from './integracao.mjs';
 import {
   h, moeda, inteiro, decimal, selo, vazio, pequeno, kpi, bloco, tabela, linha,
   navegacao, irEComBilhete,
@@ -188,14 +189,17 @@ function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem, ir
 
 function listaItens({ db, ind, itens, depNome, mexer, usuario, setFormItem }) {
   const linhas = itens.map((i) => {
-    const material = i.materialId ? (db.materiais || []).find((m) => m.id === i.materialId) : null;
+    /* V3 §4 — a tela lê o mesmo resolvedor do MRP: o preço que ela mostra é o
+       preço com que a fábrica calcula. */
+    const resolvido = resolverMaterialIndustrial(db, i.id);
+    const material = resolvido.material;
     const trf = transformacaoQueProduz(db, i.id);
     return linha(i.id, [
       [i.codigo, 'small muted'],
       i.nome,
       [(TIPOS_ITEM.find((t) => t.id === i.tipo) || {}).nome || i.tipo, 'small'],
       [i.unidade, 'small muted'],
-      [material ? `almoxarifado · ${moeda(material.custoMedio)}` : (trf ? trf.nome : '—'), 'small muted'],
+      [material ? `almoxarifado · ${moeda(resolvido.custo)}` : (trf ? trf.nome : '—'), 'small muted'],
       [i.materialId ? '' : depNome(i.departamentoId), 'small muted'],
       h('div', { className: 'row-actions' },
         h('button', { className: 'btn ghost sm', onClick: () => setFormItem(i) }, 'Editar'),
