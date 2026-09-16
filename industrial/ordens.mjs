@@ -38,6 +38,20 @@ function proximoCodigoOrdem(db) {
   return `OP-${ano}-${String(doAno.length + 1).padStart(4, '0')}`;
 }
 
+/**
+ * A ordem do industrial e a ordem do sistema são a mesma ordem: quando uma
+ * fecha ou é cancelada aqui, `db.ordens` precisa dizer o mesmo. Sem isto a
+ * ordem ficaria "aberta" para sempre enquanto a fábrica já a terminou.
+ */
+function espelharSituacao(db, consolidacao, situacao) {
+  if (!consolidacao || !consolidacao.ordemSistemaId) return null;
+  const ordem = (db.ordens || []).find((o) => o.id === consolidacao.ordemSistemaId);
+  if (!ordem) return null;
+  ordem.situacao = situacao;
+  if (situacao === 'concluida') ordem.concluidaEm = hojeISO();
+  return ordem;
+}
+
 /** Uma consolidação só não é ordem enquanto ninguém gerou o plano dela. */
 const temPlano = (db, consolidacaoId) =>
   (db.industrial.demandas || []).some((d) => d.consolidacaoId === consolidacaoId);
@@ -349,6 +363,7 @@ export function cancelarOrdem(db, consolidacaoId, motivo, usuario) {
   ordem.status = 'cancelada';
   ordem.canceladaEm = agoraISO();
   ordem.motivoCancelamento = String(motivo).trim();
+  espelharSituacao(db, ordem, 'cancelada');
   /* V2 §52 — cancelar devolve o material reservado ao estoque livre */
   const devolvido = liberarReservasDaOrdem(db, consolidacaoId, `Ordem cancelada: ${motivo}`, usuario);
   for (const d of db.industrial.demandas || []) {
@@ -391,6 +406,7 @@ export function encerrarOrdem(db, consolidacaoId, dados, usuario) {
   ordem.status = 'concluida';
   ordem.encerradaEm = agoraISO();
   ordem.saldoNaoProduzido = saldo;
+  espelharSituacao(db, ordem, 'concluida');
   /* o que sobrou reservado volta a ser estoque livre */
   const devolvido = liberarReservasDaOrdem(db, consolidacaoId, 'Ordem encerrada', usuario);
   ordem.motivoEncerramento = String((dados || {}).motivo || '').trim();

@@ -8,9 +8,10 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 71 testes: fluxo, cadastro, ordens, V2, V3, Engenharia e Produção
+node --test "industrial/testes/*.test.mjs"        # 75 testes: fluxo, cadastro, ordens, V2, V3, produto e ordem
 
-node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html --com-industrial
+node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
+  --sem-modulos=producao --com-industrial
 ```
 
 ## A regra que organiza tudo
@@ -46,8 +47,8 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
 | `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
 | `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
-| `ordens-sistema.mjs` | a ponte com o módulo Produção: planeja no motor a ordem que nasceu lá, guardando o código do sistema |
-| `telas-ordens-sistema.mjs` | a sub-aba **Ordens**: as ordens do sistema e o que o motor fez com cada uma |
+| `ordens-sistema.mjs` | a ordem de produção: abre em `db.ordens` no formato do sistema e planeja no motor; também traz para o motor a ordem aberta antes no módulo Produção |
+| `telas-ordens-sistema.mjs` | a sub-aba **Ordens**: abrir, planejar e acompanhar, com a composição do produto conferida antes de abrir |
 | `engenharia.mjs` | a ponte com o cadastro de produto do sistema: lê `db.produtos` (ficha técnica e roteiro) e **deriva** itens, estrutura e uma transformação por setor, com vínculo vivo e detecção de divergência |
 | `integracao.mjs` | **V3**: `resolverMaterialIndustrial` (a ponte item ↔ material), custo vigente, conversão de unidade, auditoria da cadeia, indicadores de integração e o mapa dos elos |
 | `telas-integracao.mjs` | **V3**: a sub-aba Integração — saúde da engenharia industrial com a prova de cada ponto, mapa clicável e o botão do fluxo completo |
@@ -182,19 +183,21 @@ desvio — mais a conferência de que nenhum saldo de processo fica negativo e d
 
 ## Onde cada coisa é feita
 
-O industrial é **motor**, não cadastro. Produto e ordem nascem nas telas que a fábrica já usa:
+O industrial **substituiu o módulo Produção**. O cadastro continua fora; a produção é aqui:
 
 | o quê | onde | o que o industrial faz com isso |
 |---|---|---|
 | material | **Materiais** | aponta para ele — preço, saldo e fornecedor continuam sendo os de lá |
-| produto (ficha + processo) | **Produtos** | deriva estrutura e uma transformação por setor |
-| ordem de produção | **Produção** | planeja: MRP, reserva, requisição, budget, custo e rastro |
+| produto e composição | **Produtos** | deriva estrutura e uma transformação por setor |
+| ordem de produção | **Industrial → Ordens** | abre, planeja, reserva, compra, aponta, custeia e rastreia |
 
-`planejarOrdemDoSistema(db, ordemId)` é a ponte: garante o produto derivado, cria a linha de
-carteira, consolida, gera o plano por setor, reserva o que existe e requisita o que falta —
-**mantendo o código do sistema** (`OP-0002`), sem inventar um segundo número para a mesma
-ordem. `ordensDoSistema(db)` mostra cada ordem com o que o motor já fez, e a auditoria de
-integração acusa ordem em aberto sem plano.
+A ordem nasce aqui, mas continua sendo **a ordem do sistema**: `abrirOrdemDeProducao` grava em
+`db.ordens`, no formato de sempre — código `OP-0010`, produto, versão da engenharia congelada,
+cliente, entrega e as tarefas fotografadas do processo, com a mesma conta de minutos por peça
+(projeto dilui no lote; por pessoa vale por peça). Ordem aberta antes, no módulo Produção,
+continua valendo: `planejarOrdemDoSistema` a traz para o motor sem inventar um segundo número,
+e a auditoria de integração acusa ordem em aberto sem plano. Encerrar ou cancelar aqui fecha a
+ordem lá.
 
 **Produtos** — a engenharia de cada peça. Cadastra o item (comprado, apontando para o material do
 almoxarifado, ou produzido, dizendo em que setor nasce), a estrutura (o que a peça leva dentro,
@@ -228,7 +231,7 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 | Painel | o painel executivo (§54): carteira, produzido, em processo, budget, realizado, compras, necessidade de caixa e gargalo principal — mais alertas, WIP e saúde do módulo |
 | Ficha industrial | o que veio da ficha do produto: a cadeia derivada, os itens, as transformações e o ajuste do ciclo e dos tempos que a ficha não expressa |
 | Carteira | as linhas de pedido, o lançamento de um pedido novo, a consolidação e a geração do plano |
-| Ordens | as ordens abertas no módulo Produção, com o plano industrial de cada uma — e o botão que as planeja |
+| Ordens | abrir a ordem a partir do produto, com a composição já multiplicada pela quantidade, e acompanhar o plano de cada uma |
 | Plano e budget | MRP V2 com as cinco quantidades separadas e a data limite de compra, budget de consumo, custo industrial × necessidade de caixa, capacidade com déficit, budget industrial aberto em parcelas e a simulação |
 | Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
 | Produção | as demandas por processo, o estoque entre processos e as perdas |

@@ -28,7 +28,9 @@ import {
 } from '../engenharia.mjs';
 import {
   ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
+  abrirOrdemDeProducao, versaoVigenteDoProduto, tarefasDaOrdem,
 } from '../ordens-sistema.mjs';
+import { encerrarOrdem } from '../ordens.mjs';
 
 /**
  * A base ligada: os produtos que a Engenharia já tem e as ordens que o módulo
@@ -425,4 +427,88 @@ test('Produção → industrial: planejar as oito ordens da base de uma vez', ()
     assert.equal(achadas.length, 1, `${l.codigo} tem ${achadas.length} consolidações`);
     assert.equal(planoDaOrdemDoSistema(db, l.ordemId).codigoOrdem, l.codigo);
   }
+});
+
+/* ================= a ordem de produção nasce no industrial */
+
+test('Ordem: nasce no industrial e é gravada como a ordem do sistema', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const antes = (db.ordens || []).length;
+
+  const r = abrirOrdemDeProducao(db, {
+    produtoId: prd.id, quantidade: 1200, entrega: '2026-11-30', prioridade: 2,
+  }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+
+  /* o registro entrou em db.ordens, no formato de sempre */
+  assert.equal(db.ordens.length, antes + 1);
+  const ordem = r.ordemSistema;
+  assert.match(ordem.codigo, /^OP-\d{4}$/);
+  assert.equal(ordem.situacao, 'aberta');
+  assert.equal(ordem.produtoId, prd.id);
+  assert.equal(ordem.quantidade, 1200);
+  /* a engenharia fica congelada na ordem */
+  assert.equal(ordem.versaoCodigo, versaoVigenteDoProduto(db, prd.id).codigo);
+  assert.equal(ordem.tarefas.length, prd.processo.length, 'uma tarefa por etapa do processo');
+
+  /* e o plano industrial nasceu junto */
+  assert.equal(r.ordem.codigoOrdem, ordem.codigo, 'o industrial inventou outro número');
+  assert.equal(r.ordem.ordemSistemaId, ordem.id);
+  assert.equal(r.plano.ordens.length, 5, 'cinco setores no roteiro da camiseta');
+  assert.ok(r.reserva.feitas.length > 0);
+  assert.ok(num(r.custoPlanejado) > 0);
+});
+
+test('Ordem: as tarefas saem do processo com a mesma conta do cadastro', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const tarefas = tarefasDaOrdem(db, prd, 1200);
+
+  /* enfesto: 28 min de projeto com 2 pessoas, diluído em 1.200 peças */
+  const enfesto = tarefas[0];
+  assert.equal(enfesto.modo, 'projeto');
+  assert.equal(enfesto.tempo, 28);
+  assert.equal(enfesto.pessoas, 2);
+  assert.equal(enfesto.minutosPorPeca, Number((28 * 2 / 1200).toFixed(6)));
+  assert.equal(enfesto.minutosTotais, 56);
+
+  /* corte: 0,7 min por peça, e a quantidade de gente não multiplica */
+  const corte = tarefas[1];
+  assert.equal(corte.modo, 'pessoa');
+  assert.equal(corte.minutosPorPeca, 0.7);
+  assert.equal(corte.minutosTotais, 840);
+  assert.ok(tarefas.every((t) => t.concluida === false));
+});
+
+test('Ordem: produto em desenvolvimento só abre como amostra', () => {
+  const db = nova();
+  const dev = db.produtos.find((p) => String(p.status).toLowerCase() !== 'liberado');
+  assert.ok(dev, 'a base tem um produto em desenvolvimento');
+
+  const recusa = abrirOrdemDeProducao(db, { produtoId: dev.id, quantidade: 10 }, { nome: 'Teste' });
+  assert.match(recusa.erro, /amostra/);
+  assert.ok(!(db.ordens || []).some((o) => o.produtoId === dev.id && o.origem === 'industrial'),
+    'a ordem recusada não pode ficar meio criada');
+
+  const ok = abrirOrdemDeProducao(db, { produtoId: dev.id, quantidade: 10, amostra: true }, { nome: 'Teste' });
+  assert.ok(!ok.erro, ok.erro);
+  assert.equal(ok.ordemSistema.amostra, true);
+});
+
+test('Ordem: encerrar no industrial fecha a ordem do sistema', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0004');
+  const r = abrirOrdemDeProducao(db, { produtoId: prd.id, quantidade: 50 }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  assert.equal(db.ordens.find((o) => o.id === r.ordemSistema.id).situacao, 'aberta');
+
+  const fim = encerrarOrdem(db, r.ordem.id, { motivo: 'teste' }, { nome: 'Teste' });
+  assert.ok(!fim.erro, fim.erro);
+  const depois = db.ordens.find((o) => o.id === r.ordemSistema.id);
+  assert.equal(depois.situacao, 'concluida');
+  assert.ok(depois.concluidaEm, 'a ordem fechou sem data');
+
+  /* e sai da lista de abertas */
+  assert.ok(!ordensDoSistema(db).linhas.some((l) => l.ordemId === depois.id));
 });

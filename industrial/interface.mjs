@@ -253,15 +253,15 @@ function boasVindas(db, mexer, usuario, erro, irParaProdutos) {
     passo(1, 'Material — aba Materiais',
       'Tecido, aviamento e embalagem, com unidade, preço, estoque mínimo e prazo de entrega. '
       + 'O industrial não duplica esse cadastro: ele aponta para ele.'),
-    passo(2, 'Produto — aba Produtos',
+    passo(2, 'Produto e composição — aba Produtos',
       'Ficha técnica (o que a peça leva) e processo (por onde ela passa), nas telas de sempre. '
       + 'É daí que o industrial deriva a estrutura e uma transformação por setor.'),
-    passo(3, 'Ordem de produção — aba Produção',
-      'A ordem nasce lá, amarrada ao produto e à versão da engenharia, com as etapas já '
-      + 'fotografadas do processo.'),
-    passo(4, 'O motor — aqui, na sub-aba Ordens',
-      'Cada ordem aberta ganha plano por setor, MRP, reserva do material que existe, requisição '
-      + 'do que falta, budget, custo real e rastro por lote.'),
+    passo(3, 'Ordem de produção — aqui, na sub-aba Ordens',
+      'A ordem nasce do produto: escolha, diga quantas peças, e ela já vem com as etapas do '
+      + 'processo e a versão da engenharia congelada.'),
+    passo(4, 'E o motor roda junto',
+      'Cada ordem ganha plano por setor, MRP, reserva do material que existe, requisição do que '
+      + 'falta, budget, custo real e rastro por lote.'),
 
     h('div', { className: 'row-actions', style: { marginTop: 18 } },
       h('button', {

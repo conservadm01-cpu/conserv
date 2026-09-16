@@ -1,24 +1,25 @@
 /**
- * MÓDULO INDUSTRIAL — a ordem nasce fora, o motor roda aqui
+ * MÓDULO INDUSTRIAL — a ordem de produção
  *
- * A ordem de produção é aberta onde ela sempre foi aberta: no módulo
- * **Produção** do sistema, na tela que a fábrica já conhece. Lá ela nasce
- * amarrada ao produto e à versão da engenharia, com as tarefas fotografadas
- * do roteiro (`db.ordens[].tarefas`).
+ * O industrial substituiu o módulo Produção: a ordem nasce aqui. Mas ela
+ * continua sendo **a ordem do sistema**, gravada em `db.ordens`, com o mesmo
+ * formato de sempre — código `OP-0001`, produto, versão da engenharia
+ * congelada, cliente, entrega e as tarefas fotografadas do roteiro. Quem abriu
+ * a ordem mudou; o registro, não. Ordem aberta antes, no módulo Produção,
+ * continua valendo e é planejada do mesmo jeito.
  *
- * O industrial não abre ordem: ele **planeja** a que foi aberta. Ao planejar,
- * a ordem ganha o que só o motor sabe fazer —
+ * O produto vem do cadastro de **Produtos**: produto e composição. Daqui não
+ * se cadastra produto — daqui se produz o que foi cadastrado lá.
+ *
+ * Ao abrir (ou ao planejar uma ordem que já existia), o motor entrega:
  *
  *   linha de carteira · consolidação · plano por setor · MRP ·
  *   reserva de material · requisição do que falta · budget
- *
- * — e o código continua sendo o do sistema (OP-0001), não um segundo número
- * para a mesma ordem.
  */
 
 import {
-  prepararIndustrial, registrarHistorico, novaLinhaCarteira,
-  num, arredondar, agoraISO,
+  prepararIndustrial, registrarHistorico, novaLinhaCarteira, proximoCodigo,
+  num, arredondar, agoraISO, hojeISO, uid,
 } from './modelo.mjs';
 import { planejarLinhaDeCarteira, resumoDaOrdem } from './ordens.mjs';
 import {
@@ -198,4 +199,150 @@ export function ordensDoSistema(db, opcoes = {}) {
     comFalta: linhas.filter((l) => l.estado === 'faltando').length,
     custoPlanejado: arredondar(linhas.reduce((s, l) => s + num(l.custoPlanejado), 0), 2),
   };
+}
+
+/* ============================================ abrir a ordem de produção */
+
+/** A versão da engenharia que vale agora para este produto. */
+export function versaoVigenteDoProduto(db, produtoId) {
+  const versoes = (db.versoesProduto || []).filter((v) => v.produtoId === produtoId);
+  if (versoes.length === 0) return null;
+  return versoes.reduce((maior, v) => (num(v.numero) >= num(maior.numero) ? v : maior), versoes[0]);
+}
+
+/**
+ * Os minutos de uma etapa, por peça. É a mesma conta do módulo de produto:
+ * trabalho de projeto (enfestar, gravar a tela) se dilui no lote; trabalho por
+ * pessoa vale por peça, e a quantidade de gente não multiplica o tempo.
+ */
+function minutosDaEtapaPorPeca(etapa, quantidade) {
+  const tempo = num(etapa.tempo);
+  const pessoas = num(etapa.pessoas) > 0 ? num(etapa.pessoas) : 1;
+  const lote = num(quantidade) > 0 ? num(quantidade) : 1;
+  const loteEtapa = num(etapa.loteEtapa);
+  if (loteEtapa > 0) return Number((tempo * pessoas / loteEtapa).toFixed(6));
+  if (etapa.modo === 'projeto') return Number((tempo * pessoas / lote).toFixed(6));
+  if (etapa.modo === 'equipe') return Number((tempo * pessoas).toFixed(6));
+  return Number(tempo.toFixed(6));
+}
+
+/**
+ * As tarefas da ordem: uma fotografia do roteiro do produto no momento em que
+ * a ordem nasceu. Mudar o produto depois não reescreve o que foi combinado
+ * aqui — é para isso que a ordem guarda a versão.
+ */
+export function tarefasDaOrdem(db, produto, quantidade) {
+  return [...(produto.processo || [])]
+    .sort((a, b) => num(a.ordem) - num(b.ordem))
+    .map((etapa, i) => {
+      const etapaCadastro = (db.etapas || []).find((e) => e.id === etapa.etapaId);
+      const modo = etapa.modo || (etapaCadastro ? etapaCadastro.modo : '') || 'pessoa';
+      const porPeca = minutosDaEtapaPorPeca({ ...etapa, modo }, quantidade);
+      return {
+        id: uid(),
+        ordem: i + 1,
+        etapaId: etapa.etapaId || '',
+        departamentoId: etapa.departamentoId || '',
+        equipamentoId: (etapa.equipamentos || [])[0] || etapa.equipamentoId || '',
+        colaboradorIds: [],
+        modo,
+        tempo: num(etapa.tempo),
+        pessoas: num(etapa.pessoas) > 0 ? num(etapa.pessoas) : 1,
+        materiais: etapa.materiais || [],
+        subprodutos: etapa.subprodutos || [],
+        anexos: etapa.anexos || [],
+        riscosProducao: etapa.riscosProducao || [],
+        minutosPorPeca: porPeca,
+        minutosTotais: Number((porPeca * num(quantidade)).toFixed(3)),
+        concluida: false,
+      };
+    });
+}
+
+/**
+ * Abre uma ordem de produção e já a planeja.
+ *
+ * A ordem entra em `db.ordens` com o formato do sistema; o plano industrial
+ * nasce junto. São duas coisas numa: a ordem que a fábrica lê e o plano que o
+ * motor usa — mas um registro só de cada, ligados por id.
+ */
+export function abrirOrdemDeProducao(db, dados, usuario) {
+  prepararIndustrial(db);
+  const produto = (db.produtos || []).find((p) => p.id === dados.produtoId);
+  if (!produto) return { erro: 'Escolha o produto.' };
+  const quantidade = num(dados.quantidade);
+  if (!(quantidade > 0)) return { erro: 'Informe a quantidade a produzir.' };
+  if ((produto.processo || []).length === 0) {
+    return {
+      erro: `${nomeDoProduto(produto)} ainda não tem processo produtivo. `
+        + 'Cadastre as etapas na aba Produtos antes de abrir a ordem.',
+    };
+  }
+
+  /* produto em desenvolvimento só vai para a linha como amostra — é a amostra
+     que fecha a engenharia, não a produção normal */
+  const amostra = !!dados.amostra;
+  const liberado = String(produto.status || '').toLowerCase() === 'liberado';
+  if (!liberado && !amostra) {
+    return {
+      erro: `${nomeDoProduto(produto)} está em ${produto.status || 'desenvolvimento'} — `
+        + 'só produto liberado abre ordem normal. Marque como amostra se for para aprovar o modelo.',
+    };
+  }
+
+  const versao = versaoVigenteDoProduto(db, produto.id);
+  const ordem = {
+    id: uid(),
+    codigo: proximoCodigo(db.ordens, 'OP', 4),
+    produtoId: produto.id,
+    /* qual engenharia gerou esta ordem: mudar o produto depois não reescreve
+       o que foi combinado aqui */
+    versaoId: versao ? versao.id : '',
+    versaoCodigo: versao ? versao.codigo : '',
+    amostra,
+    quantidade,
+    clienteId: dados.clienteId || '',
+    entrega: dados.entrega || '',
+    prioridade: num(dados.prioridade) || 5,
+    situacao: 'aberta',
+    observacao: String(dados.observacao || '').trim(),
+    anexos: [],
+    tarefas: tarefasDaOrdem(db, produto, quantidade),
+    criadoEm: agoraISO(),
+    criadoPor: usuario?.nome || '',
+    origem: 'industrial',
+  };
+  db.ordens = [...(db.ordens || []), ordem];
+
+  /* e o motor roda em cima dela, na mesma ação */
+  const plano = planejarOrdemDoSistema(db, ordem.id, usuario, dados);
+  if (plano.erro) {
+    /* a ordem não fica pela metade: se o motor recusa, ela não nasce */
+    db.ordens = db.ordens.filter((o) => o.id !== ordem.id);
+    return plano;
+  }
+  return plano;
+}
+
+/* ================================== o industrial devolve o estado à ordem */
+
+/**
+ * Espelha na ordem do sistema o que aconteceu no industrial. Sem isto a
+ * ordem ficaria "aberta" para sempre enquanto a fábrica já a terminou.
+ */
+export function situacaoDaOrdem(db, consolidacaoId, situacao, usuario) {
+  prepararIndustrial(db);
+  const consolidacao = (db.industrial.consolidacoes || []).find((c) => c.id === consolidacaoId);
+  if (!consolidacao || !consolidacao.ordemSistemaId) return { ok: false };
+  const ordem = ordemDoSistema(db, consolidacao.ordemSistemaId);
+  if (!ordem) return { ok: false };
+  const antes = ordem.situacao;
+  ordem.situacao = situacao;
+  if (situacao === 'concluida') ordem.concluidaEm = hojeISO();
+  registrarHistorico(db, {
+    tipo: 'ordem', usuario: usuario?.nome || '',
+    valorAnterior: antes, valorNovo: situacao,
+    motivo: `${ordem.codigo}: ${antes} → ${situacao}`,
+  });
+  return { ok: true, ordem };
 }

@@ -103,6 +103,7 @@ ${partes.join('\n')}
     divergenciasDaFicha, transformacoesDoProduto,
     /* a ordem nasce no módulo Produção; aqui ela ganha plano, reserva e MRP */
     ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
+    abrirOrdemDeProducao, versaoVigenteDoProduto, tarefasDaOrdem, situacaoDaOrdem,
   };
   window.GrupoIndustrial = GrupoIndustrial;
   window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;
