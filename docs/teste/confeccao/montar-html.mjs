@@ -15,6 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { empacotarIndustrial } from '../../../industrial/empacotar.mjs';
 
 const pasta = path.dirname(new URL(import.meta.url).pathname);
 const argumentos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -28,6 +29,8 @@ const saida = argumentos[1] || path.join(pasta, 'confeccao-erp-teste.html');
 const arquivoBase = argumentos[2] || path.join(pasta, 'base-teste.json');
 /* módulos que não vão para esta montagem, por id (ex.: produtos,producao) */
 const semModulos = opcao('sem-modulos').split(',').map((x) => x.trim()).filter(Boolean);
+/* o módulo industrial entra no HTML quando pedido (--com-industrial) */
+const comIndustrial = process.argv.slice(2).includes('--com-industrial');
 
 if (!entrada) {
   console.error('uso: node docs/teste/confeccao/montar-html.mjs <confeccao-erp.html> [saida.html] [base.json]'
@@ -114,14 +117,67 @@ const semente = `
 const corte = removerModulos(html, semModulos);
 html = corte.html;
 
-/* antes do script da aplicação, que é quem lê o armazenamento ao subir */
+/**
+ * Costura o módulo industrial no sistema.
+ *
+ * São cinco pontos de encaixe, todos no código que o sistema já tem: a base
+ * precisa conhecer a coleção nova para não descartá-la ao recarregar, a carga
+ * precisa preparar as coleções, o menu precisa da aba, os níveis de acesso
+ * precisam liberá-la e a tela precisa ser desenhada quando a aba está ativa.
+ */
+function encaixarIndustrial(texto) {
+  let saida = texto;
+  const encaixe = (de, para, onde) => {
+    if (!saida.includes(de)) throw new Error(`não achei onde encaixar o módulo industrial: ${onde}`);
+    saida = saida.replace(de, para);
+  };
+
+  /* 1. a coleção entra em emptyDb — sem isso o loadDb descarta o que não
+        conhece, e a base industrial sumiria a cada recarregada */
+  encaixe(`  configCanal: null,`, `  /* módulo industrial: carteira, budget, MRP, transformações */\n  industrial: null,\n  configCanal: null,`,
+    'emptyDb');
+
+  /* 2. a carga prepara as coleções do módulo */
+  for (const alvo of ['base', 'emptyDb()']) {
+    const de = `return migrarJornada(semearEngenharia(migrarGruposCortaveis(semearProduto(semearMateriais(garantirAdminPadrao(${alvo}))))));`;
+    const para = `return window.Industrial.preparar(migrarJornada(semearEngenharia(migrarGruposCortaveis(semearProduto(semearMateriais(garantirAdminPadrao(${alvo})))))));`;
+    encaixe(de, para, `loadDb (${alvo})`);
+  }
+
+  /* 3. a aba no menu */
+  encaixe(`{\n  id: 'canal',\n  label: 'Conversa aberta'\n}`,
+    `{\n  id: 'industrial',\n  label: 'Industrial'\n}, {\n  id: 'canal',\n  label: 'Conversa aberta'\n}`,
+    'ABAS_SISTEMA');
+
+  /* 4. quem já enxerga engenharia passa a enxergar industrial */
+  saida = saida.replace(/abas: \[([^\]]*)\]/g, (todo, dentro) => {
+    if (!dentro.includes(`'engenharia'`) || dentro.includes(`'industrial'`)) return todo;
+    return todo.replace(`'engenharia'`, `'engenharia', 'industrial'`);
+  });
+
+  /* 5. a tela, desenhada quando a aba está ativa */
+  encaixe(`}), tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
+    `}), tabAtual === 'industrial' && /*#__PURE__*/React.createElement(GrupoIndustrial, {\n`
+    + `    db: db,\n    update: update,\n    usuario: usuarioAtual,\n    perm: perm\n`
+    + `  }), tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
+    'render da aba');
+
+  return saida;
+}
+
+if (comIndustrial) html = encaixarIndustrial(html);
+
+/* antes do script da aplicação: a base no armazenamento e, quando pedido, o
+   módulo industrial — que define GrupoIndustrial antes de a aplicação subir */
 const marca = html.indexOf('<script>');
 if (marca < 0) throw new Error('não achei o script da aplicação no HTML.');
-const montado = html.slice(0, marca) + semente + html.slice(marca);
+const modulo = comIndustrial ? empacotarIndustrial() : '';
+const montado = html.slice(0, marca) + semente + modulo + html.slice(marca);
 
 fs.writeFileSync(saida, montado);
 const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
 console.log(`\nHTML de teste: ${saida}`);
 console.log(`  ${kb(montado.length)} (aplicação ${kb(html.length)} + base ${kb(dados.length)})`);
 if (corte.removidos.length) console.log(`  módulos fora desta montagem: ${corte.removidos.join(', ')}`);
+if (comIndustrial) console.log(`  módulo industrial embutido (${(modulo.length / 1024).toFixed(0)} KB)`);
 console.log('  abra no navegador e entre com qualquer usuário da lista · senha teste123\n');

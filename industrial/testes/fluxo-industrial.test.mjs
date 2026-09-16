@@ -306,6 +306,13 @@ test('✓ budget × realizado: desvio por departamento, com motivo', () => {
   assert.equal(comparacao.desvio, Number((comparacao.realizado - comparacao.planejado).toFixed(2)));
   const estamparia = comparacao.linhas.find((l) => l.departamento === 'Estamparia');
   assert.ok(estamparia.perdas > 0, 'a perda do silk aparece no realizado');
+
+  /* O custo do subproduto já foi contado quando ele foi produzido: somá-lo de
+     novo a cada setor faria o realizado sair um múltiplo do budget. Produzido
+     o planejado, sem retrabalho, os dois têm de ficar perto. */
+  const distancia = Math.abs(comparacao.realizado - comparacao.planejado) / comparacao.planejado;
+  assert.ok(distancia < 0.1,
+    `realizado ${comparacao.realizado} contra planejado ${comparacao.planejado}`);
 });
 
 test('nenhum saldo de processo fica negativo e o extrato confere', () => {

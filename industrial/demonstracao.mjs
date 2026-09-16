@@ -35,7 +35,7 @@ function material(db, trecho) {
   return (db.materiais || []).find((m) => String(m.nome).toUpperCase().includes(alvo)) || null;
 }
 
-function departamento(db, nome) {
+function setorPorNome(db, nome) {
   const alvo = String(nome).toUpperCase();
   return (db.departamentos || []).find((d) => String(d.nome).toUpperCase() === alvo) || null;
 }
@@ -73,11 +73,11 @@ export function montarDemonstracao(db, opcoes = {}) {
   const quantidade = num(opcoes.quantidade) || 10000;
 
   /* ---------------------------------------------------------- setores */
-  const corte = exigir(departamento(db, 'Corte'), 'A base não tem o setor Corte.');
-  const preparacao = exigir(departamento(db, 'Preparação'), 'A base não tem o setor Preparação.');
-  const estamparia = exigir(departamento(db, 'Estamparia'), 'A base não tem o setor Estamparia.');
-  const costura = exigir(departamento(db, 'Costura'), 'A base não tem o setor Costura.');
-  const acabamento = exigir(departamento(db, 'Acabamento'), 'A base não tem o setor Acabamento.');
+  const corte = exigir(setorPorNome(db, 'Corte'), 'A base não tem o setor Corte.');
+  const preparacao = exigir(setorPorNome(db, 'Preparação'), 'A base não tem o setor Preparação.');
+  const estamparia = exigir(setorPorNome(db, 'Estamparia'), 'A base não tem o setor Estamparia.');
+  const costura = exigir(setorPorNome(db, 'Costura'), 'A base não tem o setor Costura.');
+  const acabamento = exigir(setorPorNome(db, 'Acabamento'), 'A base não tem o setor Acabamento.');
 
   /* ------------------------------------------------- itens comprados
      Apontam para o material do almoxarifado: preço, saldo e fornecedor

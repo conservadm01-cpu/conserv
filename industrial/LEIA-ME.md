@@ -1,15 +1,17 @@
 # Módulo industrial — Budget, MRP e PCP por carteira
 
-Fundação de dados e motores de cálculo do módulo industrial do **Confecção ERP**
-(§1–§45 do documento do módulo). Esta entrega é a camada que calcula; as telas do menu
-Industrial (§46) e a injeção no HTML do sistema vêm na etapa seguinte.
+Módulo industrial do **Confecção ERP**: dados, motores de cálculo e a aba Industrial dentro
+do sistema.
 
 O módulo é código versionado aqui e testável no Node — não se edita o HTML de 37 mil linhas
-à mão. A montagem no navegador injeta estes arquivos, do mesmo jeito que a base de teste já
-é injetada hoje (`docs/teste/confeccao/montar-html.mjs`).
+à mão. A montagem injeta estes arquivos no sistema, do mesmo jeito que a base de teste já é
+injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"    # o teste obrigatório do §54, ponta a ponta
+node --test "industrial/testes/*.test.mjs"        # o teste do §54, ponta a ponta
+
+node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
+  --sem-modulos=produtos,producao --com-industrial
 ```
 
 ## A regra que organiza tudo
@@ -40,7 +42,23 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `modelo.mjs` | tipos de item, unidades e conversões, tipos de tempo, perdas, retalhos, alertas, as coleções novas e as fábricas de registro (item, estrutura, transformação, carteira, lote, movimento de processo) |
 | `motores.mjs` | consolidação, explosão da BOM, MRP, capacidade, budget, plano de produção, execução da transformação, custeio, custo acumulado, liberação da costura, WIP, realizado × budget, rastreabilidade e simulação |
 | `demonstracao.mjs` | a demonstração do §49: camiseta básica, 10.000 peças, três clientes, cinco processos |
+| `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
+| `empacotar.mjs` | junta os quatro num `<script>` clássico, dentro de um IIFE, e recusa nome declarado duas vezes |
 | `testes/fluxo-industrial.test.mjs` | o teste obrigatório do §54, com os 17 pontos de validação |
+
+## Como entra no sistema (§50)
+
+`montar-html.mjs --com-industrial` costura o módulo em cinco pontos do código que já existe:
+
+1. **`emptyDb`** ganha a coleção `industrial` — sem isso o `loadDb` descarta o que não conhece,
+   e a base industrial sumiria a cada recarregada.
+2. **A carga** passa a chamar `Industrial.preparar`, que garante as coleções novas.
+3. **`ABAS_SISTEMA`** ganha a aba Industrial.
+4. **Os níveis de acesso** que já enxergam Engenharia passam a enxergar Industrial.
+5. **A App** desenha `GrupoIndustrial` quando a aba está ativa.
+
+O HTML do sistema não é editado à mão em nenhum desses pontos: a montagem refaz tudo a cada
+build, a partir do arquivo original.
 
 ## O que reaproveita do sistema (§50)
 
@@ -136,10 +154,25 @@ ESTAMPADA"*), produção, produto acabado, custo acumulado, perdas, WIP, budget,
 desvio — mais a conferência de que nenhum saldo de processo fica negativo e de que o saldo
 é sempre o acumulado dos movimentos.
 
+## A aba Industrial
+
+| sub-aba | o que mostra |
+|---|---|
+| Painel | carteira, produzido, custo planejado × real, peças em processo, alertas e o WIP setor a setor |
+| Carteira | as linhas de pedido, o botão de consolidar e o de gerar o plano de produção |
+| Plano e budget | MRP com o que falta comprar, capacidade por setor com o gargalo, budget aberto em parcelas e a simulação de três tamanhos de lote |
+| Produção | as demandas por processo, a conferência de componentes e o apontamento da execução |
+| Estrutura | os itens tipados e as receitas de transformação, com entradas, saídas e ciclos |
+| Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
+
+Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000
+camisetas — é um clique, e serve para conhecer o módulo com número de verdade.
+
 ## Próxima etapa
 
-1. Telas do menu Industrial (§46) e dashboards por departamento (§28–§31).
-2. Injeção no HTML do sistema: `emptyDb` precisa conhecer `db.industrial` para a base
-   sobreviver ao recarregar, e `ABAS_SISTEMA` ganha a aba Industrial.
-3. Permissões por departamento (§51) sobre o cadastro de níveis que o sistema já tem.
-4. Compras: gravar pedido em aberto como entrada programada, fechando o ciclo do MRP.
+1. Dashboards por departamento (§29–§31), com a visão própria do corte, da preparação e da costura.
+2. Permissões por departamento (§51) sobre o cadastro de níveis que o sistema já tem.
+3. Compras: gravar pedido em aberto como entrada programada, fechando o ciclo do MRP — hoje o
+   recebimento do plano é um atalho lançado direto no almoxarifado.
+4. Cadastro pela tela: item, estrutura e transformação ainda se criam por código ou pela
+   demonstração.

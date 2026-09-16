@@ -740,7 +740,12 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
     quantidade: arredondar(rodadas * num(e.quantidade) * (1 + num(e.perda) / 100), 4),
   }))).map((c) => ({ ...c, quantidade: num(c.quantidade) }));
 
-  let custoEntradas = 0;
+  /* O custo do subproduto consumido já foi contado quando ELE foi produzido.
+     Somar os dois como "material" faria a mesma malha ser cobrada de novo a
+     cada setor — e o realizado da carteira sairia três vezes maior que o
+     budget. Por isso as duas origens andam separadas. */
+  let custoAlmoxarifado = 0;
+  let custoProcesso = 0;
   const consumosRegistrados = [];
   for (const consumo of consumos) {
     const it = item(db, consumo.itemId);
@@ -755,7 +760,7 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
       if (baixa && baixa.erro) return { erro: baixa.erro };
       const custoUnitario = num(baixa?.custoUnitario)
         || num((db.materiais || []).find((m) => m.id === it.materialId)?.custoMedio);
-      custoEntradas += consumo.quantidade * custoUnitario;
+      custoAlmoxarifado += consumo.quantidade * custoUnitario;
       consumosRegistrados.push({ itemId: it.id, nome: it.nome, quantidade: consumo.quantidade,
         unidade: it.unidade, custoUnitario: arredondar(custoUnitario, 4), origem: 'almoxarifado' });
     } else {
@@ -773,7 +778,7 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
           data: dados.data,
         }, usuario);
         if (r.erro) return { erro: r.erro };
-        custoEntradas += usar * num(s.custoUnitario);
+        custoProcesso += usar * num(s.custoUnitario);
         consumosRegistrados.push({ itemId: it.id, nome: it.nome, quantidade: arredondar(usar, 4),
           unidade: it.unidade, custoUnitario: num(s.custoUnitario), loteId: s.loteId, origem: s.local });
         restante -= usar;
@@ -796,7 +801,8 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
   const custos = custearExecucao(db, {
     departamentoId: trf.departamentoId,
     minutosPorTipo: minutos.porTipo,
-    custoEntradas,
+    custoAlmoxarifado,
+    custoProcesso,
     perdas: dados.perdas || [],
     retrabalho: num(dados.retrabalho),
   });
@@ -973,7 +979,9 @@ export function custearExecucao(db, dados) {
   const minutosSetup = num(t.preparacao) + num(t.setup);
   const trabalhados = minutosDiretos + minutosManuseio + minutosSetup;
 
-  const material = arredondar(num(dados.custoEntradas), 4);
+  const materialAlmoxarifado = arredondar(num(dados.custoAlmoxarifado ?? dados.custoEntradas), 4);
+  const materialProcesso = arredondar(num(dados.custoProcesso), 4);
+  const material = arredondar(materialAlmoxarifado + materialProcesso, 4);
   const maoDeObra = arredondar(minutosDiretos * num(mo.custoMinuto), 4);
   const manuseio = arredondar(minutosManuseio * num(mo.custoMinuto), 4);
   const setup = arredondar(minutosSetup * num(mo.custoMinuto), 4);
@@ -985,7 +993,13 @@ export function custearExecucao(db, dados) {
   const indiretoValor = arredondar(trabalhados * num(indireto.taxaMinuto), 4);
 
   return {
-    material, maoDeObra, manuseio, setup, maquina, energia, perda, retrabalho,
+    material,
+    /* o que saiu do almoxarifado nesta execução — é o que entra no realizado
+       da carteira, porque o resto já foi contado antes */
+    materialAlmoxarifado,
+    /* o custo que o subproduto trouxe consigo, para o custo acumulado */
+    materialProcesso,
+    maoDeObra, manuseio, setup, maquina, energia, perda, retrabalho,
     indireto: indiretoValor,
     conversao: arredondar(maoDeObra + manuseio + setup + maquina + energia + retrabalho + indiretoValor, 4),
     total: arredondar(material + maoDeObra + manuseio + setup + maquina + energia
@@ -1027,7 +1041,7 @@ export function custoAcumulado(db, loteId, contexto = null) {
       lote: lote.codigo,
       departamento: dep ? dep.nome : '',
       data: execucao.data,
-      material: execucao.custos.material,
+      material: num(execucao.custos.materialAlmoxarifado ?? execucao.custos.material),
       conversao: execucao.custos.conversao,
       total: execucao.custos.total,
       quantidade: lote.quantidade,
@@ -1161,7 +1175,7 @@ export function realizadoVersusBudget(db, consolidacaoId) {
       planejado: 0, planejadoMinutos: 0, realizado: 0, realizadoMinutos: 0, material: 0, perdas: 0, execucoes: 0,
     };
     atual.realizado = arredondar(atual.realizado + num(e.custos.conversao), 2);
-    atual.material = arredondar(atual.material + num(e.custos.material), 2);
+    atual.material = arredondar(atual.material + num(e.custos.materialAlmoxarifado ?? e.custos.material), 2);
     atual.perdas = arredondar(atual.perdas + num(e.custos.perda), 2);
     atual.realizadoMinutos = arredondar(atual.realizadoMinutos + num(e.minutos), 1);
     atual.execucoes += 1;
@@ -1180,7 +1194,8 @@ export function realizadoVersusBudget(db, consolidacaoId) {
     };
   });
 
-  const materialRealizado = arredondar(execucoes.reduce((s, e) => s + num(e.custos.material), 0), 2);
+  const materialRealizado = arredondar(execucoes.reduce(
+    (s, e) => s + num(e.custos.materialAlmoxarifado ?? e.custos.material), 0), 2);
   const conversaoRealizada = arredondar(linhas.reduce((s, l) => s + l.realizado, 0), 2);
   const realizado = arredondar(materialRealizado + conversaoRealizada, 2);
   const alertas = [];
