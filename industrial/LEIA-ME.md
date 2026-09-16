@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 80 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
+node --test "industrial/testes/*.test.mjs"        # 84 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=producao --com-industrial
@@ -59,7 +59,7 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 
 ## Como entra no sistema (§50)
 
-`montar-html.mjs --com-industrial` costura o módulo em cinco pontos do código que já existe:
+`montar-html.mjs --com-industrial` costura o módulo em seis pontos do código que já existe:
 
 1. **`emptyDb`** ganha a coleção `industrial` — sem isso o `loadDb` descarta o que não conhece,
    e a base industrial sumiria a cada recarregada.
@@ -67,6 +67,8 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 3. **`ABAS_SISTEMA`** ganha a aba Industrial.
 4. **Os níveis de acesso** que já enxergam Engenharia passam a enxergar Industrial.
 5. **A App** desenha `GrupoIndustrial` quando a aba está ativa.
+6. **A lista de Produtos** ganha o botão de copiar produto, que chama
+   `window.Industrial.copiarProdutoDoSistema` com o `update` do próprio sistema.
 
 O HTML do sistema não é editado à mão em nenhum desses pontos: a montagem refaz tudo a cada
 build, a partir do arquivo original.
@@ -274,6 +276,34 @@ desfaz os planos individuais (devolvendo reserva e cancelando as requisições q
 deles), junta as linhas num lote e replaneja. As ordens continuam existindo, cada cliente com
 a sua; o que muda é que passam a ser produzidas juntas. Ordem com produção já apontada não
 entra — agrupar apagaria o que aconteceu.
+
+## A segunda peça do mesmo tipo
+
+Cadastrar a segunda camiseta custava **vinte formulários**: um do produto, um por material
+(5) e um por etapa do roteiro (13), mais a liberação. Mas jaleco é jaleco — o roteiro da casa
+não muda a cada peça.
+
+Na lista de **Produtos**, cada linha ganhou o botão **⧉**: pergunta o que muda nesta peça
+("gola V", "manga curta", "sem bolso") e cria o produto novo com a ficha e o roteiro inteiros,
+já aberto para ajustar o que for diferente.
+
+`copiarProdutoDoSistema(db, produtoId, dados)` copia por dentro:
+
+| o que copia | o que não copia |
+|---|---|
+| ficha técnica com os consumos | as versões congeladas da origem |
+| roteiro inteiro, com setor, etapa, modo, tempo e pessoas | o status — a cópia nasce em **desenvolvimento** |
+| **os materiais que cada etapa consome**, remapeados para as linhas novas da ficha | a modelagem, que é o risco do outro produto |
+
+`dados` troca o que muda de uma peça para a outra: `complemento`, `medida`, `tipoId`,
+`trocas` (o mesmo modelo noutro tecido) e `consumos`. O nome é remontado do zero pela regra do
+sistema — grupo, tipo, medida, tecido e complemento, sem repetir termo — e o código sai da
+sigla do grupo (`CA001`), como o sistema faz. Dois produtos com o mesmo nome são recusados:
+seriam dois cadastros da mesma peça.
+
+**A essência fica de pé.** A cópia continua tendo de declarar ficha e roteiro — e continua
+nascendo em desenvolvimento, sem versão congelada, abrindo ordem **só como amostra** até
+alguém conferir a engenharia e liberar. O que ela não precisa é ser redigitada.
 
 ## O produto não se cadastra duas vezes
 

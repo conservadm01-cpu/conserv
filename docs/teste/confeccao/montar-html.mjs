@@ -165,6 +165,41 @@ function encaixarIndustrial(texto) {
     + `, tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
     'render da aba');
 
+  /* 6. copiar produto: a lista de produtos ganha o caminho curto para a
+        segunda peça do mesmo tipo. Cadastrar a segunda camiseta custava vinte
+        formulários — um do produto, um por material e um por etapa. A cópia
+        traz ficha e roteiro inteiros, e a pessoa ajusta o que muda. */
+  const acoesDoProduto = `    }, "\u{1F441}"), podeEditar && /*#__PURE__*/React.createElement("button", {
+      className: "btn-ic ic-danger",
+      onClick: () => remover(p)
+    }, "\xD7"))));
+  })))), modal && /*#__PURE__*/React.createElement(NovoProdutoModal, {`;
+  encaixe(acoesDoProduto, `    }, "\u{1F441}"), podeEditar && /*#__PURE__*/React.createElement("button", {
+      className: "btn-ic",
+      title: "Criar um produto novo a partir deste",
+      onClick: () => {
+        if (!window.Industrial || !window.Industrial.copiarProdutoDoSistema) return;
+        const complemento = prompt(
+          'O que muda nesta peça? O texto entra no nome do produto.\\n\\n' +
+          'ex.: gola V \u00b7 manga curta \u00b7 sem bolso',
+          p.complemento || '');
+        if (complemento === null) return;
+        let novoId = null;
+        update(d => {
+          const r = window.Industrial.copiarProdutoDoSistema(d, p.id, { complemento }, usuario);
+          if (r.erro) { alert(r.erro); return d; }
+          novoId = r.produto.id;
+          return d;
+        });
+        if (novoId) setSel(novoId);
+      }
+    }, "\u29C9"), podeEditar && /*#__PURE__*/React.createElement("button", {
+      className: "btn-ic ic-danger",
+      onClick: () => remover(p)
+    }, "\xD7"))));
+  })))), modal && /*#__PURE__*/React.createElement(NovoProdutoModal, {`,
+    'copiar produto na lista de produtos');
+
   return saida;
 }
 

@@ -24,7 +24,7 @@
 
 import {
   prepararIndustrial, registrarHistorico, estruturaDe, transformacaoQueProduz,
-  num, arredondar, normalizar, agoraISO, ehProduzido,
+  num, arredondar, normalizar, agoraISO, ehProduzido, uid,
 } from './modelo.mjs';
 import { salvarItem, salvarEstrutura, salvarTransformacao } from './cadastro.mjs';
 
@@ -470,5 +470,205 @@ export function produtosDaEngenharia(db) {
     derivados: linhas.filter((l) => l.derivado).length,
     divergentes: linhas.filter((l) => l.situacao === 'divergente').length,
     fora: linhas.filter((l) => !l.derivado).length,
+  };
+}
+
+/* ============================ copiar um produto que já existe (§ construção)
+
+   Cadastrar a segunda camiseta do mesmo tipo custava vinte formulários: um
+   para o produto, um por material e um por etapa do roteiro. Mas jaleco é
+   jaleco — o roteiro da casa não muda a cada peça.
+
+   Copiar não tira nada da essência: o produto novo continua tendo de declarar
+   ficha e roteiro, e continua nascendo em desenvolvimento até alguém liberar.
+   O que ele não precisa é ser redigitado.
+*/
+
+const PISTAS_TECIDO = ['tecido', 'malha', 'oxford', 'brim', 'microfibra', 'tnt', 'forro',
+  'tactel', 'helanca', 'viscose', 'algodao', 'poliester', 'sarja', 'jeans', 'moletom',
+  'ribana', 'crepe', 'linho', 'lona', 'nylon', 'chiffon', 'cetim', 'tricoline', 'soft', 'plush'];
+
+const pareceTecido = (nome) => {
+  const n = normalizar(nome);
+  return PISTAS_TECIDO.some((p) => n.includes(normalizar(p)));
+};
+
+/** É tecido — o que dá nome ao produto — ou é aviamento? (mesma regra do sistema) */
+function ehTecidoDoSistema(db, material) {
+  if (!material) return false;
+  if (material.cortavel === true) return true;
+  if (material.cortavel === false) return false;
+  const g = (db.gruposMaterial || []).find((x) => x.id === material.grupoId);
+  if (g) {
+    if (g.cortavel === true) return true;
+    const pai = g.paiId ? (db.gruposMaterial || []).find((x) => x.id === g.paiId) : null;
+    if (pai && pai.cortavel === true) return true;
+    if (g.cortavel === undefined && (!pai || pai.cortavel === undefined)) {
+      return pareceTecido(g.nome) || (pai ? pareceTecido(pai.nome) : false) || pareceTecido(material.nome);
+    }
+    return false;
+  }
+  return pareceTecido(material.nome);
+}
+
+/** A medida escrita como o sistema escreve: ÚNICO, P/M/G/GG, 120X80. */
+function textoDaMedida(produto) {
+  const m = (produto && produto.medida) || {};
+  if (m.formato === 'grade') return (m.tamanhos || []).join('/') || 'GRADE';
+  if (m.formato === 'unico') return 'ÚNICO';
+  return [m.largura, m.altura, m.profundidade]
+    .filter((x) => num(x) > 0).map((x) => num(x)).join('X');
+}
+
+/**
+ * O nome do produto, montado como o sistema monta: grupo, tipo, medida,
+ * tecido e complemento — sem repetir termo que já apareceu.
+ */
+export function montarNomeDoProduto(db, produto) {
+  const g = (db.gruposProduto || []).find((x) => x.id === produto.grupoId);
+  const tp = (db.tiposProduto || []).find((x) => x.id === produto.tipoId);
+  const materiais = (produto.tecidos || [])
+    .map((t) => (db.materiais || []).find((m) => m.id === t.materialId))
+    .filter(Boolean);
+  const cortaveis = materiais.filter((m) => ehTecidoDoSistema(db, m)).map((m) => m.nome);
+  /* produto que não usa tecido nenhum ainda precisa de nome */
+  const tecidos = [...new Set(cortaveis.length ? cortaveis : materiais.map((m) => m.nome))];
+
+  const partes = [
+    g ? g.nome : '',
+    tp && tp.nome !== 'Liso' ? tp.nome : '',
+    textoDaMedida(produto),
+    tecidos.join(' + '),
+    produto.complemento || '',
+  ].filter(Boolean).map((x) => String(x).toUpperCase().trim());
+
+  const vistos = new Set();
+  return partes.filter((x) => {
+    const chave = x.replace(/\s+/g, ' ');
+    if (vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  }).join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Código sequencial por sigla do grupo, como o sistema faz. */
+export function proximoCodigoDeProduto(db, grupoId) {
+  const g = (db.gruposProduto || []).find((x) => x.id === grupoId);
+  const sigla = g ? (g.sigla || normalizar(g.nome).replace(/\s/g, '').slice(0, 3)) : 'PRD';
+  const usados = (db.produtos || [])
+    .map((p) => String(p.codigo || ''))
+    .filter((c) => c.startsWith(sigla))
+    .map((c) => num((c.slice(sigla.length).match(/^\d+/) || [])[0]))
+    .filter((n) => n > 0);
+  return `${sigla}${String((usados.length ? Math.max(...usados) : 0) + 1).padStart(3, '0')}`;
+}
+
+/**
+ * Cria um produto novo a partir de outro: ficha e roteiro inteiros, com os
+ * vínculos por dentro remapeados — cada etapa continua apontando para os
+ * materiais certos, agora os da cópia.
+ *
+ * `dados` pode trocar o que muda de uma peça para a outra:
+ *   complemento   o que diferencia no nome ("gola V", "manga curta")
+ *   medida        outro formato ou outra grade
+ *   tipoId        liso, silk, bordado…
+ *   trocas        { materialAntigoId: materialNovoId } — o mesmo modelo noutro tecido
+ *   consumos      { materialId: quantidade } — o consumo que mudou
+ *
+ * O que ela NÃO copia: as versões congeladas e o status. A cópia nasce em
+ * desenvolvimento — liberar é decisão de gente, com a engenharia conferida.
+ */
+export function copiarProdutoDoSistema(db, produtoId, dados = {}, usuario) {
+  prepararIndustrial(db);
+  const origem = produtoDoSistema(db, produtoId);
+  if (!origem) return { erro: 'Produto de origem não encontrado.' };
+
+  const grupoId = dados.grupoId || origem.grupoId;
+  if (!grupoId) return { erro: 'O produto de origem não tem grupo — escolha um.' };
+
+  const trocas = dados.trocas || {};
+  const consumos = dados.consumos || {};
+
+  /* 1. a ficha: cada linha ganha id novo, e guarda de qual linha ela veio
+        para o roteiro poder ser remapeado */
+  const deParaFicha = new Map();
+  const tecidos = (origem.tecidos || []).map((t) => {
+    const materialId = trocas[t.materialId] || t.materialId;
+    const registro = {
+      id: uid(),
+      materialId,
+      quantidade: consumos[materialId] !== undefined
+        ? num(consumos[materialId])
+        : num(t.quantidade),
+      riscoId: '',                       /* a modelagem é do outro produto */
+      observacao: t.observacao || '',
+    };
+    deParaFicha.set(t.id, registro.id);
+    return registro;
+  });
+
+  /* 2. o roteiro: mesma sequência, mesmos tempos, mesmos setores — com os
+        materiais de cada etapa apontando para as linhas novas da ficha */
+  const processo = [...(origem.processo || [])]
+    .sort((a, b) => num(a.ordem) - num(b.ordem))
+    .map((p, i) => ({
+      ...p,
+      id: uid(),
+      ordem: i + 1,
+      materiais: (p.materiais || []).map((id) => deParaFicha.get(id)).filter(Boolean),
+      subprodutos: [],                   /* as partes são do outro produto */
+      anexos: [],
+    }));
+
+  const novo = {
+    id: uid(),
+    codigo: proximoCodigoDeProduto(db, grupoId),
+    grupoId,
+    tipoId: dados.tipoId !== undefined ? dados.tipoId : (origem.tipoId || ''),
+    complemento: dados.complemento !== undefined
+      ? String(dados.complemento).trim()
+      : `${origem.complemento || ''} (cópia)`.trim(),
+    medida: dados.medida || JSON.parse(JSON.stringify(origem.medida || { formato: 'dimensoes' })),
+    tecidos,
+    processo,
+    preco: num(dados.preco ?? origem.preco),
+    ficha: { observacao: (origem.ficha || {}).observacao || '' },
+    /* a cópia nasce em desenvolvimento, sempre: liberar exige conferir */
+    status: 'desenvolvimento',
+    ativo: true,
+    copiadoDe: origem.id,
+    copiadoDeCodigo: origem.codigo,
+    historicoStatus: [{
+      status: 'desenvolvimento',
+      quando: agoraISO(),
+      quem: usuario?.nome || '',
+      motivo: `Criado a partir de ${origem.codigo}`,
+    }],
+    criadoEm: agoraISO(),
+    criadoPor: usuario?.nome || '',
+  };
+  novo.nome = montarNomeDoProduto(db, novo);
+
+  const repetido = (db.produtos || []).find(
+    (p) => p.ativo !== false && normalizar(p.nome) === normalizar(novo.nome));
+  if (repetido) {
+    return {
+      erro: `Já existe ${repetido.codigo} com este nome (${repetido.nome}). `
+        + 'Mude o complemento, a medida ou o tecido para diferenciar.',
+    };
+  }
+
+  db.produtos = [...(db.produtos || []), novo];
+  registrarHistorico(db, {
+    tipo: 'engenharia', usuario: usuario?.nome || '',
+    motivo: `${novo.codigo} ${novo.nome} criado a partir de ${origem.codigo}: `
+      + `${tecidos.length} material(is) e ${processo.length} etapa(s) copiados`,
+  });
+
+  return {
+    produto: novo,
+    origem,
+    materiais: tecidos.length,
+    etapas: processo.length,
   };
 }

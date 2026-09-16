@@ -101,6 +101,7 @@ ${partes.join('\n')}
     /* a ponte com a Engenharia: o produto do sistema é a origem */
     produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto,
     divergenciasDaFicha, transformacoesDoProduto,
+    copiarProdutoDoSistema, montarNomeDoProduto, proximoCodigoDeProduto,
     /* a ordem nasce no módulo Produção; aqui ela ganha plano, reserva e MRP */
     ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
     abrirOrdemDeProducao, versaoVigenteDoProduto, tarefasDaOrdem, situacaoDaOrdem,

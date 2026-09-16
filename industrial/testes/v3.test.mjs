@@ -28,6 +28,7 @@ import { testarFluxoCompletoERPIndustrial } from '../testes-v3.mjs';
 import { testarIndustrialV2 } from '../testes-v2.mjs';
 import {
   produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto, divergenciasDaFicha,
+  copiarProdutoDoSistema, montarNomeDoProduto, proximoCodigoDeProduto,
 } from '../engenharia.mjs';
 import {
   ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
@@ -667,4 +668,113 @@ test('Produção: conferir componentes não escreve nada na base', () => {
   const antes = etapa.status;
   liberarParaCostura(db, etapa.id, { nome: 'Teste' });
   assert.equal(etapa.status, antes, 'com falta, liberar não pode mudar o status');
+});
+
+/* ================== copiar um produto que já existe */
+
+test('Copiar produto: ficha e roteiro inteiros, com os vínculos remapeados', () => {
+  const db = nova();
+  const origem = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const antes = db.produtos.length;
+
+  const r = copiarProdutoDoSistema(db, origem.id, { complemento: 'GOLA V' }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  assert.equal(db.produtos.length, antes + 1);
+
+  /* a ficha e o roteiro vieram inteiros */
+  assert.equal(r.materiais, origem.tecidos.length);
+  assert.equal(r.etapas, origem.processo.length);
+  assert.deepEqual(
+    r.produto.tecidos.map((t) => `${t.materialId}:${t.quantidade}`),
+    origem.tecidos.map((t) => `${t.materialId}:${t.quantidade}`));
+  assert.deepEqual(
+    r.produto.processo.map((x) => `${x.etapaId}:${x.tempo}:${x.modo}:${x.pessoas}`),
+    [...origem.processo].sort((a, b) => num(a.ordem) - num(b.ordem))
+      .map((x) => `${x.etapaId}:${x.tempo}:${x.modo}:${x.pessoas}`));
+
+  /* nada é compartilhado: ids novos dos dois lados */
+  const idsOrigem = new Set([...origem.tecidos.map((t) => t.id), ...origem.processo.map((x) => x.id)]);
+  for (const t of r.produto.tecidos) assert.ok(!idsOrigem.has(t.id), 'linha da ficha com id repetido');
+  for (const x of r.produto.processo) assert.ok(!idsOrigem.has(x.id), 'etapa com id repetido');
+
+  /* e cada etapa continua apontando para os materiais certos — os da cópia */
+  const daFicha = new Set(r.produto.tecidos.map((t) => t.id));
+  const soltos = r.produto.processo.flatMap((x) => x.materiais).filter((id) => !daFicha.has(id));
+  assert.equal(soltos.length, 0, 'etapa apontando para material de outro produto');
+  assert.equal(
+    r.produto.processo.filter((x) => x.materiais.length).length,
+    origem.processo.filter((x) => x.materiais.length).length,
+    'etapas com material amarrado mudaram de quantidade');
+
+  /* o ferramental industrial lê a cópia igual: mesma conta de minutos */
+  const ficha = lerFichaDoProduto(db, r.produto.id);
+  assert.equal(ficha.pendencias.length, 0, ficha.pendencias.join(' | '));
+  assert.equal(ficha.minutosPorPeca, lerFichaDoProduto(db, origem.id).minutosPorPeca);
+});
+
+test('Copiar produto: nasce em desenvolvimento e sem as versões da origem', () => {
+  const db = nova();
+  const origem = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  assert.equal(origem.status, 'liberado');
+  const versoesAntes = db.versoesProduto.length;
+
+  const r = copiarProdutoDoSistema(db, origem.id, { complemento: 'GOLA V' }, { nome: 'Teste' });
+  assert.equal(r.produto.status, 'desenvolvimento',
+    'a cópia nasceu liberada — liberar é decisão de gente, com a engenharia conferida');
+  assert.equal(db.versoesProduto.length, versoesAntes, 'copiou a versão congelada da origem');
+  assert.equal(r.produto.copiadoDe, origem.id);
+  assert.equal(r.produto.historicoStatus.length, 1);
+  /* e a modelagem não vem: o risco é do outro produto */
+  assert.ok(r.produto.tecidos.every((t) => !t.riscoId));
+
+  /* por isso só abre ordem como amostra */
+  const normal = abrirOrdemDeProducao(db, { produtoId: r.produto.id, quantidade: 10 }, { nome: 'T' });
+  assert.match(normal.erro, /amostra/);
+  const amostra = abrirOrdemDeProducao(db,
+    { produtoId: r.produto.id, quantidade: 10, amostra: true }, { nome: 'T' });
+  assert.ok(!amostra.erro, amostra.erro);
+});
+
+test('Copiar produto: trocar o tecido e o consumo remonta o nome', () => {
+  const db = nova();
+  const origem = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const malha = db.materiais.find((m) => m.nome.includes('MALHA PV'));
+  const micro = db.materiais.find((m) => m.nome.includes('MICROFIBRA'));
+
+  const r = copiarProdutoDoSistema(db, origem.id, {
+    complemento: 'MANGA CURTA',
+    trocas: { [malha.id]: micro.id },
+    consumos: { [micro.id]: 0.3 },
+  }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+
+  const ficha = lerFichaDoProduto(db, r.produto.id);
+  assert.ok(!ficha.materiais.some((m) => m.materialId === malha.id), 'o tecido antigo ficou');
+  assert.equal(ficha.materiais.find((m) => m.materialId === micro.id).quantidade, 0.3);
+
+  /* o nome é montado do zero, com o tecido novo — como o sistema monta */
+  assert.ok(r.produto.nome.includes('MICROFIBRA'), r.produto.nome);
+  assert.ok(!r.produto.nome.includes('MALHA PV'), r.produto.nome);
+  assert.ok(r.produto.nome.includes('MANGA CURTA'), r.produto.nome);
+  assert.equal(r.produto.nome, montarNomeDoProduto(db, r.produto));
+});
+
+test('Copiar produto: código pela sigla do grupo, e nome repetido é recusado', () => {
+  const db = nova();
+  const origem = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const grupo = db.gruposProduto.find((g) => g.id === origem.grupoId);
+
+  const r = copiarProdutoDoSistema(db, origem.id, { complemento: 'GOLA V' }, { nome: 'Teste' });
+  assert.ok(r.produto.codigo.startsWith(grupo.sigla), `${r.produto.codigo} não usa ${grupo.sigla}`);
+  assert.equal(r.produto.codigo, `${grupo.sigla}001`);
+
+  /* o próximo pega o número seguinte, não a contagem */
+  const r2 = copiarProdutoDoSistema(db, origem.id, { complemento: 'GOLA POLO' }, { nome: 'Teste' });
+  assert.equal(r2.produto.codigo, `${grupo.sigla}002`);
+  assert.equal(proximoCodigoDeProduto(db, origem.grupoId), `${grupo.sigla}003`);
+
+  /* dois produtos com o mesmo nome seriam dois cadastros da mesma peça */
+  const repetido = copiarProdutoDoSistema(db, origem.id, { complemento: 'GOLA V' }, { nome: 'Teste' });
+  assert.match(repetido.erro, /Já existe/);
+  assert.equal(db.produtos.filter((p) => p.nome === r.produto.nome).length, 1);
 });
