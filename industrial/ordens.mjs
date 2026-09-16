@@ -86,14 +86,35 @@ export function abrirOrdem(db, dados, usuario) {
   if (linha.erro) return linha;
   linha.registro.origem = 'ordem';
 
+  return planejarLinhaDeCarteira(db, linha.registro, dados, usuario);
+}
+
+/**
+ * O planejamento industrial de uma linha de carteira já existente: consolida,
+ * gera o plano, reserva o material que existe e requisita o que falta.
+ *
+ * Fica separado de `abrirOrdem` porque a linha pode nascer de dois lugares —
+ * aqui dentro, ou de uma ordem aberta no módulo Produção do sistema. O motor
+ * é o mesmo; muda só quem pediu.
+ */
+export function planejarLinhaDeCarteira(db, registroLinha, dados, usuario) {
+  prepararIndustrial(db);
+  const produto = itemDaOrdem(db, registroLinha.itemId);
+  if (!produto) return { erro: 'Produto da linha não encontrado.' };
+  const quantidade = num(registroLinha.quantidade);
+  const linha = { registro: registroLinha };
+
   const consolidacao = consolidarCarteira(db, {
     linhaIds: [linha.registro.id],
-    nome: `${produto.nome} · ${quantidade}`,
+    nome: dados.nomeDaOrdem || `${produto.nome} · ${quantidade}`,
   });
   if (consolidacao.erro) return consolidacao;
   consolidacao.consolidacao.tipo = 'ordem';
   consolidacao.consolidacao.origem = 'ordem';
-  consolidacao.consolidacao.codigoOrdem = proximoCodigoOrdem(db);
+  /* uma ordem aberta no módulo Produção traz o próprio código (OP-0001): o
+     industrial não inventa um segundo número para a mesma ordem */
+  consolidacao.consolidacao.codigoOrdem = dados.codigoOrdem || proximoCodigoOrdem(db);
+  consolidacao.consolidacao.ordemSistemaId = dados.ordemSistemaId || '';
 
   const plano = planoDeProducao(db, { consolidacaoId: consolidacao.consolidacao.id, usuario });
   if (plano.erro) return plano;

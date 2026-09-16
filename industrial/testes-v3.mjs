@@ -37,6 +37,7 @@ import {
 } from './integracao.mjs';
 import { montarDemonstracao } from './demonstracao.mjs';
 import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
+import { ordensDoSistema, planejarOrdensPendentes } from './ordens-sistema.mjs';
 
 /* Os nomes com que a demonstração batiza cada peça: é por eles que o cenário
    é reconhecido quando já está na base. */
@@ -148,6 +149,10 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
       `${depois.derivados} de ${depois.total} produtos da Engenharia no industrial`);
     exigir(depois.divergentes === 0, `${depois.divergentes} produto(s) divergindo da ficha`);
     ctx.engenharia = depois;
+    /* as ordens já abertas no módulo Produção entram no motor no passo 30:
+       aqui elas só são contadas, porque planejá-las agora reservaria o
+       material que os passos seguintes vão comprar e consumir */
+    ctx.ordensAbertas = ordensDoSistema(db).total;
 
     /* se a base já tem o cenário, ele é reaproveitado: montar de novo criaria
        um segundo item para cada material, que é exatamente a duplicidade que
@@ -161,6 +166,7 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
     exigir(Object.keys(itens).length >= 14, `${Object.keys(itens).length} itens no cenário`);
     return {
       detalhe: `${ctx.engenharia.total} produto(s) da Engenharia derivado(s) · `
+        + `${ctx.ordensAbertas} ordem(ns) abertas no módulo Produção · `
         + `${Object.keys(itens).length} itens do cenário · 5 transformações · `
         + `${ctx.reaproveitado ? 'cenário já existente reaproveitado' : `${ctx.cenario.carteira.length} linhas de carteira criadas`}`,
     };
@@ -558,6 +564,15 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
   });
 
   /* 30 */ passo(30, 'Auditoria, integração e reconciliação fecham', () => {
+    /* o motor recebe as ordens que o módulo Produção já tinha abertas: cada
+       uma ganha plano, reserva e requisição, e é só então que a cadeia está
+       inteira de ponta a ponta */
+    const ordens = planejarOrdensPendentes(db, usuario);
+    exigir(ordens.falhas.length === 0,
+      `ordens que não entraram: ${ordens.falhas.map((f) => `${f.codigo} (${f.erro})`).join(' · ')}`);
+    const doSistema = ordensDoSistema(db);
+    exigir(doSistema.semPlano === 0, `${doSistema.semPlano} ordem(ns) do sistema sem plano`);
+
     const integracao = auditarIntegracaoMateriaisEngenhariaIndustrial(db);
     const industrial = auditarIndustrial(db, { registrar: false, usuario });
     const reconciliacao = reconciliarEstoqueIndustrial(db);
@@ -575,7 +590,8 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
     const alertas = integracao.alertas.length + industrial.alertas.length;
     return {
       alerta: alertas > 0,
-      detalhe: `integração ${indicadores.integracao}% · ${alertas} alerta(s) · estoque reconciliado`,
+      detalhe: `integração ${indicadores.integracao}% · ${doSistema.planejadas} ordem(ns) do `
+        + `sistema planejada(s) · ${alertas} alerta(s) · estoque reconciliado`,
     };
   });
 

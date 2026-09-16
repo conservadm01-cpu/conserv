@@ -26,14 +26,22 @@ import { testarIndustrialV2 } from '../testes-v2.mjs';
 import {
   produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto, divergenciasDaFicha,
 } from '../engenharia.mjs';
+import {
+  ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
+} from '../ordens-sistema.mjs';
 
-/** Traz para o industrial os produtos que a Engenharia já tem cadastrados. */
+/**
+ * A base ligada: os produtos que a Engenharia já tem e as ordens que o módulo
+ * Produção já abriu entram no motor industrial.
+ */
 const ligarEngenharia = (db) => {
   for (const l of produtosDaEngenharia(db).linhas) {
     if (l.derivado || l.pendencias.length) continue;
     const r = derivarProdutoDaEngenharia(db, l.produtoId, { nome: 'Teste' });
     assert.ok(!r.erro, `${l.codigo}: ${r.erro}`);
   }
+  const ordens = planejarOrdensPendentes(db, { nome: 'Teste' });
+  assert.equal(ordens.falhas.length, 0, JSON.stringify(ordens.falhas));
   return db;
 };
 
@@ -144,7 +152,8 @@ test('V3 §30 — a saúde da engenharia industrial é um número com prova', ()
      é cadastro partido, e o número precisa dizer isso */
   const partido = indicadoresDeIntegracao(db);
   assert.ok(partido.integracao < 100,
-    'com 6 produtos da Engenharia fora do industrial a nota continuou cheia');
+    'com 6 produtos da Engenharia e 8 ordens fora do industrial a nota continuou cheia');
+  assert.equal(partido.provas.find((p) => p.id === 'ordens_planejadas').ok, 0);
   assert.equal(partido.provas.find((p) => p.id === 'produtos_da_engenharia').ok, 0);
 
   ligarEngenharia(db);
@@ -332,5 +341,88 @@ test('Engenharia → industrial: os seis produtos da base viram ordens de verdad
     const custo = custoPadrao(db, l.itemId, 1000);
     assert.ok(!custo.erro, `${l.codigo}: ${custo.erro}`);
     assert.ok(num(custo.porPeca) > 0, `${l.codigo} saiu com custo zero`);
+  }
+});
+
+/* ============================ a ordem nasce no módulo Produção */
+
+test('Produção → industrial: a ordem do sistema vira plano, reserva e MRP', () => {
+  const db = nova();
+  const antes = ordensDoSistema(db);
+  assert.equal(antes.total, 8, 'a base tem oito ordens em aberto');
+  assert.equal(antes.planejadas, 0);
+  assert.ok(antes.linhas.every((l) => l.estado === 'sem_plano'));
+
+  const alvo = antes.linhas.find((l) => l.codigo === 'OP-0002');
+  const r = planejarOrdemDoSistema(db, alvo.ordemId, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+
+  /* o código continua sendo o do sistema — não se inventa um segundo número */
+  assert.equal(r.ordem.codigoOrdem, 'OP-0002');
+  assert.equal(r.ordem.ordemSistemaId, alvo.ordemId);
+  assert.equal(db.ordens.find((o) => o.id === alvo.ordemId).industrialId, r.ordem.id);
+
+  /* e o motor rodou inteiro */
+  assert.ok(r.plano.ordens.length > 0, 'nenhuma etapa industrial');
+  assert.ok(r.reserva.feitas.length > 0, 'nada reservado');
+  assert.ok(num(r.custoPlanejado) > 0, 'budget zerado');
+
+  /* o produto veio da ficha junto, sem ninguém pedir */
+  assert.ok(r.item.produtoId, 'o item industrial não ficou ligado ao produto do sistema');
+
+  /* planejar de novo é recusado, com frase */
+  const outra = planejarOrdemDoSistema(db, alvo.ordemId, { nome: 'Teste' });
+  assert.match(outra.erro, /já está planejada/);
+
+  const depois = ordensDoSistema(db);
+  assert.equal(depois.planejadas, 1);
+  assert.equal(depois.linhas.find((l) => l.codigo === 'OP-0002').estado, 'planejada');
+});
+
+test('Produção → industrial: a quantidade da ordem manda no MRP', () => {
+  const db = nova();
+  const alvo = ordensDoSistema(db).linhas.find((l) => l.codigo === 'OP-0002');
+  const r = planejarOrdemDoSistema(db, alvo.ordemId, { nome: 'Teste' });
+
+  /* OP-0002 são 1.500 camisetas; a ficha pede 0,21 kg de malha por peça */
+  const explosao = explodirBOM(db, r.item.id, alvo.quantidade, { considerarEstoque: false });
+  const malha = db.materiais.find((m) => m.nome.includes('MALHA PV'));
+  const linha = explosao.necessidades.find((l) => l.item.materialId === malha.id);
+  assert.equal(alvo.quantidade, 1500);
+  assert.equal(linha.bruta, 315, '0,21 × 1.500');
+});
+
+test('Produção → industrial: ordem fechada não entra, e a auditoria vê a que falta', () => {
+  const db = nova();
+  const concluida = db.ordens.find((o) => o.situacao === 'concluida');
+  const r = planejarOrdemDoSistema(db, concluida.id, { nome: 'Teste' });
+  assert.match(r.erro, /concluida|concluída/);
+
+  const auditoria = auditarIntegracaoMateriaisEngenhariaIndustrial(db);
+  assert.ok(auditoria.alertas.some((a) => a.tipo === 'ordem_sem_plano'),
+    'oito ordens em aberto sem plano e nenhum alerta');
+
+  planejarOrdensPendentes(db, { nome: 'Teste' });
+  const limpa = auditarIntegracaoMateriaisEngenhariaIndustrial(db);
+  assert.ok(!limpa.alertas.some((a) => a.tipo === 'ordem_sem_plano'));
+  assert.equal(ordensDoSistema(db).semPlano, 0);
+});
+
+test('Produção → industrial: planejar as oito ordens da base de uma vez', () => {
+  const db = nova();
+  const r = planejarOrdensPendentes(db, { nome: 'Teste' });
+  assert.equal(r.falhas.length, 0, JSON.stringify(r.falhas));
+  assert.equal(r.feitas.length, 8);
+  assert.ok(r.feitas.every((f) => f.etapas > 0 && f.custo > 0));
+
+  const estado = ordensDoSistema(db);
+  assert.equal(estado.planejadas, 8);
+  assert.ok(estado.custoPlanejado > 0);
+
+  /* cada ordem do sistema tem uma consolidação, e só uma */
+  for (const l of estado.linhas) {
+    const achadas = db.industrial.consolidacoes.filter((c) => c.ordemSistemaId === l.ordemId);
+    assert.equal(achadas.length, 1, `${l.codigo} tem ${achadas.length} consolidações`);
+    assert.equal(planoDaOrdemDoSistema(db, l.ordemId).codigoOrdem, l.codigo);
   }
 });

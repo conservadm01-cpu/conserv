@@ -53,8 +53,9 @@ node docs/teste/confeccao/gerar-base.mjs ~/confeccao-erp.html
 # 2. confere a base do jeito que o sistema a lê — falha se alguma conta não fechar
 node docs/teste/confeccao/conferir-base.mjs ~/confeccao-erp.html
 
-# 3. monta o HTML de teste com a base dentro
-node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/confeccao-erp-teste.html
+# 3. monta o HTML de teste com a base dentro (--com-industrial embute o motor industrial)
+node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/confeccao-erp-teste.html \
+  --com-industrial
 
 # a montagem pode deixar módulos de fora — eles somem do menu e dos níveis de acesso
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \

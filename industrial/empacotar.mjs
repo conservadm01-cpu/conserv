@@ -18,8 +18,9 @@ const ARQUIVOS = [
   'modelo.mjs', 'reservas.mjs', 'compras.mjs', 'integracao.mjs', 'motores.mjs',
   'cadastro.mjs', 'engenharia.mjs', 'ordens.mjs', 'auditoria.mjs', 'demonstracao.mjs',
   'testes-v2.mjs', 'testes-v3.mjs',
-  'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs', 'telas-compras.mjs',
-  'telas-integracao.mjs',
+  'ordens-sistema.mjs',
+  'interface.mjs', 'telas-produtos.mjs', 'telas-compras.mjs',
+  'telas-integracao.mjs', 'telas-ordens-sistema.mjs',
 ];
 
 /** Tira `import ... from '...';` e o prefixo `export` das declarações. */
@@ -100,10 +101,11 @@ ${partes.join('\n')}
     /* a ponte com a Engenharia: o produto do sistema é a origem */
     produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto,
     divergenciasDaFicha, transformacoesDoProduto,
+    /* a ordem nasce no módulo Produção; aqui ela ganha plano, reserva e MRP */
+    ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
   };
   window.GrupoIndustrial = GrupoIndustrial;
   window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;
-  window.GrupoOrdens = GrupoOrdens;
 })();
 </script>
 `;

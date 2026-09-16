@@ -25,6 +25,8 @@ import { gerarRequisicoes, painelCompras } from './compras.mjs';
 import { auditarIndustrial } from './auditoria.mjs';
 import { TelaCompras, TelaAuditoria } from './telas-compras.mjs';
 import { TelaIntegracao } from './telas-integracao.mjs';
+import { TelaOrdensDoSistema } from './telas-ordens-sistema.mjs';
+import { ordensDoSistema, planejarOrdensPendentes } from './ordens-sistema.mjs';
 import { indicadoresDeIntegracao } from './integracao.mjs';
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
 import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
@@ -126,13 +128,15 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
 
   const vazioAinda = itens.length === 0;
 
-  const ordensAbertas = (ind.consolidacoes || []).filter(
-    (c) => c.codigoOrdem && c.status !== 'concluida' && c.status !== 'cancelada').length;
+  /* A ordem é aberta no módulo Produção e o produto, no módulo Produtos: as
+     duas telas que a fábrica já conhece. Aqui fica o motor — plano, MRP,
+     reserva, compra, custo e rastro. */
+  const doSistema = ordensDoSistema(db);
   const abas = [
     { id: 'painel', label: 'Painel' },
-    { id: 'produtos', label: `Produtos (${itens.filter((x) => x.tipo === 'PRODUTO_ACABADO').length})` },
+    { id: 'ordens', label: `Ordens (${doSistema.planejadas}/${doSistema.total})` },
     { id: 'carteira', label: `Carteira (${(ind.carteira || []).length})` },
-    { id: 'ordens', label: `Ordens (${ordensAbertas})` },
+    { id: 'engenharia', label: `Ficha industrial (${itens.filter((x) => x.tipo === 'PRODUTO_ACABADO').length})` },
     { id: 'plano', label: 'Plano e budget' },
     { id: 'compras', label: `Compras (${(ind.requisicoesCompra || []).filter(
       (r) => !['recebida', 'cancelada'].includes(r.status)).length})` },
@@ -160,11 +164,11 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
        continuam à mão — quem quer cadastrar o próprio produto vai direto
        para Produtos, sem passar pela demonstração */
     painel: () => (vazioAinda
-      ? boasVindas(db, mexer, usuario, erro, () => setSub('produtos'))
+      ? boasVindas(db, mexer, usuario, erro, () => setSub('engenharia'))
       : h(TelaPainel, contexto)),
-    produtos: () => embutir(GrupoProdutosIndustriais),
+    engenharia: () => embutir(GrupoProdutosIndustriais),
     carteira: () => h(TelaCarteira, contexto),
-    ordens: () => embutir(GrupoOrdens),
+    ordens: () => h(TelaOrdensDoSistema, { ...contexto, setEscolhida }),
     plano: () => h(TelaPlano, contexto),
     compras: () => h(TelaCompras, contexto),
     producao: () => h(TelaProducao, contexto),
@@ -245,19 +249,19 @@ function boasVindas(db, mexer, usuario, erro, irParaProdutos) {
       }, (r) => `${r.feitos.length} produto(s) trazido(s) da Engenharia: ${r.feitos.join(', ')}.`),
     }, 'Trazer os produtos da Engenharia')) : null,
 
-    h('h3', { style: { marginTop: 18 } }, 'Ou cadastrar um produto novo'),
-    passo(1, 'Material no almoxarifado — aba Materiais',
-      'Tecido, aviamento e embalagem são cadastrados lá, com unidade, preço, estoque mínimo e prazo '
-      + 'de entrega. O industrial não duplica esse cadastro: ele aponta para ele.'),
-    passo(2, 'Item e produto — sub-aba Produtos',
-      'O item comprado aponta para o material (herda unidade e custo). O produto acabado e os '
-      + 'subprodutos nascem aqui, cada um dizendo em que setor é feito.'),
-    passo(3, 'Estrutura e transformação — sub-aba Produtos',
-      'A estrutura diz o que a peça leva; a transformação diz o que entra, o que sai, em que setor '
-      + 'e com que tempos. Sem tempo não há budget, e sem budget a ordem não abre.'),
-    passo(4, 'Ordem de produção — sub-aba Ordens',
-      'Com a engenharia completa, a ordem abre a cadeia inteira: reserva material, gera requisição '
-      + 'do que falta e cria uma etapa por processo.'),
+    h('h3', { style: { marginTop: 18 } }, 'Como a fábrica alimenta este motor'),
+    passo(1, 'Material — aba Materiais',
+      'Tecido, aviamento e embalagem, com unidade, preço, estoque mínimo e prazo de entrega. '
+      + 'O industrial não duplica esse cadastro: ele aponta para ele.'),
+    passo(2, 'Produto — aba Produtos',
+      'Ficha técnica (o que a peça leva) e processo (por onde ela passa), nas telas de sempre. '
+      + 'É daí que o industrial deriva a estrutura e uma transformação por setor.'),
+    passo(3, 'Ordem de produção — aba Produção',
+      'A ordem nasce lá, amarrada ao produto e à versão da engenharia, com as etapas já '
+      + 'fotografadas do processo.'),
+    passo(4, 'O motor — aqui, na sub-aba Ordens',
+      'Cada ordem aberta ganha plano por setor, MRP, reserva do material que existe, requisição '
+      + 'do que falta, budget, custo real e rastro por lote.'),
 
     h('div', { className: 'row-actions', style: { marginTop: 18 } },
       h('button', {

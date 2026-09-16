@@ -21,6 +21,7 @@ import {
 import { disponivelParaOrdem, saldoReservado, estoqueFisico } from './reservas.mjs';
 import { entradasProgramadasDe } from './compras.mjs';
 import { produtosDaEngenharia } from './engenharia.mjs';
+import { ordensDoSistema } from './ordens-sistema.mjs';
 
 /* ============================================ §4 a ponte item ↔ material */
 
@@ -382,10 +383,27 @@ export function auditarIntegracaoMateriaisEngenhariaIndustrial(db) {
     }
   }
 
+  /* ---------------- ORDEM DO MÓDULO PRODUÇÃO ----------------
+     A ordem nasce lá. Ordem em aberto que o motor nunca viu é ordem sem MRP,
+     sem reserva e sem budget — a fábrica descobre a falta no chão. */
+  const ordens = ordensDoSistema(db);
+  for (const o of ordens.linhas) {
+    if (!o.planejada) {
+      alertas.push(registro('alerta', 'ordem_sem_plano',
+        `${o.codigo} está aberta no módulo Produção e não foi planejada no industrial — `
+        + 'sem MRP, sem reserva e sem budget.', { ordemId: o.ordemId }));
+      orfaos.push({ tipo: 'ordem', id: o.ordemId, nome: o.codigo, motivo: 'sem plano industrial' });
+      sugestoes.push(`Planeje ${o.codigo} na aba Ordens do industrial.`);
+    } else if (o.faltas > 0) {
+      alertas.push(registro('alerta', 'ordem_com_falta',
+        `${o.codigo}: ${o.faltas} componente(s) sem material para começar.`, { ordemId: o.ordemId }));
+    }
+  }
+
   const ok = erros.length === 0;
   return {
     ok, erros, alertas, inconsistencias, orfaos, duplicidades,
-    engenharia,
+    engenharia, ordens,
     sugestoes: [...new Set(sugestoes)],
     verificadoEm: agoraISO(),
   };
@@ -451,6 +469,9 @@ export function indicadoresDeIntegracao(db) {
         .filter((c) => c.origem === 'almoxarifado')).length,
       ok: (ind.execucoes || []).flatMap((e) => (e.consumos || [])
         .filter((c) => c.origem === 'almoxarifado' && (c.loteId || (c.lotes || []).length > 0))).length },
+    { id: 'ordens_planejadas', nome: 'Ordens do módulo Produção com plano industrial',
+      total: auditoria.ordens ? auditoria.ordens.total : 0,
+      ok: auditoria.ordens ? auditoria.ordens.planejadas : 0 },
     { id: 'produtos_da_engenharia', nome: 'Produtos da Engenharia no industrial',
       total: auditoria.engenharia ? auditoria.engenharia.total : 0,
       ok: auditoria.engenharia
@@ -557,8 +578,9 @@ export function mapaDaCadeia(db) {
       registros: (ind.reservas || []).filter((r) => r.status === 'ativa').length,
       problemas: problemasDe('reserva_sem_material'), nota: 'material com dono' },
     { id: 'ordens', nome: 'Ordem de produção', aba: 'ordens',
-      registros: (ind.consolidacoes || []).filter((c) => c.codigoOrdem).length,
-      problemas: problemasDe('op_sem_demanda'), nota: 'a cadeia de etapas' },
+      registros: (db.ordens || []).filter((o) => ['aberta', 'liberada', 'producao'].includes(o.situacao)).length,
+      problemas: problemasDe('op_sem_demanda', 'ordem_sem_plano', 'ordem_com_falta'),
+      nota: 'aberta no módulo Produção' },
     { id: 'processos', nome: 'Processo', aba: 'producao',
       registros: (ind.demandas || []).length,
       problemas: problemasDe('demanda_sem_engenharia'), nota: 'uma por transformação' },

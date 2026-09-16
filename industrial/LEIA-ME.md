@@ -8,10 +8,9 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 67 testes: fluxo, cadastro, ordens, V2, V3 e Engenharia
+node --test "industrial/testes/*.test.mjs"        # 71 testes: fluxo, cadastro, ordens, V2, V3, Engenharia e Produção
 
-node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
-  --sem-modulos=produtos,producao --com-industrial
+node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html --com-industrial
 ```
 
 ## A regra que organiza tudo
@@ -47,7 +46,9 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
 | `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
 | `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
-| `engenharia.mjs` | a ponte com a Engenharia do sistema: lê `db.produtos` (ficha técnica e roteiro) e **deriva** itens, estrutura e uma transformação por setor, com vínculo vivo e detecção de divergência |
+| `ordens-sistema.mjs` | a ponte com o módulo Produção: planeja no motor a ordem que nasceu lá, guardando o código do sistema |
+| `telas-ordens-sistema.mjs` | a sub-aba **Ordens**: as ordens do sistema e o que o motor fez com cada uma |
+| `engenharia.mjs` | a ponte com o cadastro de produto do sistema: lê `db.produtos` (ficha técnica e roteiro) e **deriva** itens, estrutura e uma transformação por setor, com vínculo vivo e detecção de divergência |
 | `integracao.mjs` | **V3**: `resolverMaterialIndustrial` (a ponte item ↔ material), custo vigente, conversão de unidade, auditoria da cadeia, indicadores de integração e o mapa dos elos |
 | `telas-integracao.mjs` | **V3**: a sub-aba Integração — saúde da engenharia industrial com a prova de cada ponto, mapa clicável e o botão do fluxo completo |
 | `testes-v3.mjs` | **V3**: `testarFluxoCompletoERPIndustrial` — 30 passos sobre uma cópia, do cadastro ao rastro |
@@ -179,12 +180,21 @@ desvio — mais a conferência de que nenhum saldo de processo fica negativo e d
 | §47 | **bateria de 20 testes** (`testarIndustrialV2`), que roda no Node e dentro do sistema, sobre uma cópia da base |
 | §52 | a ordem **reserva ao abrir** e **devolve ao cancelar**; o consumo baixa a reserva |
 
-## Um módulo só, sete sub-abas
+## Onde cada coisa é feita
 
-Cadastro de produto e ordem de produção **não são módulos à parte**: são o que alimenta o
-módulo industrial, e por isso moram dentro dele. O menu do sistema tem uma aba — Industrial —
-e ela abre em: Painel · Produtos · Carteira · Ordens · Plano e budget · Compras · Produção ·
-Rastreio · Integração · Auditoria.
+O industrial é **motor**, não cadastro. Produto e ordem nascem nas telas que a fábrica já usa:
+
+| o quê | onde | o que o industrial faz com isso |
+|---|---|---|
+| material | **Materiais** | aponta para ele — preço, saldo e fornecedor continuam sendo os de lá |
+| produto (ficha + processo) | **Produtos** | deriva estrutura e uma transformação por setor |
+| ordem de produção | **Produção** | planeja: MRP, reserva, requisição, budget, custo e rastro |
+
+`planejarOrdemDoSistema(db, ordemId)` é a ponte: garante o produto derivado, cria a linha de
+carteira, consolida, gera o plano por setor, reserva o que existe e requisita o que falta —
+**mantendo o código do sistema** (`OP-0002`), sem inventar um segundo número para a mesma
+ordem. `ordensDoSistema(db)` mostra cada ordem com o que o motor já fez, e a auditoria de
+integração acusa ordem em aberto sem plano.
 
 **Produtos** — a engenharia de cada peça. Cadastra o item (comprado, apontando para o material do
 almoxarifado, ou produzido, dizendo em que setor nasce), a estrutura (o que a peça leva dentro,
@@ -216,9 +226,9 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 | sub-aba | o que mostra |
 |---|---|
 | Painel | o painel executivo (§54): carteira, produzido, em processo, budget, realizado, compras, necessidade de caixa e gargalo principal — mais alertas, WIP e saúde do módulo |
-| Produtos | produtos com custo padrão e situação da engenharia, itens, transformações e a ficha com a árvore |
+| Ficha industrial | o que veio da ficha do produto: a cadeia derivada, os itens, as transformações e o ajuste do ciclo e dos tempos que a ficha não expressa |
 | Carteira | as linhas de pedido, o lançamento de um pedido novo, a consolidação e a geração do plano |
-| Ordens | todas as ordens — abertas aqui ou vindas da carteira — com o detalhe da cadeia, conferência, apontamento, cancelamento e encerramento |
+| Ordens | as ordens abertas no módulo Produção, com o plano industrial de cada uma — e o botão que as planeja |
 | Plano e budget | MRP V2 com as cinco quantidades separadas e a data limite de compra, budget de consumo, custo industrial × necessidade de caixa, capacidade com déficit, budget industrial aberto em parcelas e a simulação |
 | Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
 | Produção | as demandas por processo, o estoque entre processos e as perdas |

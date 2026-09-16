@@ -45,11 +45,15 @@ export const nomeDoProduto = (produto) => String(
  * cheio do sistema traz grupo, tamanho, tecido e cor — "CAMISETA SILK P/M/G/GG
  * MALHA PV 30/1 AZUL MARINHO GOLA CARECA — Corte" não cabe em tabela nenhuma.
  */
-export function nomeCurtoDoProduto(db, produto) {
+export function rotuloCurtoDoProduto(db, produto) {
   const grupo = (db.gruposProduto || []).find((g) => g.id === produto.grupoId);
   const curto = [grupo ? grupo.nome : '', produto.complemento || '']
     .map((t) => String(t).trim()).filter(Boolean).join(' ');
-  return `${produto.codigo} ${(curto || nomeDoProduto(produto)).toUpperCase()}`.trim();
+  return (curto || nomeDoProduto(produto)).toUpperCase();
+}
+
+export function nomeCurtoDoProduto(db, produto) {
+  return `${produto.codigo} ${rotuloCurtoDoProduto(db, produto)}`.trim();
 }
 
 /**

@@ -30,7 +30,8 @@ const TIPOS_COMPRADOS = TIPOS_ITEM.filter((t) => t.compra && !t.produz);
 const TIPOS_PRODUZIDOS = TIPOS_ITEM.filter((t) => t.produz);
 
 export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido }) {
-  const [sub, setSub] = React.useState('produtos');
+  /* a origem abre primeiro: o que veio da ficha do produto */
+  const [sub, setSub] = React.useState('engenharia');
   const [erro, setErro] = React.useState('');
   const [aviso, setAviso] = React.useState('');
   const [ficha, setFicha] = React.useState('');           // produto aberto
@@ -65,10 +66,10 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
 
   const engenharia = produtosDaEngenharia(db);
   const abas = [
-    { id: 'produtos', label: `Produtos (${produtos.length})` },
     /* a Engenharia é a origem: aqui se vê quantos produtos já cadastrados o
        industrial enxerga, e quantos ainda estão de fora */
     { id: 'engenharia', label: `Da Engenharia (${engenharia.derivados}/${engenharia.total})` },
+    { id: 'produtos', label: `Produtos (${produtos.length})` },
     { id: 'itens', label: `Itens (${itens.length})` },
     { id: 'receitas', label: `Transformações (${(ind.transformacoes || []).filter((t) => t.ativa !== false).length})` },
   ];
@@ -77,14 +78,19 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
     setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha, irPara,
     engenharia, setSub };
 
-  /* Embutido no ambiente Industrial, o cabeçalho é o de lá: aqui sobram os
-     botões de cadastro, que são o que esta tela oferece. */
-  const acoes = h('div', { className: 'row-actions', style: { marginBottom: 14 } },
-    h('button', { className: 'btn ghost', onClick: () => setFormItem({ tipo: 'MATERIA_PRIMA' }) }, '+ Item'),
-    h('button', { className: 'btn ghost', onClick: () => setFormTrf({}) }, '+ Transformação'),
-    h('button', {
-      className: 'btn accent', onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }),
-    }, '+ Produto'));
+  /* O produto é cadastrado no módulo Produtos, na ficha técnica e no roteiro —
+     as telas que a fábrica já usa. Aqui não se cria produto: aqui se vê o que
+     veio de lá e se ajusta o que só o industrial sabe (o ciclo de cada
+     operação, os sete tipos de tempo, o coproduto). */
+  const acoes = h('div', {
+    className: 'panel',
+    style: { background: 'var(--canvas-panel)', marginBottom: 14, padding: '10px 14px' },
+  }, h('span', { className: 'small muted' },
+    'O produto é cadastrado no módulo ',
+    h('strong', null, 'Produtos'),
+    ' — ficha técnica e roteiro. O industrial deriva daí a estrutura e uma transformação por '
+    + 'setor; nesta aba você confere o que veio e ajusta o ciclo e os tempos que a ficha não '
+    + 'sabe dizer.'));
 
   return h('div', null,
     embutido ? acoes : h('div', { className: 'page-head' },
@@ -165,9 +171,9 @@ function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem, ir
     const acao = h('div', { className: 'row-actions' },
       h('button', { className: 'btn ghost sm', onClick: () => setFicha(p.id) }, 'Ficha'),
       conferencia.pronto ? h('button', {
-        className: 'btn sm',
-        onClick: () => irEComBilhete(irPara, 'ordens', { produtoId: p.id }),
-      }, 'Abrir ordem') : null,
+        className: 'btn ghost sm',
+        onClick: () => irEComBilhete(irPara, 'ordens', {}),
+      }, 'Ver ordens') : null,
       h('button', {
         className: 'btn ghost sm',
         onClick: () => {
@@ -407,10 +413,8 @@ function fichaDoProduto({ db, ind, item, ficha, setFicha, setFormEstrutura, setF
       h('h3', null, 'Engenharia'),
       pendencias,
       h('div', { className: 'row-actions', style: { marginTop: 12 } },
-        conferencia.pronto ? h('button', {
-          className: 'btn sm',
-          onClick: () => { setFicha(''); irEComBilhete(irPara, 'ordens', { produtoId: produto.id }); },
-        }, 'Abrir ordem de produção') : null,
+        conferencia.pronto ? h('span', { className: 'small', style: { color: 'var(--ok)', alignSelf: 'center' } },
+          '✓ pronto para produzir — abra a ordem no módulo Produção') : null,
         h('button', { className: 'btn ghost sm', onClick: () => setFormEstrutura(produto.id) },
           estrutura ? `Editar estrutura (versão ${estrutura.versao})` : 'Cadastrar estrutura'),
         h('button', {
