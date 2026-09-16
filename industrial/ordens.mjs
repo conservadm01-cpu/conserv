@@ -36,6 +36,10 @@ function proximoCodigoOrdem(db) {
   return `OP-${ano}-${String(doAno.length + 1).padStart(4, '0')}`;
 }
 
+/** Uma consolidação só não é ordem enquanto ninguém gerou o plano dela. */
+const temPlano = (db, consolidacaoId) =>
+  (db.industrial.demandas || []).some((d) => d.consolidacaoId === consolidacaoId);
+
 /* ====================================================== abrir ordem */
 
 /**
@@ -86,6 +90,7 @@ export function abrirOrdem(db, dados, usuario) {
   });
   if (consolidacao.erro) return consolidacao;
   consolidacao.consolidacao.tipo = 'ordem';
+  consolidacao.consolidacao.origem = 'ordem';
   consolidacao.consolidacao.codigoOrdem = proximoCodigoOrdem(db);
 
   const plano = planoDeProducao(db, { consolidacaoId: consolidacao.consolidacao.id, usuario });
@@ -209,6 +214,7 @@ export function resumoDaOrdem(db, consolidacaoId) {
   return {
     ordem,
     codigo: ordem.codigoOrdem || ordem.codigo,
+    origem: ordem.origem === 'ordem' ? 'ordem' : 'carteira',
     produto: produto ? produto.nome : '',
     produtoId: produto ? produto.id : '',
     quantidade,
@@ -231,11 +237,17 @@ export function resumoDaOrdem(db, consolidacaoId) {
   };
 }
 
-/** A lista do ambiente de ordens, já com o andamento de cada uma. */
+/**
+ * A lista do ambiente de ordens.
+ *
+ * Entra tudo o que virou plano: a ordem aberta aqui e a carteira consolidada
+ * no ambiente industrial. São a mesma coisa para o chão de fábrica — muda só
+ * de onde a demanda veio, e isso aparece na coluna de origem.
+ */
 export function ordensDeProducao(db, opcoes = {}) {
   prepararIndustrial(db);
   const todas = (db.industrial.consolidacoes || [])
-    .filter((c) => (opcoes.incluirCarteira ? true : c.tipo === 'ordem' || c.codigoOrdem))
+    .filter((c) => c.codigoOrdem || c.tipo === 'ordem' || temPlano(db, c.id))
     .map((c) => resumoDaOrdem(db, c.id))
     .filter((r) => !r.erro);
   const abertas = todas.filter((r) => r.situacao !== 'concluida' && r.situacao !== 'cancelada');

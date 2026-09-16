@@ -20,12 +20,14 @@ import {
 } from './cadastro.mjs';
 import {
   h, moeda, inteiro, decimal, selo, vazio, pequeno, kpi, bloco, tabela, linha,
+  navegacao, irEComBilhete,
 } from './interface.mjs';
+import { montarDemonstracao } from './demonstracao.mjs';
 
 const TIPOS_COMPRADOS = TIPOS_ITEM.filter((t) => t.compra && !t.produz);
 const TIPOS_PRODUZIDOS = TIPOS_ITEM.filter((t) => t.produz);
 
-export function GrupoProdutosIndustriais({ db, update, usuario }) {
+export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido }) {
   const [sub, setSub] = React.useState('produtos');
   const [erro, setErro] = React.useState('');
   const [aviso, setAviso] = React.useState('');
@@ -34,6 +36,11 @@ export function GrupoProdutosIndustriais({ db, update, usuario }) {
   const [formTrf, setFormTrf] = React.useState(null);     // transformação em edição
   const [formEstrutura, setFormEstrutura] = React.useState(null);
   const [lote, setLote] = React.useState(1000);
+
+  /* bilhete deixado por outro ambiente: abrir a ficha deste produto */
+  React.useEffect(() => {
+    if (navegacao.fichaId) { setFicha(navegacao.fichaId); navegacao.fichaId = ''; }
+  }, []);
 
   const ind = db.industrial || {};
   const itens = (ind.itens || []).filter((i) => i.ativo !== false);
@@ -61,22 +68,29 @@ export function GrupoProdutosIndustriais({ db, update, usuario }) {
   ];
 
   const contexto = { db, ind, itens, produtos, item, depNome, mexer, usuario,
-    setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha };
+    setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha, irPara };
+
+  /* Embutido no ambiente Industrial, o cabeçalho é o de lá: aqui sobram os
+     botões de cadastro, que são o que esta tela oferece. */
+  const acoes = h('div', { className: 'row-actions', style: { marginBottom: 14 } },
+    h('button', { className: 'btn ghost', onClick: () => setFormItem({ tipo: 'MATERIA_PRIMA' }) }, '+ Item'),
+    h('button', { className: 'btn ghost', onClick: () => setFormTrf({}) }, '+ Transformação'),
+    h('button', {
+      className: 'btn accent', onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }),
+    }, '+ Produto'));
 
   return h('div', null,
-    h('div', { className: 'page-head' },
+    embutido ? acoes : h('div', { className: 'page-head' },
       h('div', null,
         h('p', { className: 'eyebrow' }, 'Engenharia industrial'),
         h('h2', null, 'Produtos')),
-      h('div', { className: 'row-actions' },
-        h('button', { className: 'btn ghost', onClick: () => setFormItem({ tipo: 'MATERIA_PRIMA' }) }, '+ Item'),
-        h('button', { className: 'btn ghost', onClick: () => setFormTrf({}) }, '+ Transformação'),
-        h('button', {
-          className: 'btn accent',
-          onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }),
-        }, '+ Produto'))),
+      acoes),
 
-    h(SubTabs, { tabs: abas, active: sub, onChange: (id) => { setSub(id); setErro(''); setAviso(''); } }),
+    h('div', { className: 'tabs-strip', style: { marginBottom: 16 } },
+      ...abas.map((a) => h('button', {
+        key: a.id, className: sub === a.id ? 'active' : '',
+        onClick: () => { setSub(a.id); setErro(''); setAviso(''); },
+      }, a.label))),
     erro ? recado(erro, 'var(--bad)', 'var(--bad-bg)') : null,
     aviso ? recado(aviso, 'var(--ok)', 'var(--ok-bg)') : null,
 
@@ -119,14 +133,21 @@ export function GrupoProdutosIndustriais({ db, update, usuario }) {
 
 /* ------------------------------------------------------- listas */
 
-function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem }) {
+function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem, irPara }) {
   if (produtos.length === 0) {
     return bloco('Nenhum produto cadastrado', null, [
       pequeno('Um produto industrial é o item que a carteira promete ao cliente. Ele nasce aqui, '
         + 'ganha estrutura (o que leva dentro) e transformações (como é feito) — e só então a ordem '
         + 'de produção pode abrir.'),
-      h('button', { className: 'btn accent', onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }) },
-        '+ Cadastrar o primeiro produto'),
+      h('div', { className: 'row-actions' },
+        h('button', { className: 'btn accent', onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }) },
+          '+ Cadastrar o primeiro produto'),
+        h('button', {
+          className: 'btn ghost',
+          onClick: () => mexer((d) => {
+            try { montarDemonstracao(d); return { ok: true }; } catch (e) { return { erro: e.message }; }
+          }, 'Demonstração carregada: a camiseta básica, com estrutura e roteiro completos.'),
+        }, 'Carregar a demonstração para ver um produto pronto')),
     ]);
   }
 
@@ -135,6 +156,10 @@ function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem }) 
     const custo = conferencia.pronto ? custoPadrao(db, p.id, 1000) : null;
     const acao = h('div', { className: 'row-actions' },
       h('button', { className: 'btn ghost sm', onClick: () => setFicha(p.id) }, 'Ficha'),
+      conferencia.pronto ? h('button', {
+        className: 'btn sm',
+        onClick: () => irEComBilhete(irPara, 'ordens', { produtoId: p.id }),
+      }, 'Abrir ordem') : null,
       h('button', {
         className: 'btn ghost sm',
         onClick: () => {
@@ -240,7 +265,7 @@ function listaReceitas({ db, ind, item, depNome, mexer, usuario, setFormTrf }) {
 
 /* -------------------------------------------------- ficha do produto */
 
-function fichaDoProduto({ db, ind, item, ficha, setFicha, setFormEstrutura, setFormTrf, lote, setLote }) {
+function fichaDoProduto({ db, ind, item, ficha, setFicha, setFormEstrutura, setFormTrf, lote, setLote, irPara }) {
   const produto = item(ficha);
   if (!produto) return null;
   const conferencia = conferirEngenharia(db, produto.id);
@@ -286,6 +311,10 @@ function fichaDoProduto({ db, ind, item, ficha, setFicha, setFormEstrutura, setF
       h('h3', null, 'Engenharia'),
       pendencias,
       h('div', { className: 'row-actions', style: { marginTop: 12 } },
+        conferencia.pronto ? h('button', {
+          className: 'btn sm',
+          onClick: () => { setFicha(''); irEComBilhete(irPara, 'ordens', { produtoId: produto.id }); },
+        }, 'Abrir ordem de produção') : null,
         h('button', { className: 'btn ghost sm', onClick: () => setFormEstrutura(produto.id) },
           estrutura ? `Editar estrutura (versão ${estrutura.versao})` : 'Cadastrar estrutura'),
         h('button', {

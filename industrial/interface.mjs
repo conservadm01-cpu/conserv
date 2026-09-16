@@ -12,7 +12,8 @@
  */
 
 import {
-  prepararIndustrial, disponivelEmProcesso, num, arredondar, MOTIVOS_PERDA, TIPOS_ITEM,
+  prepararIndustrial, disponivelEmProcesso, novaLinhaCarteira,
+  num, arredondar, MOTIVOS_PERDA, TIPOS_ITEM,
 } from './modelo.mjs';
 import {
   consolidarCarteira, explodirBOM, calcularMRP, calcularCapacidade, calcularBudget,
@@ -22,6 +23,17 @@ import {
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
 
 export const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
+
+/**
+ * O que um ambiente quer dizer ao outro quando o usuário pula de aba: qual
+ * produto abrir, qual ordem mostrar. É um bilhete, não estado — quem lê,
+ * apaga.
+ */
+export const navegacao = { produtoId: '', fichaId: '', ordemId: '' };
+export const irEComBilhete = (irPara, aba, bilhete = {}) => {
+  Object.assign(navegacao, bilhete);
+  if (typeof irPara === 'function') irPara(aba);
+};
 
 export const moeda = (v) => num(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const inteiro = (v) => num(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
@@ -60,7 +72,7 @@ export const linha = (chave, celulas) => h('tr', { key: chave }, ...celulas.map(
 
 /* ====================================================================== */
 
-export function GrupoIndustrial({ db, update, usuario }) {
+export function GrupoIndustrial({ db, update, usuario, irPara }) {
   const [sub, setSub] = React.useState('painel');
   const [escolhida, setEscolhida] = React.useState('');
   const [erro, setErro] = React.useState('');
@@ -93,7 +105,7 @@ export function GrupoIndustrial({ db, update, usuario }) {
   };
 
   const contexto = { db, ind, atual, item, depNome, mexer, usuario, setSub, setApontando,
-    loteAberto, setLoteAberto };
+    loteAberto, setLoteAberto, irPara };
 
   const cabeca = h('div', { className: 'page-head' },
     h('div', null, h('p', { className: 'eyebrow' }, 'Fábrica digital'), h('h2', null, 'Industrial')),
@@ -101,17 +113,21 @@ export function GrupoIndustrial({ db, update, usuario }) {
       ? h('select', {
         value: atual.id, style: { width: 280 },
         onChange: (e) => setEscolhida(e.target.value),
-      }, consolidacoes.map((c) => h('option', { key: c.id, value: c.id }, `${c.codigo} · ${c.nome}`)))
+      }, consolidacoes.map((c) => h('option', { key: c.id, value: c.id },
+        `${c.codigoOrdem || c.codigo} · ${c.nome}`)))
       : null);
 
   if (itens.length === 0) return h('div', null, cabeca, boasVindas(mexer, erro));
 
+  const ordensAbertas = (ind.consolidacoes || []).filter(
+    (c) => c.codigoOrdem && c.status !== 'concluida' && c.status !== 'cancelada').length;
   const abas = [
     { id: 'painel', label: 'Painel' },
+    { id: 'produtos', label: `Produtos (${itens.filter((x) => x.tipo === 'PRODUTO_ACABADO').length})` },
     { id: 'carteira', label: `Carteira (${(ind.carteira || []).length})` },
+    { id: 'ordens', label: `Ordens (${ordensAbertas})` },
     { id: 'plano', label: 'Plano e budget' },
     { id: 'producao', label: `Produção (${(ind.demandas || []).filter((d) => d.status !== 'atendida').length})` },
-    { id: 'estrutura', label: 'Estrutura' },
     { id: 'rastreio', label: `Rastreio (${(ind.lotes || []).length})` },
   ];
 
@@ -119,13 +135,21 @@ export function GrupoIndustrial({ db, update, usuario }) {
     className: 'panel', style: { borderColor: cor, background: fundo, marginBottom: 14 },
   }, h('strong', { className: 'small' }, texto));
 
+  /* Cadastro de produto e ordem de produção moram aqui dentro: são o que
+     alimenta o módulo, não módulos à parte. As duas telas recebem `irPara`
+     apontando para a própria troca de sub-aba. */
+  const embutir = (Componente) => h(Componente, {
+    db, update, usuario, embutido: true, irPara: (aba) => { setSub(aba); setErro(''); setAviso(''); },
+  });
+
   const telas = {
-    painel: () => telaPainel(contexto),
-    carteira: () => telaCarteira(contexto),
-    plano: () => telaPlano(contexto),
-    producao: () => telaProducao(contexto),
-    estrutura: () => telaEstrutura(contexto),
-    rastreio: () => telaRastreio(contexto),
+    painel: () => h(TelaPainel, contexto),
+    produtos: () => embutir(GrupoProdutosIndustriais),
+    carteira: () => h(TelaCarteira, contexto),
+    ordens: () => embutir(GrupoOrdens),
+    plano: () => h(TelaPlano, contexto),
+    producao: () => h(TelaProducao, contexto),
+    rastreio: () => h(TelaRastreio, contexto),
   };
 
   return h('div', null,
@@ -156,18 +180,21 @@ function boasVindas(mexer, erro) {
       + 'carteira de 10.000 camisetas de três clientes, com ficha técnica, roteiro e tempos dos '
       + 'cinco processos.', { maxWidth: 640, lineHeight: 1.6 }),
     erro ? h('p', { className: 'small', style: { color: 'var(--bad)' } }, erro) : null,
-    h('button', {
-      className: 'btn accent',
-      onClick: () => mexer((d) => {
-        try { montarDemonstracao(d); return { ok: true }; } catch (e) { return { erro: e.message }; }
-      }, 'Demonstração carregada: carteira de 10.000 camisetas em três pedidos.'),
-    }, 'Carregar demonstração (10.000 camisetas)'),
+    h('div', { className: 'row-actions' },
+      h('button', {
+        className: 'btn accent',
+        onClick: () => mexer((d) => {
+          try { montarDemonstracao(d); return { ok: true }; } catch (e) { return { erro: e.message }; }
+        }, 'Demonstração carregada: carteira de 10.000 camisetas em três pedidos.'),
+      }, 'Carregar demonstração (10.000 camisetas)'),
+      h('span', { className: 'small muted', style: { alignSelf: 'center' } },
+        'ou cadastre o seu produto no ambiente Produtos')),
   ]);
 }
 
 /* ============================================================ §28 painel */
 
-function telaPainel({ db, ind, atual, item }) {
+function TelaPainel({ db, ind, atual, item }) {
   if (!atual) return vazio('Nenhuma carteira consolidada. Abra a aba Carteira e gere o plano de produção.');
 
   const wip = wipDaCarteira(db, atual.id);
@@ -223,8 +250,10 @@ function telaPainel({ db, ind, atual, item }) {
 
 /* ========================================================== §2 carteira */
 
-function telaCarteira({ db, ind, item, mexer, setSub }) {
+function TelaCarteira({ db, ind, item, mexer, setSub, usuario, irPara }) {
+  const [novo, setNovo] = React.useState(null);
   const linhas = (ind.carteira || []).filter((l) => l.status !== 'cancelada');
+  const produtos = (ind.itens || []).filter((i) => i.tipo === 'PRODUTO_ACABADO' && i.ativo !== false);
   const abertas = linhas.filter((l) => l.status === 'aberta');
   const nomeCliente = (id) => {
     const c = (db.clientes || []).find((x) => x.id === id);
@@ -245,6 +274,10 @@ function telaCarteira({ db, ind, item, mexer, setSub }) {
 
   const botaoConsolidar = h('div', { className: 'row-actions', style: { marginTop: 14 } },
     h('button', {
+      className: 'btn ghost', disabled: produtos.length === 0,
+      onClick: () => setNovo({ itemId: (produtos[0] || {}).id || '', quantidade: 100 }),
+    }, '+ Pedido na carteira'),
+    h('button', {
       className: 'btn', disabled: abertas.length === 0,
       onClick: () => mexer((d) => consolidarCarteira(d, {}), (r) =>
         `${r.consolidacao.codigo}: `
@@ -257,13 +290,17 @@ function telaCarteira({ db, ind, item, mexer, setSub }) {
       (ind.consolidacoes || []).map((c) => {
         const temPlano = (ind.demandas || []).some((d) => d.consolidacaoId === c.id);
         const acao = temPlano
-          ? h('span', { className: 'small muted' }, 'plano gerado')
+          ? h('button', {
+            className: 'btn ghost sm',
+            onClick: () => irEComBilhete(irPara, 'ordens', { ordemId: c.id }),
+          }, `Acompanhar ${c.codigoOrdem || 'ordem'}`)
           : h('button', {
             className: 'btn accent sm',
             onClick: () => {
               mexer((d) => planoDeProducao(d, { consolidacaoId: c.id }), (r) =>
-                `Plano gerado: ${r.planos[0].demandas.length} demandas · `
-                + `custo planejado ${moeda(r.custoPlanejado)}.`);
+                `${r.consolidacao.codigoOrdem} aberta: ${r.planos[0].demandas.length} etapas · `
+                + `custo planejado ${moeda(r.custoPlanejado)}. `
+                + 'A ordem está no ambiente Ordens, e o plano, aqui ao lado.');
               setSub('plano');
             },
           }, 'Gerar plano de produção');
@@ -280,16 +317,70 @@ function telaCarteira({ db, ind, item, mexer, setSub }) {
   return h('div', null,
     bloco('Carteira de produção', `${inteiro(linhas.reduce((s, l) => s + num(l.quantidade), 0))} peças`, [
       pequeno('Consolidar junta o mesmo produto de clientes diferentes num lote só — é o que evita '
-        + 'enfestar três vezes o mesmo tecido.', { marginTop: -6 }),
+        + 'enfestar três vezes o mesmo tecido. Gerar o plano abre a ordem, que passa a ser '
+        + 'acompanhada no ambiente Ordens.', { marginTop: -6 }),
       tabelaCarteira,
       botaoConsolidar,
     ]),
-    bloco('Carteiras consolidadas', null, [consolidadas]));
+    bloco('Carteiras consolidadas', null, [consolidadas]),
+    novo ? h(ModalPedidoCarteira, {
+      db, produtos, dados: novo,
+      onFechar: () => setNovo(null),
+      onSalvar: (dados) => {
+        const r = mexer((d) => novaLinhaCarteira(d, dados),
+          (resp) => `Pedido ${resp.registro.codigo} lançado na carteira.`);
+        if (r && !r.erro) setNovo(null);
+      },
+    }) : null);
+}
+
+/** Uma linha de carteira para um produto já cadastrado no ambiente Produtos. */
+function ModalPedidoCarteira({ db, produtos, dados, onFechar, onSalvar }) {
+  const [f, setF] = React.useState({
+    itemId: dados.itemId || '',
+    quantidade: dados.quantidade || 100,
+    clienteId: '',
+    pedido: '',
+    dataPrometida: '',
+    prioridade: 5,
+  });
+  const set = (campo, valor) => setF((p) => ({ ...p, [campo]: valor }));
+
+  return h(Modal, { title: 'Novo pedido na carteira', onClose: onFechar },
+    pequeno('A carteira é a origem da demanda: vários pedidos do mesmo produto se consolidam num '
+      + 'lote de produção só.'),
+    h('div', { className: 'field' },
+      h('label', null, 'Produto'),
+      h('select', { value: f.itemId, onChange: (e) => set('itemId', e.target.value) },
+        h('option', { value: '' }, 'escolha o produto…'),
+        ...produtos.map((p) => h('option', { key: p.id, value: p.id }, `${p.codigo} · ${p.nome}`)))),
+    h('div', { className: 'grid2' },
+      h('div', { className: 'field' },
+        h('label', null, 'Quantidade'),
+        h('input', { type: 'number', min: 1, value: f.quantidade,
+          onChange: (e) => set('quantidade', e.target.value) })),
+      h('div', { className: 'field' },
+        h('label', null, 'Entrega'),
+        h('input', { type: 'date', value: f.dataPrometida,
+          onChange: (e) => set('dataPrometida', e.target.value) }))),
+    h('div', { className: 'grid2' },
+      h('div', { className: 'field' },
+        h('label', null, 'Cliente'),
+        h('select', { value: f.clienteId, onChange: (e) => set('clienteId', e.target.value) },
+          h('option', { value: '' }, 'produção para estoque'),
+          ...(db.clientes || []).map((c) => h('option', { key: c.id, value: c.id },
+            c.nomeFantasia || c.nome)))),
+      h('div', { className: 'field' },
+        h('label', null, 'Pedido'),
+        h('input', { value: f.pedido, onChange: (e) => set('pedido', e.target.value) }))),
+    h('div', { className: 'modal-actions' },
+      h('button', { className: 'btn ghost', onClick: onFechar }, 'Cancelar'),
+      h('button', { className: 'btn accent', onClick: () => onSalvar(f) }, 'Lançar pedido')));
 }
 
 /* ================================================ §3/§25/§27 plano e budget */
 
-function telaPlano({ db, ind, atual, item, mexer, usuario }) {
+function TelaPlano({ db, ind, atual, item, mexer, usuario }) {
   if (!atual) return vazio('Consolide a carteira primeiro.');
   const produto = atual.produtos[0];
   const explosao = explodirBOM(db, produto.itemId, produto.quantidade);
@@ -399,7 +490,7 @@ function telaPlano({ db, ind, atual, item, mexer, usuario }) {
 
 /* ============================================= §34/§35/§36 chão de fábrica */
 
-function telaProducao({ db, ind, atual, item, depNome, mexer, usuario, setApontando }) {
+function TelaProducao({ db, ind, atual, item, depNome, mexer, usuario, setApontando }) {
   if (!atual) return vazio('Gere o plano de produção primeiro.');
   const demandas = (ind.demandas || []).filter((d) => d.consolidacaoId === atual.id)
     .sort((a, b) => b.nivel - a.nivel);
@@ -470,49 +561,9 @@ function telaProducao({ db, ind, atual, item, depNome, mexer, usuario, setAponta
     blocoPerdas);
 }
 
-/* ======================================================== §4/§5 estrutura */
-
-function telaEstrutura({ db, ind, item, depNome }) {
-  const tabelaItens = tabela(
-    ['Código', 'Item', 'Tipo', 'Unidade', 'Nasce em', ['Em processo', 'num']],
-    (ind.itens || []).map((i) => linha(i.id, [
-      [i.codigo, 'small muted'],
-      i.nome,
-      [(TIPOS_ITEM.find((t) => t.id === i.tipo) || {}).nome || i.tipo, 'small'],
-      [i.unidade, 'small muted'],
-      [i.materialId ? 'almoxarifado' : depNome(i.departamentoId) || '—', 'small muted'],
-      [decimal(disponivelEmProcesso(db, i.id)), 'num'],
-    ])));
-
-  const receitas = (ind.transformacoes || []).map((t) => h('div', {
-    key: t.id, style: { borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 12 },
-  },
-    h('div', { style: { display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' } },
-      h('strong', null, t.nome), selo('info', depNome(t.departamentoId)),
-      h('span', { className: 'small muted' }, `lote padrão ${inteiro(t.lotePadrao)}`)),
-    h('div', { className: 'small', style: { marginTop: 6, lineHeight: 1.7 } },
-      h('strong', null, 'recebe: '),
-      t.entradas.map((e) => `${decimal(e.quantidade)} ${(item(e.itemId) || {}).nome || '?'}`
-        + `${num(e.perda) ? ` (+${e.perda}% perda)` : ''}`).join(' · ')),
-    h('div', { className: 'small', style: { lineHeight: 1.7 } },
-      h('strong', null, 'entrega: '),
-      t.saidas.map((s) => `${decimal(s.quantidade)} ${(item(s.itemId) || {}).nome || '?'}`).join(' · ')),
-    h('div', { className: 'small muted', style: { marginTop: 4 } },
-      t.operacoes.map((o) => `${o.nome} (${o.porCiclo === 0 ? 'uma vez por ordem'
-        : `ciclo de ${inteiro(o.porCiclo)}`})`).join(' → '))));
-
-  return h('div', null,
-    bloco('Itens', '§5', [tabelaItens]),
-    bloco('Transformações', '§45', [
-      pequeno('Cada receita diz o que entra, o que sai e quanto tempo leva. É o que faz o corte '
-        + 'entregar frente, costas, manga e gola em vez de "dar baixa de tecido".', { marginTop: -6 }),
-      ...receitas,
-    ]));
-}
-
 /* ==================================================== §32/§33 rastreio */
 
-function telaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
+function TelaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
   const lotes = (ind.lotes || []).slice().reverse();
   if (lotes.length === 0) return vazio('Nenhum lote produzido ainda. Aponte uma execução na aba Produção.');
 

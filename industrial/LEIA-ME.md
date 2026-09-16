@@ -158,7 +158,11 @@ ESTAMPADA"*), produção, produto acabado, custo acumulado, perdas, WIP, budget,
 desvio — mais a conferência de que nenhum saldo de processo fica negativo e de que o saldo
 é sempre o acumulado dos movimentos.
 
-## Os três ambientes
+## Um módulo só, sete sub-abas
+
+Cadastro de produto e ordem de produção **não são módulos à parte**: são o que alimenta o
+módulo industrial, e por isso moram dentro dele. O menu do sistema tem uma aba — Industrial —
+e ela abre em: Painel · Produtos · Carteira · Ordens · Plano e budget · Produção · Rastreio.
 
 **Produtos** — a engenharia de cada peça. Cadastra o item (comprado, apontando para o material do
 almoxarifado, ou produzido, dizendo em que setor nasce), a estrutura (o que a peça leva dentro,
@@ -177,17 +181,24 @@ não existe) da fila normal (a costura esperando o corte), confere componentes a
 aponta a execução e fecha a ordem — cancelar só antes de produzir; depois disso o caminho é
 encerrar, com motivo quando sobra saldo.
 
-**Industrial** — a visão da fábrica: carteira consolidada, plano, MRP, budget, WIP e rastreio.
+**Carteira, Plano, Produção e Rastreio** — a visão da fábrica: pedidos, consolidação, MRP,
+budget, apontamento, WIP e a árvore de transformação.
 
-## A aba Industrial
+Os caminhos entre as sub-abas são diretos: um produto pronto oferece **Abrir ordem**; a ordem
+mostra **Ver ficha do produto**; a carteira consolidada vira ordem e o botão leva a ela. Uma
+carteira consolidada no Plano e uma ordem aberta em Ordens são a mesma coisa para a fábrica —
+as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem anotada.
+
+## As sub-abas
 
 | sub-aba | o que mostra |
 |---|---|
 | Painel | carteira, produzido, custo planejado × real, peças em processo, alertas e o WIP setor a setor |
-| Carteira | as linhas de pedido, o botão de consolidar e o de gerar o plano de produção |
+| Produtos | produtos com custo padrão e situação da engenharia, itens, transformações e a ficha com a árvore |
+| Carteira | as linhas de pedido, o lançamento de um pedido novo, a consolidação e a geração do plano |
+| Ordens | todas as ordens — abertas aqui ou vindas da carteira — com o detalhe da cadeia, conferência, apontamento, cancelamento e encerramento |
 | Plano e budget | MRP com o que falta comprar, capacidade por setor com o gargalo, budget aberto em parcelas e a simulação de três tamanhos de lote |
-| Produção | as demandas por processo, a conferência de componentes e o apontamento da execução |
-| Estrutura | os itens tipados e as receitas de transformação, com entradas, saídas e ciclos |
+| Produção | as demandas por processo, o estoque entre processos e as perdas |
 | Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
 
 Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000

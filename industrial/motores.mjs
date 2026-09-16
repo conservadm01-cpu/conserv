@@ -634,6 +634,18 @@ export function planoDeProducao(db, opcoes = {}) {
     consolidacao = r.consolidacao;
   }
 
+  /* Planejar é abrir ordem. Uma carteira consolidada aqui e uma ordem aberta
+     no ambiente de ordens são a mesma coisa para a fábrica — e por isso as
+     duas ganham código de ordem e aparecem na mesma lista. */
+  if (!consolidacao.codigoOrdem) {
+    const ano = hojeISO().slice(0, 4);
+    const doAno = (db.industrial.consolidacoes || []).filter(
+      (c) => String(c.codigoOrdem || '').startsWith(`OP-${ano}-`)
+    );
+    consolidacao.codigoOrdem = `OP-${ano}-${String(doAno.length + 1).padStart(4, '0')}`;
+    consolidacao.origem = consolidacao.origem || 'carteira';
+  }
+
   const planos = [];
   for (const produto of consolidacao.produtos) {
     const explosao = explodirBOM(db, produto.itemId, produto.quantidade, opcoes);

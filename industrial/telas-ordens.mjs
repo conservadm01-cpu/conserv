@@ -16,15 +16,25 @@ import { executarTransformacao } from './motores.mjs';
 import { receberCompra } from './demonstracao.mjs';
 import {
   h, moeda, inteiro, decimal, dataBR, selo, vazio, pequeno, kpi, bloco, tabela, linha,
-  SELO, ModalExecucao,
+  SELO, ModalExecucao, navegacao, irEComBilhete,
 } from './interface.mjs';
+import { montarDemonstracao } from './demonstracao.mjs';
 
-export function GrupoOrdens({ db, update, usuario }) {
+export function GrupoOrdens({ db, update, usuario, irPara, embutido }) {
   const [erro, setErro] = React.useState('');
   const [aviso, setAviso] = React.useState('');
   const [nova, setNova] = React.useState(null);
   const [aberta, setAberta] = React.useState('');
   const [apontando, setApontando] = React.useState(null);
+
+  /* bilhete de outro ambiente: abrir ordem deste produto, ou mostrar esta ordem */
+  React.useEffect(() => {
+    if (navegacao.produtoId) {
+      setNova({ itemId: navegacao.produtoId, quantidade: 100 });
+      navegacao.produtoId = '';
+    }
+    if (navegacao.ordemId) { setAberta(navegacao.ordemId); navegacao.ordemId = ''; }
+  }, []);
 
   const ind = db.industrial || {};
   const item = (id) => (ind.itens || []).find((i) => i.id === id) || null;
@@ -46,21 +56,37 @@ export function GrupoOrdens({ db, update, usuario }) {
 
   const produtos = (ind.itens || []).filter((i) => i.tipo === 'PRODUTO_ACABADO' && i.ativo !== false);
 
-  const cabeca = h('div', { className: 'page-head' },
-    h('div', null,
-      h('p', { className: 'eyebrow' }, 'Chão de fábrica'),
-      h('h2', null, 'Ordens de produção')),
-    h('button', {
-      className: 'btn accent', disabled: produtos.length === 0,
-      onClick: () => setNova({ quantidade: 100 }),
-    }, '+ Nova ordem'));
+  const botaoNova = h('button', {
+    className: 'btn accent', disabled: produtos.length === 0,
+    onClick: () => setNova({ quantidade: 100 }),
+  }, '+ Nova ordem');
+
+  const cabeca = embutido
+    ? h('div', { className: 'row-actions', style: { marginBottom: 14 } }, botaoNova)
+    : h('div', { className: 'page-head' },
+      h('div', null,
+        h('p', { className: 'eyebrow' }, 'Chão de fábrica'),
+        h('h2', null, 'Ordens de produção')),
+      botaoNova);
 
   if (produtos.length === 0) {
-    return h('div', null, cabeca, bloco('Nenhum produto pronto para produzir', null, [
-      pequeno('A ordem de produção nasce de um produto com engenharia completa: estrutura, '
-        + 'transformações e tempos. Cadastre o produto no ambiente Produtos — lá o sistema diz, '
-        + 'item por item, o que ainda falta.'),
-    ]));
+    return h('div', null, cabeca,
+      erro ? recado(erro, 'var(--bad)', 'var(--bad-bg)') : null,
+      aviso ? recado(aviso, 'var(--ok)', 'var(--ok-bg)') : null,
+      bloco('Nenhum produto pronto para produzir', null, [
+        pequeno('A ordem de produção nasce de um produto com engenharia completa: estrutura, '
+          + 'transformações e tempos. Cadastre o produto no ambiente Produtos — lá o sistema diz, '
+          + 'item por item, o que ainda falta.'),
+        h('div', { className: 'row-actions' },
+          h('button', { className: 'btn accent', onClick: () => irEComBilhete(irPara, 'produtos') },
+            'Ir para Produtos'),
+          h('button', {
+            className: 'btn ghost',
+            onClick: () => mexer((d) => {
+              try { montarDemonstracao(d); return { ok: true }; } catch (e) { return { erro: e.message }; }
+            }, 'Demonstração carregada: a camiseta básica está pronta para produzir.'),
+          }, 'Carregar demonstração')),
+      ]));
   }
 
   const cartoes = h('div', { className: 'kpis' },
@@ -75,7 +101,9 @@ export function GrupoOrdens({ db, update, usuario }) {
         : o.atrasada ? selo('bad', 'atrasada')
           : o.acabadas > 0 ? selo('warn', 'em produção') : selo('idle', 'aberta');
     return linha(o.ordem.id, [
-      [o.codigo, 'small'],
+      h('div', null, h('strong', null, o.codigo),
+        h('div', { className: 'small muted' },
+          o.origem === 'ordem' ? 'aberta em Ordens' : 'carteira consolidada')),
       o.produto,
       [inteiro(o.quantidade), 'num'],
       [`${inteiro(o.acabadas)} · ${o.percentual}%`, 'num'],
@@ -94,8 +122,11 @@ export function GrupoOrdens({ db, update, usuario }) {
     aviso ? recado(aviso, 'var(--ok)', 'var(--ok-bg)') : null,
     cartoes,
     bloco('Ordens', '§34', [
+      pequeno('Entra aqui tudo o que virou plano: a ordem aberta nesta tela e a carteira '
+        + 'consolidada no ambiente Industrial — para a fábrica é a mesma coisa.', { marginTop: -6 }),
       lista.ordens.length === 0
-        ? vazio('Nenhuma ordem aberta. Use "+ Nova ordem" para abrir a primeira.')
+        ? vazio('Nenhuma ordem aberta. Use "+ Nova ordem" para abrir a primeira, ou consolide a '
+          + 'carteira no ambiente Industrial.')
         : tabela(['Ordem', 'Produto', ['Quantidade', 'num'], ['Produzido', 'num'], 'Entrega',
           'Cliente', ['Planejado', 'num'], ['Real', 'num'], 'Situação', ''], linhas),
     ]),
@@ -112,7 +143,7 @@ export function GrupoOrdens({ db, update, usuario }) {
     }) : null,
 
     detalhe && !detalhe.erro ? h(ModalOrdem, {
-      db, ind, detalhe, item, usuario, mexer,
+      db, ind, detalhe, item, usuario, mexer, irPara,
       onFechar: () => setAberta(''),
       onApontar: (etapa) => setApontando(
         (ind.demandas || []).find((d) => d.id === etapa.demandaId) || null),
@@ -203,7 +234,7 @@ function ModalNovaOrdem({ db, ind, produtos, dados, onFechar, onAbrir }) {
 
 /* --------------------------------------------------- detalhe da ordem */
 
-function ModalOrdem({ db, ind, detalhe, item, usuario, mexer, onFechar, onApontar }) {
+function ModalOrdem({ db, ind, detalhe, item, usuario, mexer, irPara, onFechar, onApontar }) {
   const mrp = materiaisDaOrdem(db, detalhe.ordem.id);
   const capacidade = capacidadeDaOrdem(db, detalhe.ordem.id);
   const encerrada = detalhe.situacao === 'concluida' || detalhe.situacao === 'cancelada';
@@ -344,7 +375,11 @@ function ModalOrdem({ db, ind, detalhe, item, usuario, mexer, onFechar, onAponta
       `${detalhe.pedido ? `Pedido ${detalhe.pedido} · ` : ''}`
       + `${detalhe.cliente ? `${detalhe.cliente} · ` : ''}`
       + `entrega ${detalhe.entrega ? dataBR(detalhe.entrega) : 'sem data'}`
-      + `${detalhe.atrasada ? ' · ATRASADA' : ''}`),
+      + `${detalhe.atrasada ? ' · ATRASADA' : ''}`,
+      detalhe.produtoId ? h('button', {
+        className: 'btn ghost sm', style: { marginLeft: 10 },
+        onClick: () => { onFechar(); irEComBilhete(irPara, 'produtos', { fichaId: detalhe.produtoId }); },
+      }, 'Ver ficha do produto') : null),
     cartoes,
     blocoFaltas,
     h('div', { className: 'panel', style: { background: '#fff' } },
