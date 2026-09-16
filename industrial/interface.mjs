@@ -18,8 +18,12 @@ import {
 import {
   consolidarCarteira, explodirBOM, calcularMRP, calcularCapacidade, calcularBudget,
   planoDeProducao, executarTransformacao, liberarParaCostura, wipDaCarteira,
-  realizadoVersusBudget, custoAcumulado, rastrear, simular,
+  realizadoVersusBudget, custoAcumulado, rastrear, rastrearParaFrente, simular,
+  budgetsDaCarteira,
 } from './motores.mjs';
+import { gerarRequisicoes, painelCompras } from './compras.mjs';
+import { auditarIndustrial } from './auditoria.mjs';
+import { TelaCompras, TelaAuditoria } from './telas-compras.mjs';
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
 
 export const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
@@ -127,8 +131,11 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
     { id: 'carteira', label: `Carteira (${(ind.carteira || []).length})` },
     { id: 'ordens', label: `Ordens (${ordensAbertas})` },
     { id: 'plano', label: 'Plano e budget' },
+    { id: 'compras', label: `Compras (${(ind.requisicoesCompra || []).filter(
+      (r) => !['recebida', 'cancelada'].includes(r.status)).length})` },
     { id: 'producao', label: `Produção (${(ind.demandas || []).filter((d) => d.status !== 'atendida').length})` },
     { id: 'rastreio', label: `Rastreio (${(ind.lotes || []).length})` },
+    { id: 'auditoria', label: 'Auditoria' },
   ];
 
   const recado = (texto, cor, fundo) => h('div', {
@@ -148,8 +155,10 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
     carteira: () => h(TelaCarteira, contexto),
     ordens: () => embutir(GrupoOrdens),
     plano: () => h(TelaPlano, contexto),
+    compras: () => h(TelaCompras, contexto),
     producao: () => h(TelaProducao, contexto),
     rastreio: () => h(TelaRastreio, contexto),
+    auditoria: () => h(TelaAuditoria, contexto),
   };
 
   return h('div', null,
@@ -194,28 +203,69 @@ function boasVindas(mexer, erro) {
 
 /* ============================================================ §28 painel */
 
-function TelaPainel({ db, ind, atual, item }) {
+function TelaPainel({ db, ind, atual, item, setSub }) {
   if (!atual) return vazio('Nenhuma carteira consolidada. Abra a aba Carteira e gere o plano de produção.');
 
   const wip = wipDaCarteira(db, atual.id);
   const comparacao = realizadoVersusBudget(db, atual.id);
   const budget = (ind.budgets || []).find((b) => b.consolidacaoId === atual.id);
   const acabadas = wip.erro ? 0 : num((wip.etapas[wip.etapas.length - 1] || {}).produzido);
-  const alertas = comparacao.erro ? [] : comparacao.alertas;
+  const compras = painelCompras(db);
+  const auditoria = auditarIndustrial(db, { registrar: false });
+
+  /* V2 §54 — o painel da direção: carteira, dinheiro e gargalo numa olhada */
+  const produto = atual.produtos[0] || {};
+  const explosao = produto.itemId ? explodirBOM(db, produto.itemId, produto.quantidade,
+    { consolidacaoId: atual.id }) : { erro: 'sem produto' };
+  const capacidade = explosao.erro ? null
+    : calcularCapacidade(db, explosao, { quantidade: produto.quantidade });
+  const gargalo = capacidade ? capacidade.linhas.find((l) => l.situacao === 'gargalo') : null;
+  const contas = explosao.erro ? null : budgetsDaCarteira(db, explosao, { consolidacaoId: atual.id });
+
+  const alertas = [
+    ...(comparacao.erro ? [] : comparacao.alertas),
+    ...compras.alertas,
+    ...(capacidade ? capacidade.gargalos : []),
+  ];
 
   const cartoes = h('div', { className: 'kpis' },
     kpi('Carteira', inteiro(wip.erro ? 0 : wip.total), 'peças prometidas'),
     kpi('Produzido', inteiro(acabadas), 'peças acabadas', acabadas > 0),
-    kpi('Custo planejado', budget ? moeda(budget.custoIndustrial) : '—',
+    kpi('Em processo', inteiro(wip.erro ? 0 : wip.emProcesso), 'peças entre setores'),
+    kpi('Budget', budget ? moeda(budget.custoIndustrial) : '—',
       budget ? `${moeda(budget.custoPorPeca)} por peça` : 'sem budget'),
-    kpi('Custo real', comparacao.erro ? '—' : moeda(comparacao.realizado),
-      comparacao.erro ? 'nada apontado ainda' : `desvio ${moeda(comparacao.desvio)}`),
-    kpi('Em processo', inteiro(wip.erro ? 0 : wip.emProcesso), 'peças entre setores'));
+    kpi('Realizado', comparacao.erro || !(comparacao.realizado > 0) ? '—' : moeda(comparacao.realizado),
+      comparacao.erro || !(comparacao.realizado > 0)
+        ? 'nada apontado ainda' : `desvio ${moeda(comparacao.desvio)}`),
+    kpi('Compras', moeda(compras.valorRequisitado + compras.valorEmPedido),
+      `${compras.aRequisitar} a requisitar · ${compras.emPedido} em pedido`),
+    kpi('Caixa', contas ? moeda(contas.caixa.necessidadeDeCaixa) : '—',
+      'necessidade estimada', contas && contas.caixa.necessidadeDeCaixa > 0),
+    kpi('Gargalo', gargalo ? gargalo.departamento : 'nenhum',
+      gargalo ? `${gargalo.ocupacao}% de ocupação` : 'capacidade folgada', !!gargalo));
 
   const painelAlertas = alertas.length
     ? bloco('⚠ Alertas', null, [h('ul', { style: { margin: 0, paddingLeft: 18 } },
       ...alertas.slice(0, 8).map((a, i) => h('li', { key: i, className: 'small', style: { marginBottom: 4 } },
         h('strong', null, `${a.titulo}: `), a.mensagem)))], { style: { borderColor: 'var(--warn)' } })
+    : null;
+
+  const saude = auditoria.erros.length || !wip.erro
+    ? bloco('Saúde do módulo', '§33', [
+      h('div', { style: { display: 'flex', gap: 22, flexWrap: 'wrap' } },
+        h('div', null, h('div', { className: 'small muted' }, 'AUDITORIA'),
+          selo(auditoria.erros.length ? 'bad' : 'ok',
+            auditoria.erros.length ? `${auditoria.erros.length} erro(s)` : 'sem erros')),
+        h('div', null, h('div', { className: 'small muted' }, 'ALERTAS'),
+          selo(auditoria.alertas.length ? 'warn' : 'ok',
+            auditoria.alertas.length ? `${auditoria.alertas.length}` : 'nenhum')),
+        h('div', null, h('div', { className: 'small muted' }, 'MATERIAL RESERVADO'),
+          h('strong', null, inteiro((ind.reservas || []).filter((r) => r.status === 'ativa').length),
+            ' reserva(s) ativa(s)'))),
+      auditoria.erros.length ? h('button', {
+        className: 'btn ghost sm', style: { marginTop: 10 }, onClick: () => setSub('auditoria'),
+      }, 'Ver na auditoria') : null,
+    ])
     : null;
 
   const pilulas = wip.erro ? vazio(wip.erro) : h('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
@@ -245,7 +295,7 @@ function TelaPainel({ db, ind, atual, item }) {
   ]);
 
   return h('div', null, cartoes, painelAlertas,
-    bloco('Onde estão as peças', 'WIP', [pilulas]), desvio);
+    bloco('Onde estão as peças', 'WIP', [pilulas]), desvio, saude);
 }
 
 /* ========================================================== §2 carteira */
@@ -380,56 +430,97 @@ function ModalPedidoCarteira({ db, produtos, dados, onFechar, onSalvar }) {
 
 /* ================================================ §3/§25/§27 plano e budget */
 
-function TelaPlano({ db, ind, atual, item, mexer, usuario }) {
+function TelaPlano({ db, ind, atual, item, mexer, usuario, setSub }) {
   if (!atual) return vazio('Consolide a carteira primeiro.');
   const produto = atual.produtos[0];
-  const explosao = explodirBOM(db, produto.itemId, produto.quantidade);
+  const explosao = explodirBOM(db, produto.itemId, produto.quantidade, { consolidacaoId: atual.id });
   if (explosao.erro) return vazio(explosao.erro);
 
-  const mrp = calcularMRP(db, explosao);
+  /* V2 §4 — as quatro contas, cada uma respondendo a sua pergunta */
+  const contas = budgetsDaCarteira(db, explosao, { consolidacaoId: atual.id });
+  const { industrial, consumo, compras, caixa, mrp } = contas;
   const capacidade = calcularCapacidade(db, explosao, { quantidade: produto.quantidade });
-  const budget = (ind.budgets || []).find((b) => b.consolidacaoId === atual.id)
-    || calcularBudget(db, explosao, { registrar: false });
   const cenarios = simular(db, produto.itemId,
     [Math.round(produto.quantidade / 2), produto.quantidade, produto.quantidade * 2],
     { considerarEstoque: false });
 
   const cartoes = h('div', { className: 'kpis' },
-    kpi('Material', moeda(budget.totalMaterial), 'ao custo do almoxarifado'),
-    kpi('Processo', moeda(budget.totalProcesso), `${inteiro(budget.minutosTotais)} minutos`),
-    kpi('Custo industrial', moeda(budget.custoIndustrial), `${moeda(budget.custoPorPeca)} por peça`, true),
-    kpi('Compras', moeda(mrp.totalCompra), `${mrp.itensAComprar} item(ns) em falta`),
+    kpi('Custo industrial', moeda(industrial.custoIndustrial),
+      `${moeda(industrial.custoPorPeca)} por peça`, true),
+    kpi('Consumo de material', moeda(consumo.total), `${moeda(consumo.porPeca)} por peça`),
+    kpi('A comprar', moeda(compras.total), `${compras.itens} item(ns) em falta`),
+    kpi('Necessidade de caixa', moeda(caixa.necessidadeDeCaixa), 'desembolso previsto'),
     kpi('Ocupação', capacidade.ocupacaoGeral === null ? '—' : `${capacidade.ocupacaoGeral}%`,
       `takt ${decimal(capacidade.takt, 3)} min/peça`));
 
+  /* §51 — as quantidades separadas, que é o que o V2 pede */
   const tabelaMrp = tabela(
-    ['Item', 'Tipo', ['Bruta', 'num'], ['Disponível', 'num'], ['Comprar', 'num'], 'Fornecedor', ['Valor', 'num']],
+    ['Item', ['Necessário', 'num'], ['Físico', 'num'], ['Reservado', 'num'],
+      ['Disp. p/ esta ordem', 'num'], ['Em pedido', 'num'], ['Comprar', 'num'], ['Comprar até', 'num'],
+      'Situação'],
     mrp.linhas.map((l) => linha(l.itemId, [
-      l.nome,
-      [(TIPOS_ITEM.find((t) => t.id === l.tipo) || {}).nome || l.tipo, 'small muted'],
+      h('div', null, l.nome,
+        h('div', { className: 'small muted' },
+          `${l.fornecedor || 'sem fornecedor'}${l.requisicao ? ` · ${l.requisicao}` : ''}`)),
       [`${decimal(l.bruta)} ${l.unidade}`, 'num'],
+      [decimal(l.fisico), 'num'],
+      [decimal(l.reservado), 'num', l.reservadoDeOutras > 0 ? { color: 'var(--warn)' } : null],
       [decimal(l.disponivel), 'num'],
+      [l.programadas > 0 ? decimal(l.programadas) : '—', 'num'],
       [l.comprar > 0 ? decimal(l.comprar) : '—', 'num', l.comprar > 0 ? { color: 'var(--bad)' } : null],
-      [l.fornecedor || '—', 'small'],
-      [l.valor > 0 ? moeda(l.valor) : '—', 'num'],
+      [l.dataLimite ? dataBR(l.dataLimite) : '—', 'num',
+        l.atrasada ? { color: 'var(--bad)', fontWeight: 600 } : null],
+      selo(l.statusTom, l.statusNome),
+    ])));
+
+  const aRequisitar = mrp.linhas.filter((l) => l.comprar > 0);
+  const botaoRequisitar = aRequisitar.length === 0 ? null
+    : h('div', { className: 'row-actions', style: { marginTop: 12 } },
+      h('button', {
+        className: 'btn accent',
+        onClick: () => {
+          const r = mexer((d) => gerarRequisicoes(d, {
+            linhas: aRequisitar, consolidacaoId: atual.id,
+            dataNecessidade: (atual.produtos[0] || {}).prazo || '', origem: 'plano',
+          }, usuario), (resp) => `${resp.criadas.length} requisição(ões) de compra geradas`
+            + `${resp.puladas.length ? ` · ${resp.puladas.length} já tinham requisição aberta` : ''}.`);
+          if (r && !r.erro) setSub('compras');
+        },
+      }, `Gerar requisições de compra (${aRequisitar.length} item(ns))`),
+      h('span', { className: 'small muted', style: { alignSelf: 'center' } },
+        'a requisição vira pedido e o pedido vira recebimento, na aba Compras'));
+
+  const tabelaConsumo = tabela(
+    ['Material', ['Necessário', 'num'], ['Do estoque', 'num'], ['A comprar', 'num'],
+      ['Custo unitário', 'num'], ['Valor', 'num']],
+    consumo.linhas.map((l) => linha(l.itemId, [
+      l.nome,
+      [`${decimal(l.necessidade)} ${l.unidade}`, 'num'],
+      [decimal(l.doEstoque), 'num'],
+      [l.aComprar > 0 ? decimal(l.aComprar) : '—', 'num'],
+      [moeda(l.custoUnitario), 'num'],
+      [moeda(l.valor), 'num'],
     ])));
 
   const tabelaCapacidade = tabela(
     ['Setor', ['Pessoas', 'num'], ['Horas necessárias', 'num'], ['Horas disponíveis', 'num'],
-      ['Ocupação', 'num'], 'Situação'],
+      ['Ocupação', 'num'], ['Déficit', 'num'], 'Situação'],
     capacidade.linhas.map((l) => linha(l.departamentoId, [
       l.departamento,
       [l.pessoas, 'num'],
       [decimal(l.horasNecessarias, 1), 'num'],
       [decimal(l.horasDisponiveis, 1), 'num'],
       [l.ocupacao === null ? '—' : `${l.ocupacao}%`, 'num'],
+      [l.horasNecessarias > l.horasDisponiveis
+        ? decimal(l.horasNecessarias - l.horasDisponiveis, 1) : '—', 'num',
+        l.horasNecessarias > l.horasDisponiveis ? { color: 'var(--bad)' } : null],
       selo(SELO[l.situacao] || 'idle', l.situacao === 'sem_equipe' ? 'sem equipe' : l.situacao),
     ])));
 
   const tabelaBudget = tabela(
     ['Processo', ['Minutos', 'num'], ['Mão de obra', 'num'], ['Manuseio', 'num'], ['Setup', 'num'],
       ['Máquina', 'num'], ['Indireto', 'num'], ['Total', 'num']],
-    budget.processos.map((p) => linha(p.transformacaoId, [
+    industrial.processos.map((p) => linha(p.transformacaoId, [
       `${p.departamento} — ${p.nome}`,
       [inteiro(p.minutos), 'num'],
       [moeda(p.maoDeObra), 'num'],
@@ -439,6 +530,35 @@ function TelaPlano({ db, ind, atual, item, mexer, usuario }) {
       [moeda(p.indireto), 'num'],
       [moeda(p.total), 'num'],
     ])));
+
+  /* §4.4/§25 — custo industrial não é necessidade de caixa */
+  const linhaCaixa = (rotulo, valor, nota) => h('div', {
+    key: rotulo,
+    style: { display: 'flex', justifyContent: 'space-between', gap: 16, padding: '7px 0',
+      borderBottom: '1px solid var(--line)' },
+  }, h('div', null, h('strong', { className: 'small' }, rotulo),
+      nota ? h('div', { className: 'small muted' }, nota) : null),
+     h('strong', { style: { fontFamily: 'var(--mono)' } }, moeda(valor)));
+
+  const blocoCaixa = bloco('Custo industrial × necessidade de caixa', '§25', [
+    pequeno('São contas diferentes: o material que já está no estoque custa na produção, mas não '
+      + 'sai do caixa de novo — ele foi pago quando entrou.', { marginTop: -6 }),
+    linhaCaixa('Custo industrial da carteira', caixa.custoIndustrial, 'material + conversão + indireto'),
+    linhaCaixa('Material que já está no estoque', caixa.materialExistente, 'não pesa no caixa'),
+    linhaCaixa('Material a comprar', caixa.materialAComprar, `${compras.itens} item(ns)`),
+    linhaCaixa('Mão de obra da produção', caixa.maoDeObraFutura, 'folha do período'),
+    linhaCaixa('Máquina e energia', caixa.maquinaEnergia, ''),
+    linhaCaixa('Custo fixo rateado', caixa.indiretoRateado, 'já contratado, não é desembolso novo'),
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 16, paddingTop: 12 } },
+      h('strong', null, 'NECESSIDADE ESTIMADA DE CAIXA'),
+      h('strong', { style: { fontFamily: 'var(--display)', fontSize: 22 } },
+        moeda(caixa.necessidadeDeCaixa))),
+    caixa.porMes.length ? h('div', { style: { marginTop: 12 } },
+      tabela(['Mês', ['Desembolso previsto', 'num']],
+        caixa.porMes.map((m) => linha(m.mes, [m.mes, [moeda(m.valor), 'num']])))) : null,
+    pequeno('Projeção industrial, não contabilidade: os prazos vêm do lead time e da condição de '
+      + 'pagamento de cada fornecedor.'),
+  ]);
 
   const tabelaSimulacao = tabela(
     [['Quantidade', 'num'], ['Compra', 'num'], ['Custo industrial', 'num'], ['Por peça', 'num'],
@@ -452,31 +572,21 @@ function TelaPlano({ db, ind, atual, item, mexer, usuario }) {
       [c.ocupacao === null ? '—' : `${c.ocupacao}%`, 'num'],
     ])));
 
-  /* Enquanto não existe módulo de compras, receber o que falta é um atalho da
-     demonstração — a entrada é a mesma que o almoxarifado registraria. */
-  const faltando = mrp.linhas.filter((l) => l.comprar > 0);
-  const botaoReceber = faltando.length === 0 ? null : h('div', { className: 'row-actions', style: { marginTop: 12 } },
-    h('button', {
-      className: 'btn',
-      onClick: () => mexer((d) => {
-        for (const l of faltando) {
-          const r = receberCompra(d, l.materialId, l.comprar, { documento: 'Compra do plano', usuario });
-          if (r && r.erro) return r;
-        }
-        return { ok: true };
-      }, `Recebimento lançado: ${faltando.length} material(is), ${moeda(mrp.totalCompra)}.`),
-    }, `Receber as compras deste plano (${faltando.length} item(ns))`),
-    h('span', { className: 'small muted', style: { alignSelf: 'center' } },
-      'atalho da demonstração — sem módulo de compras, a entrada é lançada direto no almoxarifado'));
-
   return h('div', null, cartoes,
-    bloco('MRP — necessidade líquida', '§25', [
-      pequeno('bruta − disponível − entradas programadas + segurança = líquida', { marginTop: -6 }),
+    bloco('MRP — o que falta, e para quando', '§5', [
+      pequeno('bruta − disponível − entradas programadas + segurança = líquida. Disponível já '
+        + 'desconta o que está reservado para outra ordem.', { marginTop: -6 }),
       tabelaMrp,
-      botaoReceber,
+      botaoRequisitar,
     ]),
+    bloco('Budget de consumo', '§4.2', [
+      pequeno('Quanto material a produção vai consumir, com as perdas — venha do estoque ou da '
+        + 'compra.', { marginTop: -6 }),
+      tabelaConsumo,
+    ]),
+    blocoCaixa,
     bloco('Capacidade por setor', '§27', [tabelaCapacidade]),
-    bloco('Budget industrial', '§3', [
+    bloco('Budget industrial', '§4.1', [
       tabelaBudget,
       pequeno('Cada minuto entra numa parcela só: tempo de processamento não é cobrado de novo como '
         + 'manuseio. O custo do minuto sai da folha da equipe de cada setor.'),

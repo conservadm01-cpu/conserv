@@ -15,8 +15,9 @@ const pasta = path.dirname(new URL(import.meta.url).pathname);
 
 /* a ordem importa: quem define vem antes de quem usa */
 const ARQUIVOS = [
-  'modelo.mjs', 'motores.mjs', 'cadastro.mjs', 'ordens.mjs', 'demonstracao.mjs',
-  'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs',
+  'modelo.mjs', 'reservas.mjs', 'compras.mjs', 'motores.mjs', 'cadastro.mjs', 'ordens.mjs',
+  'auditoria.mjs', 'demonstracao.mjs', 'testes-v2.mjs',
+  'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs', 'telas-compras.mjs',
 ];
 
 /** Tira `import ... from '...';` e o prefixo `export` das declarações. */
@@ -66,6 +67,9 @@ ${partes.join('\n')}
   /* o que o sistema enxerga do módulo */
   window.Industrial = {
     preparar: prepararIndustrial,
+    /* a carga do sistema chama isto: prepara as coleções e migra para a V2,
+       devolvendo a própria base para a cadeia de semeadura continuar */
+    carregar: (base) => { prepararIndustrial(base); migrarIndustrialV2(base); return base; },
     montarDemonstracao,
     consolidarCarteira, explodirBOM, calcularMRP, calcularCapacidade, calcularBudget,
     planoDeProducao, executarTransformacao, liberarParaCostura, wipDaCarteira,
@@ -77,6 +81,14 @@ ${partes.join('\n')}
     /* ordens de produção */
     abrirOrdem, resumoDaOrdem, ordensDeProducao, cancelarOrdem, encerrarOrdem,
     conferirComponentes, materiaisDaOrdem, capacidadeDaOrdem,
+    /* V2: reserva, compras, custo, auditoria e testes */
+    migrarIndustrialV2,
+    reservarMaterial, cancelarReserva, consumoDaReserva, saldoReservado,
+    disponivelParaOrdem, reservasDaOrdem, liberarReservasDaOrdem,
+    gerarRequisicoes, aprovarRequisicao, cancelarRequisicao, criarPedidoCompra,
+    receberPedido, cancelarPedido, painelCompras, entradaDeMaterial, dataLimiteDeCompra,
+    budgetsDaCarteira, custoHoraEquipamento, custoMinutoColaborador, rastrearParaFrente,
+    auditarIndustrial, reconciliarEstoqueIndustrial, testarIndustrialV2,
   };
   window.GrupoIndustrial = GrupoIndustrial;
   window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;

@@ -140,7 +140,8 @@ function encaixarIndustrial(texto) {
   /* 2. a carga prepara as coleções do módulo */
   for (const alvo of ['base', 'emptyDb()']) {
     const de = `return migrarJornada(semearEngenharia(migrarGruposCortaveis(semearProduto(semearMateriais(garantirAdminPadrao(${alvo}))))));`;
-    const para = `return window.Industrial.preparar(migrarJornada(semearEngenharia(migrarGruposCortaveis(semearProduto(semearMateriais(garantirAdminPadrao(${alvo})))))));`;
+    const para = `return window.Industrial.carregar(migrarJornada(semearEngenharia(`
+      + `migrarGruposCortaveis(semearProduto(semearMateriais(garantirAdminPadrao(${alvo})))))));`;
     encaixe(de, para, `loadDb (${alvo})`);
   }
 

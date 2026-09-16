@@ -17,11 +17,13 @@
  */
 
 import {
-  num, arredondar, uid, agoraISO, hojeISO, proximoCodigo,
+  num, arredondar, uid, agoraISO, hojeISO, proximoCodigo, statusMrp,
   tipoItem, ehProduzido, minutosDaOperacao, tempos, TIPOS_TEMPO,
   transformacaoQueProduz, estruturaDe, disponivelEmProcesso, moverProcesso,
   localDoDepartamento, novoLote, registrarHistorico, alerta, motivoPerda,
 } from './modelo.mjs';
+import { disponivelParaOrdem, consumoDaReserva } from './reservas.mjs';
+import { entradasProgramadasDe, dataLimiteDeCompra } from './compras.mjs';
 
 /* ===================================================== apoio da fábrica */
 
@@ -69,12 +71,95 @@ export function custoMinutoDepartamento(db, departamentoId) {
     return s + Math.max(mensal - Math.min(mensal, teto), 0);
   }, 0) / base.length;
 
+  /* V2 §10 — benefícios e outros custos cadastrados entram por fora do
+     percentual de encargos, que já cobre férias, 13º e FGTS. Somar os dois
+     como "encargos" seria contar a mesma provisão duas vezes. */
+  const beneficios = base.reduce(
+    (s, c) => s + num(c.beneficiosMensais) + num(c.outrosCustosMensais), 0) / base.length;
+
+  const folha = comEncargos + vt + beneficios;
   return {
     pessoas: equipe.length,
-    folhaPorPessoa: arredondar(comEncargos + vt, 2),
+    media: arredondar(media, 2),
+    encargos,
+    beneficios: arredondar(beneficios, 2),
+    vtMedio: arredondar(vt, 2),
+    folhaPorPessoa: arredondar(folha, 2),
     minutosMes,
-    custoMinuto: arredondar((comEncargos + vt) / minutosMes, 5),
+    custoMinuto: arredondar(folha / minutosMes, 5),
+    custoHora: arredondar((folha / minutosMes) * 60, 2),
     vazio: equipe.length === 0,
+  };
+}
+
+/** V2 §10 — o custo do minuto de uma pessoa, quando se quer o número dela. */
+export function custoMinutoColaborador(db, colaboradorId) {
+  const c = (db.colaboradores || []).find((x) => x.id === colaboradorId);
+  if (!c) return { custoMinuto: 0, vazio: true };
+  const par = db.parametrosMaoDeObra || {};
+  const encargos = num(par.encargos) || 80;
+  const dias = num(par.diasUteis) || num((db.industrial.parametros || {}).diasUteisMes) || 22;
+  const minutosMes = minutosDoDia(db) * dias;
+  if (!(minutosMes > 0) || !(num(c.salario) > 0)) return { custoMinuto: 0, vazio: true, pessoa: c.nome };
+
+  const vt = c.usaConducao
+    ? Math.max(num(c.conducoesDia) * num(c.valorConducao) * (num(c.diasConducao) || dias)
+      - Math.min(num(c.conducoesDia) * num(c.valorConducao) * (num(c.diasConducao) || dias),
+        num(c.salario) * 0.06), 0)
+    : 0;
+  const folha = num(c.salario) * (1 + encargos / 100) + vt
+    + num(c.beneficiosMensais) + num(c.outrosCustosMensais);
+  return {
+    pessoa: c.nome,
+    folha: arredondar(folha, 2),
+    minutosMes,
+    custoMinuto: arredondar(folha / minutosMes, 5),
+    custoHora: arredondar((folha / minutosMes) * 60, 2),
+    vazio: false,
+  };
+}
+
+/**
+ * V2 §9 — o custo da hora de uma máquina específica.
+ *
+ * Overloque e plotter DTF não custam a mesma hora. Quando o equipamento tem
+ * os números cadastrados, a conta é dele; quando não tem, cai no parâmetro
+ * geral da fábrica — que é uma estimativa, e o sistema diz isso.
+ */
+export function custoHoraEquipamento(db, equipamentoId) {
+  const parametros = db.industrial.parametros || {};
+  const geral = {
+    origem: 'parametro',
+    depreciacao: 0, manutencao: 0, energia: num(parametros.custoEnergiaHoraMaquina),
+    outros: 0,
+    custoHora: arredondar(num(parametros.custoMaquinaHora) + num(parametros.custoEnergiaHoraMaquina), 4),
+  };
+  const eq = (db.equipamentos || []).find((e) => e.id === equipamentoId);
+  if (!eq) return geral;
+
+  const horas = num(eq.horasDisponiveisMes)
+    || (minutosDoDia(db) / 60) * (num(parametros.diasUteisMes) || 22);
+  if (!(horas > 0)) return { ...geral, equipamento: eq.nome };
+
+  const meses = num(eq.vidaUtilMeses);
+  const depreciacaoMes = meses > 0
+    ? Math.max(num(eq.custoAquisicao) - num(eq.valorResidual), 0) / meses
+    : 0;
+  const detalhado = depreciacaoMes > 0 || num(eq.manutencaoMensal) > 0
+    || num(eq.energiaHora) > 0 || num(eq.outrosCustosMensais) > 0;
+  if (!detalhado) return { ...geral, equipamento: eq.nome };
+
+  const depreciacao = arredondar(depreciacaoMes / horas, 4);
+  const manutencao = arredondar(num(eq.manutencaoMensal) / horas, 4);
+  const energia = arredondar(num(eq.energiaHora) || num(parametros.custoEnergiaHoraMaquina), 4);
+  const outros = arredondar(num(eq.outrosCustosMensais) / horas, 4);
+  return {
+    origem: 'equipamento',
+    equipamento: eq.nome,
+    horasMes: arredondar(horas, 1),
+    depreciacaoMensal: arredondar(depreciacaoMes, 2),
+    depreciacao, manutencao, energia, outros,
+    custoHora: arredondar(depreciacao + manutencao + energia + outros, 4),
   };
 }
 
@@ -217,7 +302,7 @@ export function explodirBOM(db, itemIdRaiz, quantidade, opcoes = {}) {
        desconto vale para o que está no meio do caminho — subproduto cortado
        que sobrou de ontem é subproduto que não precisa cortar de novo. */
     const netar = considerarEstoque && !(n === 0 && id === raiz.id && opcoes.netarRaiz !== true);
-    const disponivel = netar ? disponivelDoItem(db, it) : 0;
+    const disponivel = netar ? disponivelDoItem(db, it, opcoes.consolidacaoId) : 0;
     const programadas = netar ? entradasProgramadas(db, it) : 0;
     const seguranca = netar ? estoqueSeguranca(db, it, parametros) : 0;
     const liquida = Math.max(arredondar(bruta - disponivel - programadas + seguranca, 4), 0);
@@ -352,23 +437,23 @@ export function minutosDaTransformacao(transformacao, quantidade) {
 }
 
 /** Quanto do item existe hoje: almoxarifado para o comprado, processo para o produzido. */
-export function disponivelDoItem(db, it) {
+export function disponivelDoItem(db, it, consolidacaoId) {
   if (it.materialId) {
-    const saldos = (db.saldos || []).filter((s) => s.materialId === it.materialId);
-    const fisico = saldos.reduce((s, x) => s + num(x.fisico), 0);
-    const reservado = saldos.reduce((s, x) => s + num(x.reservado), 0);
-    return arredondar(Math.max(fisico - reservado, 0), 4);
+    /* V2 §51 — o que está reservado para outra ordem não é disponível para
+       esta. Com a ordem no contexto, o que ela mesma reservou volta a contar. */
+    const posicao = disponivelParaOrdem(db, it.materialId, consolidacaoId);
+    return consolidacaoId ? posicao.paraAOrdem : posicao.livre;
   }
   return arredondar(disponivelEmProcesso(db, it.id), 4);
 }
 
-/** §25 — o que já foi comprado e ainda não chegou conta como entrada programada. */
+/**
+ * §25 — o que já foi comprado e ainda não chegou conta como entrada
+ * programada. V2: sai do pedido de compra, que agora existe de verdade.
+ */
 export function entradasProgramadas(db, it) {
-  const pedidos = db.industrial.entradasProgramadas || db.entradasProgramadas || [];
-  return arredondar(pedidos
-    .filter((p) => (it.materialId && p.materialId === it.materialId) || p.itemId === it.id)
-    .filter((p) => p.status !== 'cancelado' && p.status !== 'recebido')
-    .reduce((s, p) => s + num(p.quantidade), 0), 4);
+  if (!it.materialId) return 0;
+  return entradasProgramadasDe(db, it.materialId);
 }
 
 /** §25 — cobertura mínima, em dias de consumo médio do próprio item. */
@@ -398,6 +483,10 @@ export function estoqueSeguranca(db, it, parametros = {}) {
  */
 export function calcularMRP(db, explosao, opcoes = {}) {
   if (!explosao || explosao.erro) return { erro: explosao?.erro || 'Explosão inválida.' };
+  const consolidacaoId = opcoes.consolidacaoId || '';
+  const parametros = db.industrial.parametros || {};
+  const dataNecessidade = opcoes.dataNecessidade || '';
+
   const linhas = explosao.necessidades
     .filter((l) => !ehProduzido(l.item) || l.comprar > 0)
     .map((l) => {
@@ -405,52 +494,133 @@ export function calcularMRP(db, explosao, opcoes = {}) {
         ? (db.materiais || []).find((m) => m.id === l.item.materialId)
         : null;
       const custo = num(material?.custoMedio) || num(l.item.custoPadrao);
-      const comprar = arredondar(Math.max(l.liquida, 0), 3);
       const fornecedor = material
         ? (db.fornecedores || []).find((f) => f.id === material.fornecedorPadraoId)
         : null;
+
+      /* V2 §51 — as cinco quantidades que não podem virar uma só */
+      const posicao = material
+        ? disponivelParaOrdem(db, material.id, consolidacaoId)
+        : { fisico: l.disponivel, reservado: 0, reservadoDaOrdem: 0, reservadoDeOutras: 0,
+            livre: l.disponivel, paraAOrdem: l.disponivel };
+      const programadas = material ? entradasProgramadasDe(db, material.id) : 0;
+      const seguranca = l.seguranca;
+      const disponivelParaEsta = consolidacaoId ? posicao.paraAOrdem : posicao.livre;
+
+      /* V2 §5: bruta − disponível − programadas + segurança = líquida */
+      const comprar = arredondar(
+        Math.max(l.bruta - disponivelParaEsta - programadas + seguranca, 0), 3);
+
+      const prazo = material
+        ? dataLimiteDeCompra(db, material.id, dataNecessidade || hojeISO())
+        : { leadTimeDias: 0, dataLimite: '', atrasada: false };
+
+      const requisicao = material
+        ? (db.industrial.requisicoesCompra || []).find(
+          (r) => r.materialId === material.id && !['recebida', 'cancelada'].includes(r.status))
+        : null;
+
+      /* V2 §5 — a leitura da linha, que é o que o comprador lê primeiro */
+      let status = 'ok';
+      if (material && material.ativo === false) status = 'bloqueado';
+      else if (!(custo > 0)) status = 'bloqueado';
+      else if (comprar > 0) {
+        /* pedido colocado é compra programada; requisição ainda é intenção —
+           quem compra precisa ver a diferença */
+        if (programadas >= comprar - 0.0001) status = 'compra_programada';
+        else if (posicao.fisico >= l.bruta - 0.0001) status = 'estoque_insuficiente';
+        else status = 'compra_necessaria';
+      } else if (programadas > 0 && l.bruta > disponivelParaEsta + 0.0001) {
+        /* falta no estoque, mas já vem chegando: quem lê precisa saber que a
+           compra existe, antes de ver o aviso de estoque mínimo */
+        status = 'compra_programada';
+      } else if (material && arredondar(posicao.fisico - l.bruta, 3) < num(material.estoqueMinimo)) {
+        status = 'abaixo_minimo';
+      }
+
       return {
         itemId: l.itemId,
         nome: l.item.nome,
         tipo: l.item.tipo,
         unidade: l.unidade,
         bruta: l.bruta,
-        disponivel: l.disponivel,
-        programadas: l.programadas,
-        seguranca: l.seguranca,
+        /* as quantidades separadas (§51) */
+        fisico: posicao.fisico,
+        reservado: posicao.reservado,
+        reservadoDaOrdem: posicao.reservadoDaOrdem,
+        reservadoDeOutras: posicao.reservadoDeOutras,
+        disponivel: arredondar(disponivelParaEsta, 4),
+        programadas,
+        seguranca,
         comprar,
         custoUnitario: arredondar(custo, 4),
         valor: arredondar(comprar * custo, 2),
+        /* o que já existe e vai ser consumido — entra no budget de consumo,
+           mas não no de compras nem no caixa (§4.2/§4.3/§4.4) */
+        valorDoEstoque: arredondar(Math.min(l.bruta, disponivelParaEsta) * custo, 2),
+        valorConsumo: arredondar(l.bruta * custo, 2),
         materialId: material ? material.id : '',
         fornecedorId: fornecedor ? fornecedor.id : '',
         fornecedor: fornecedor ? (fornecedor.nomeFantasia || fornecedor.nome) : '',
-        leadTimeDias: num(material?.leadTimeDias),
-        abaixoDoMinimo: material ? l.disponivel < num(material.estoqueMinimo) : false,
+        prazoPagamentoDias: fornecedor ? prazoEmDias(fornecedor, parametros) : num(parametros.prazoPagamentoPadraoDias),
+        leadTimeDias: prazo.leadTimeDias,
+        dataLimite: prazo.dataLimite,
+        atrasada: comprar > 0 && prazo.atrasada,
+        requisicao: requisicao ? requisicao.codigo : '',
+        status,
+        statusNome: statusMrp(status).nome,
+        statusTom: statusMrp(status).tom,
+        abaixoDoMinimo: material ? posicao.fisico < num(material.estoqueMinimo) : false,
       };
     })
     .sort((a, b) => b.valor - a.valor);
 
   const alertas = [];
   for (const l of linhas) {
-    if (l.comprar > 0) {
+    if (l.status === 'compra_necessaria') {
       alertas.push(alerta('material_insuficiente',
-        `${l.nome}: faltam ${l.comprar} ${l.unidade} para a carteira`
-        + `${l.fornecedor ? ` — ${l.fornecedor}` : ''}${l.leadTimeDias ? `, ${l.leadTimeDias} dias de prazo` : ''}.`,
+        `${l.nome}: faltam ${l.comprar} ${l.unidade}`
+        + `${l.fornecedor ? ` — ${l.fornecedor}` : ''}`
+        + `${l.leadTimeDias ? `, ${l.leadTimeDias} dias de prazo` : ''}`
+        + `${l.dataLimite ? `, comprar até ${l.dataLimite}` : ''}.`,
         { itemId: l.itemId, quantidade: l.comprar }));
-    } else if (l.abaixoDoMinimo) {
-      alertas.push(alerta('estoque_minimo', `${l.nome} está abaixo do estoque mínimo.`, { itemId: l.itemId }));
+    } else if (l.status === 'estoque_insuficiente') {
+      alertas.push(alerta('material_insuficiente',
+        `${l.nome}: existem ${l.fisico} ${l.unidade} no estoque, mas ${l.reservadoDeOutras} `
+        + 'estão reservados para outra ordem.', { itemId: l.itemId }));
+    } else if (l.status === 'abaixo_minimo') {
+      alertas.push(alerta('estoque_minimo', `${l.nome} ficaria abaixo do estoque mínimo.`,
+        { itemId: l.itemId }));
+    } else if (l.status === 'bloqueado') {
+      alertas.push(alerta('material_insuficiente',
+        `${l.nome}: sem custo cadastrado ou material inativo — o budget sai incompleto.`,
+        { itemId: l.itemId }));
+    }
+    if (l.atrasada) {
+      alertas.push(alerta('prazo_risco',
+        `${l.nome}: compra atrasada para atendimento da produção (limite ${l.dataLimite}).`,
+        { itemId: l.itemId }));
     }
   }
 
   return {
     linhas,
     totalCompra: arredondar(linhas.reduce((s, l) => s + l.valor, 0), 2),
+    totalConsumo: arredondar(linhas.reduce((s, l) => s + l.valorConsumo, 0), 2),
+    totalEstoque: arredondar(linhas.reduce((s, l) => s + l.valorDoEstoque, 0), 2),
     itensAComprar: linhas.filter((l) => l.comprar > 0).length,
+    itensBloqueados: linhas.filter((l) => l.status === 'bloqueado').length,
     prazoMaximo: Math.max(0, ...linhas.filter((l) => l.comprar > 0).map((l) => l.leadTimeDias)),
     alertas,
     geradoEm: agoraISO(),
-    ...(opcoes.consolidacaoId ? { consolidacaoId: opcoes.consolidacaoId } : {}),
+    ...(consolidacaoId ? { consolidacaoId } : {}),
   };
+}
+
+/** Prazo de pagamento em dias, lido da condição do fornecedor ("28 dias"). */
+function prazoEmDias(fornecedor, parametros) {
+  const achado = String(fornecedor?.condicaoPagamento || '').match(/(\d+)/);
+  return achado ? num(achado[1]) : num(parametros.prazoPagamentoPadraoDias) || 28;
 }
 
 /* ====================================================== §17/§27 capacidade */
@@ -575,8 +745,14 @@ export function calcularBudget(db, explosao, opcoes = {}) {
     const maoDeObra = arredondar(minutosDiretos * custoMinuto, 2);
     const manuseio = arredondar(minutosManuseio * custoMinuto, 2);
     const setup = arredondar(minutosSetup * custoMinuto, 2);
-    const maquina = arredondar((minutosMaquina / 60) * num(parametros.custoMaquinaHora), 2);
-    const energia = arredondar((minutosMaquina / 60) * num(parametros.custoEnergiaHoraMaquina), 2);
+    /* V2 §9 — quando a operação tem máquina cadastrada com custo, a hora é a
+       dela; senão vale o parâmetro geral da fábrica */
+    const trf = (db.industrial.transformacoes || []).find((t) => t.id === p.transformacaoId);
+    const equipamentoId = ((trf || {}).operacoes || []).map((o) => o.equipamentoId).find(Boolean);
+    const hora = custoHoraEquipamento(db, equipamentoId);
+    const maquina = arredondar((minutosMaquina / 60)
+      * (hora.origem === 'equipamento' ? hora.custoHora - hora.energia : num(parametros.custoMaquinaHora)), 2);
+    const energia = arredondar((minutosMaquina / 60) * num(hora.energia), 2);
     const indiretoValor = arredondar(trabalhados * indireto.taxaMinuto, 2);
     return {
       transformacaoId: p.transformacaoId,
@@ -614,6 +790,122 @@ export function calcularBudget(db, explosao, opcoes = {}) {
   };
   if (opcoes.registrar !== false) db.industrial.budgets.push(registro);
   return registro;
+}
+
+/* ============================================ V2 §4 — os quatro budgets */
+
+/**
+ * V2 §4 — budget não é um número só. São quatro perguntas diferentes, e
+ * misturá-las é o erro clássico:
+ *
+ *   industrial  quanto custa FABRICAR a carteira (material + conversão)
+ *   consumo     quanto material será CONSUMIDO, com as perdas
+ *   compras     quanto precisa ser COMPRADO, depois do estoque e das reservas
+ *   caixa       quanto sai do BOLSO, e quando
+ *
+ * Custo industrial ≠ valor de compra ≠ necessidade de caixa (§50). O material
+ * que já está no estoque custa na produção, mas não pesa no caixa deste mês —
+ * ele foi pago no mês em que entrou.
+ */
+export function budgetsDaCarteira(db, explosao, opcoes = {}) {
+  if (!explosao || explosao.erro) return { erro: explosao?.erro || 'Explosão inválida.' };
+  const parametros = db.industrial.parametros || {};
+  const industrial = calcularBudget(db, explosao, { ...opcoes, registrar: false });
+  const mrp = calcularMRP(db, explosao, opcoes);
+  const pecas = num(explosao.raiz?.quantidade);
+
+  /* 4.2 consumo: o que a produção vai consumir, com as perdas já embutidas
+     na explosão (cada componente carrega o seu %) */
+  const consumo = {
+    linhas: mrp.linhas.map((l) => ({
+      itemId: l.itemId, nome: l.nome, unidade: l.unidade,
+      necessidade: l.bruta, custoUnitario: l.custoUnitario, valor: l.valorConsumo,
+      doEstoque: arredondar(Math.min(l.bruta, l.disponivel), 4),
+      aComprar: l.comprar,
+    })),
+    total: mrp.totalConsumo,
+    porPeca: pecas > 0 ? arredondar(mrp.totalConsumo / pecas, 4) : 0,
+  };
+
+  /* 4.3 compras: só o que falta de verdade, depois de estoque, reserva e
+     pedido em aberto */
+  const compras = {
+    linhas: mrp.linhas.filter((l) => l.comprar > 0).map((l) => ({
+      itemId: l.itemId, nome: l.nome, unidade: l.unidade,
+      necessidade: l.bruta, disponivel: l.disponivel, reservadoDeOutras: l.reservadoDeOutras,
+      programadas: l.programadas, seguranca: l.seguranca,
+      comprar: l.comprar, custoUnitario: l.custoUnitario, valor: l.valor,
+      fornecedor: l.fornecedor, fornecedorId: l.fornecedorId,
+      leadTimeDias: l.leadTimeDias, dataLimite: l.dataLimite, atrasada: l.atrasada,
+      prazoPagamentoDias: l.prazoPagamentoDias,
+      status: l.status, statusNome: l.statusNome, statusTom: l.statusTom,
+    })),
+    total: mrp.totalCompra,
+    itens: mrp.itensAComprar,
+    prazoMaximo: mrp.prazoMaximo,
+  };
+
+  /* 4.4 caixa: o desembolso, com data. O material que já está no estoque
+     aparece separado, porque ele não sai do caixa de novo. */
+  const conversao = industrial.processos.reduce((acc, p) => {
+    acc.maoDeObra += num(p.maoDeObra) + num(p.manuseio) + num(p.setup);
+    acc.maquina += num(p.maquina) + num(p.energia);
+    acc.indireto += num(p.indireto);
+    return acc;
+  }, { maoDeObra: 0, maquina: 0, indireto: 0 });
+
+  const desembolsos = compras.linhas.map((l) => ({
+    tipo: 'material',
+    descricao: `${l.nome} · ${l.fornecedor || 'sem fornecedor'}`,
+    valor: l.valor,
+    /* chega no lead time e vence no prazo do fornecedor */
+    quando: somarDiasISO(hojeISO(), num(l.leadTimeDias) + num(l.prazoPagamentoDias)),
+  }));
+  if (conversao.maoDeObra > 0) {
+    desembolsos.push({
+      tipo: 'mao_de_obra', descricao: 'Mão de obra da produção',
+      valor: arredondar(conversao.maoDeObra, 2),
+      quando: somarDiasISO(hojeISO(), 30),
+    });
+  }
+  if (conversao.maquina > 0) {
+    desembolsos.push({
+      tipo: 'maquina', descricao: 'Máquina e energia',
+      valor: arredondar(conversao.maquina, 2),
+      quando: somarDiasISO(hojeISO(), 30),
+    });
+  }
+
+  const caixa = {
+    custoIndustrial: industrial.custoIndustrial,
+    materialExistente: mrp.totalEstoque,
+    materialAComprar: compras.total,
+    maoDeObraFutura: arredondar(conversao.maoDeObra, 2),
+    maquinaEnergia: arredondar(conversao.maquina, 2),
+    /* o indireto é custo fixo já contratado: entra no custo industrial, mas
+       não é desembolso novo desta carteira */
+    indiretoRateado: arredondar(conversao.indireto, 2),
+    desembolsos: desembolsos.sort((a, b) => String(a.quando).localeCompare(String(b.quando))),
+    necessidadeDeCaixa: arredondar(
+      compras.total + conversao.maoDeObra + conversao.maquina, 2),
+  };
+
+  /* o mesmo desembolso, agrupado por mês — é como o caixa é olhado */
+  const porMes = new Map();
+  for (const d of caixa.desembolsos) {
+    const mes = String(d.quando).slice(0, 7);
+    porMes.set(mes, arredondar(num(porMes.get(mes)) + num(d.valor), 2));
+  }
+  caixa.porMes = [...porMes.entries()].map(([mes, valor]) => ({ mes, valor }))
+    .sort((a, b) => a.mes.localeCompare(b.mes));
+
+  return { industrial, consumo, compras, caixa, mrp, pecas };
+}
+
+function somarDiasISO(iso, dias) {
+  const base = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
+  base.setDate(base.getDate() + num(dias));
+  return base.toISOString().slice(0, 10);
 }
 
 /* =================================================== §24 plano de produção */
@@ -778,8 +1070,16 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
       const custoUnitario = num(baixa?.custoUnitario)
         || num((db.materiais || []).find((m) => m.id === it.materialId)?.custoMedio);
       custoAlmoxarifado += consumo.quantidade * custoUnitario;
+      /* V2 §6 — o consumo baixa a reserva da ordem. O que passar do reservado
+         sai do estoque livre, e é esse excedente que vira desvio de consumo. */
+      const baixaReserva = consumoDaReserva(db, {
+        materialId: it.materialId,
+        quantidade: consumo.quantidade,
+        consolidacaoId: dados.consolidacaoId || '',
+      }, usuario);
       consumosRegistrados.push({ itemId: it.id, nome: it.nome, quantidade: consumo.quantidade,
-        unidade: it.unidade, custoUnitario: arredondar(custoUnitario, 4), origem: 'almoxarifado' });
+        unidade: it.unidade, custoUnitario: arredondar(custoUnitario, 4), origem: 'almoxarifado',
+        daReserva: num(baixaReserva.daReserva), foraDaReserva: num(baixaReserva.doLivre) });
     } else {
       /* subproduto sai do estoque do processo anterior */
       const saldo = (db.industrial.estoques || [])
@@ -817,6 +1117,8 @@ export function executarTransformacao(db, dados, usuario, ganchos = {}) {
     : minutosDaTransformacao(trf, produzidoPrincipal);
   const custos = custearExecucao(db, {
     departamentoId: trf.departamentoId,
+    equipamentoId: dados.equipamentoId
+      || (trf.operacoes || []).map((o) => o.equipamentoId).find(Boolean) || '',
     minutosPorTipo: minutos.porTipo,
     custoAlmoxarifado,
     custoProcesso,
@@ -1002,8 +1304,11 @@ export function custearExecucao(db, dados) {
   const maoDeObra = arredondar(minutosDiretos * num(mo.custoMinuto), 4);
   const manuseio = arredondar(minutosManuseio * num(mo.custoMinuto), 4);
   const setup = arredondar(minutosSetup * num(mo.custoMinuto), 4);
-  const maquina = arredondar((num(t.processamento) / 60) * num(parametros.custoMaquinaHora), 4);
-  const energia = arredondar((num(t.processamento) / 60) * num(parametros.custoEnergiaHoraMaquina), 4);
+  /* V2 §9 — a hora da máquina que de fato rodou */
+  const hora = custoHoraEquipamento(db, dados.equipamentoId);
+  const maquina = arredondar((num(t.processamento) / 60)
+    * (hora.origem === 'equipamento' ? hora.custoHora - hora.energia : num(parametros.custoMaquinaHora)), 4);
+  const energia = arredondar((num(t.processamento) / 60) * num(hora.energia), 4);
   const perda = arredondar((dados.perdas || []).reduce(
     (s, p) => s + num(p.quantidade) * num(p.custoUnitario), 0), 4);
   const retrabalho = arredondar(num(dados.retrabalho) * num(mo.custoMinuto), 4);
@@ -1025,6 +1330,8 @@ export function custearExecucao(db, dados) {
       espera: num(t.espera), trabalhados },
     custoMinuto: num(mo.custoMinuto),
     taxaIndireta: num(indireto.taxaMinuto),
+    custoHoraMaquina: num(hora.custoHora),
+    origemCustoMaquina: hora.origem,
   };
 }
 
@@ -1099,7 +1406,11 @@ export function liberarParaCostura(db, ordemId, usuario) {
     const it = item(db, entrada.itemId);
     if (!it) continue;
     const precisa = arredondar(rodadas * num(entrada.quantidade) * (1 + num(entrada.perda) / 100), 3);
-    const tem = it.materialId ? disponivelDoItem(db, it) : disponivelEmProcesso(db, it.id);
+    /* V2 §6 — o que a própria ordem reservou conta como disponível para ela;
+       o que está reservado para outra, não. */
+    const tem = it.materialId
+      ? disponivelDoItem(db, it, ordem.consolidacaoId)
+      : disponivelEmProcesso(db, it.id);
     conferidos.push({ itemId: it.id, nome: it.nome, precisa, tem: arredondar(tem, 3), unidade: it.unidade });
     if (tem + 0.0001 < precisa) {
       faltas.push({ itemId: it.id, nome: it.nome, falta: arredondar(precisa - tem, 3), unidade: it.unidade });
@@ -1284,6 +1595,64 @@ export function rastrear(db, loteId, profundidade = 0) {
     execucao: execucao ? execucao.codigo : '',
     origens,
     destinos,
+  };
+}
+
+/**
+ * V2 §22 — rastreabilidade para a frente: deste rolo, o que saiu?
+ *
+ * O caminho inverso do `rastrear`: parte de um lote e desce pelas execuções
+ * que o consumiram, até o produto acabado e o cliente que o recebeu.
+ */
+export function rastrearParaFrente(db, loteId, profundidade = 0) {
+  const lote = (db.industrial.lotes || []).find((l) => l.id === loteId);
+  if (!lote) return { erro: 'Lote não encontrado.' };
+  if (profundidade > 20) return { erro: 'Árvore de transformação longa demais.' };
+
+  const consumidoPor = (db.industrial.execucoes || [])
+    .filter((e) => (e.consumos || []).some((c) => c.loteId === lote.id));
+
+  const destinos = consumidoPor.map((e) => {
+    const dep = departamento(db, e.departamentoId);
+    const consumo = (e.consumos || []).find((c) => c.loteId === lote.id) || {};
+    return {
+      execucao: e.codigo,
+      departamento: dep ? dep.nome : '',
+      data: e.data,
+      consumido: num(consumo.quantidade),
+      saidas: (e.saidas || []).map((s) => {
+        const adiante = rastrearParaFrente(db, s.loteId, profundidade + 1);
+        return {
+          lote: s.loteCodigo, loteId: s.loteId, item: s.nome, quantidade: num(s.quantidade),
+          custoUnitario: num(s.custoUnitario),
+          destinos: adiante.erro ? [] : adiante.destinos,
+          entregue: adiante.erro ? null : adiante.entregue,
+        };
+      }),
+    };
+  });
+
+  /* ponta da linha: produto acabado parado no estoque, e a carteira que o espera */
+  const item = (db.industrial.itens || []).find((i) => i.id === lote.itemId);
+  const entregue = item && item.tipo === 'PRODUTO_ACABADO'
+    ? (db.industrial.carteira || [])
+      .filter((l) => l.itemId === item.id)
+      .map((l) => {
+        const cliente = (db.clientes || []).find((c) => c.id === l.clienteId);
+        return { pedido: l.pedido || l.codigo, cliente: cliente ? (cliente.nomeFantasia || cliente.nome) : 'estoque',
+          quantidade: num(l.quantidade) };
+      })
+    : null;
+
+  return {
+    loteId: lote.id,
+    lote: lote.codigo,
+    item: item ? item.nome : '',
+    quantidade: num(lote.quantidade),
+    data: lote.data,
+    destinos,
+    entregue,
+    consumido: destinos.length > 0,
   };
 }
 

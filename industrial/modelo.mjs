@@ -234,8 +234,51 @@ export const alerta = (id, mensagem, dados = {}) => {
 /* =============================================== situações e sequências */
 
 export const STATUS_CARTEIRA = ['aberta', 'planejada', 'em_producao', 'concluida', 'cancelada'];
-export const STATUS_ORDEM = ['planejada', 'liberada', 'em_execucao', 'concluida', 'cancelada'];
+/* V2 §52 — a ordem passa por reserva antes de ser liberada */
+export const STATUS_ORDEM = ['planejada', 'reservada', 'liberada', 'em_execucao', 'parcial',
+  'concluida', 'cancelada'];
 export const STATUS_DEMANDA = ['aberta', 'atendida_parcial', 'atendida', 'cancelada'];
+
+/* V2 §5 — a leitura do MRP linha a linha */
+export const STATUS_MRP = [
+  { id: 'ok', nome: 'OK', tom: 'ok', ajuda: 'o estoque disponível cobre a necessidade' },
+  { id: 'estoque_insuficiente', nome: 'Estoque insuficiente', tom: 'warn',
+    ajuda: 'existe material, mas parte dele está reservada para outra ordem' },
+  { id: 'compra_necessaria', nome: 'Compra necessária', tom: 'bad',
+    ajuda: 'falta material e não há requisição nem pedido' },
+  { id: 'compra_programada', nome: 'Compra programada', tom: 'info',
+    ajuda: 'já existe requisição ou pedido cobrindo a falta' },
+  { id: 'abaixo_minimo', nome: 'Abaixo do mínimo', tom: 'warn',
+    ajuda: 'o saldo ficaria abaixo do estoque mínimo do cadastro' },
+  { id: 'bloqueado', nome: 'Bloqueado', tom: 'bad', ajuda: 'material inativo ou sem custo' },
+];
+export const statusMrp = (id) => STATUS_MRP.find((s) => s.id === id) || STATUS_MRP[0];
+
+/* V2 §7 — o caminho de uma requisição até o material na prateleira */
+export const STATUS_REQUISICAO = ['pendente', 'aprovada', 'cotando', 'pedida', 'parcial',
+  'recebida', 'cancelada'];
+export const STATUS_PEDIDO = ['aberto', 'enviado', 'parcial', 'recebido', 'cancelado'];
+
+/* V2 §6 — uma reserva vive até ser consumida ou devolvida */
+export const STATUS_RESERVA = ['ativa', 'consumida', 'cancelada'];
+
+/* V2 §16 — o que pode acontecer com um subproduto */
+export const STATUS_SUBPRODUTO = ['em_processo', 'disponivel', 'reservado', 'consumido',
+  'bloqueado', 'perdido'];
+
+/* V2 §24 — por que o realizado passou do planejado */
+export const MOTIVOS_DESVIO = [
+  { id: 'tempo_acima', nome: 'Tempo acima do padrão' },
+  { id: 'perda_acima', nome: 'Perda acima do padrão' },
+  { id: 'retrabalho', nome: 'Retrabalho' },
+  { id: 'material_mais_caro', nome: 'Material mais caro' },
+  { id: 'consumo_acima', nome: 'Consumo acima do padrão' },
+  { id: 'maquina_ociosa', nome: 'Máquina ociosa' },
+  { id: 'setup_excessivo', nome: 'Setup excessivo' },
+  { id: 'espera', nome: 'Espera' },
+  { id: 'falta_material', nome: 'Falta de material' },
+  { id: 'manual', nome: 'Informado pelo usuário' },
+];
 
 /* ======================================================== §41 coleções */
 
@@ -257,7 +300,14 @@ export function estadoIndustrial() {
     retalhos: [],         // §23
     budgets: [],          // §3/§38
     rastros: [],          // §32 — ligação entre lote de origem e lote gerado
+    /* ---- V2 ---- */
+    reservas: [],             // V2 §6 — material comprometido com uma ordem
+    requisicoesCompra: [],    // V2 §7 — o que o MRP pediu para comprar
+    pedidosCompra: [],        // V2 §7 — o pedido colocado no fornecedor
+    recebimentosCompra: [],   // V2 §7 — o que chegou, total ou parcial
+    auditorias: [],           // V2 §33 — o resultado de cada auditoria rodada
     parametros: parametrosPadrao(),
+    versao: 2,
   };
 }
 
@@ -271,6 +321,12 @@ export function parametrosPadrao() {
     custoMaquinaHora: 4.5,          // §43 depreciação e manutenção, R$/hora
     diasUteisMes: 22,
     horasDia: 8.8,                  // jornada produtiva padrão (06:00–15:48)
+    /* ---- V2 ---- */
+    leadTimePadraoDias: 10,         // V2 §8 quando o material não diz o seu
+    prazoPagamentoPadraoDias: 28,   // V2 §4.4 quando o fornecedor não diz
+    reservarAoAbrirOrdem: true,     // V2 §52 a ordem reserva ao ser planejada
+    perdaDesvioAlerta: 30,          // V2 §15 % acima da perda planejada que alerta
+    tempoDesvioAlerta: 10,          // V2 §24 % acima do tempo padrão que alerta
   };
 }
 
@@ -283,9 +339,98 @@ export function prepararIndustrial(db) {
       db.industrial.parametros = { ...modelo.parametros, ...(db.industrial.parametros || {}) };
       continue;
     }
+    /* a versão é da migração, não daqui: marcá-la aqui esconderia uma base v1 */
+    if (chave === 'versao') continue;
     if (!Array.isArray(db.industrial[chave])) db.industrial[chave] = modelo[chave];
   }
   return db;
+}
+
+/**
+ * V2 §42 — migração.
+ *
+ * Roda a cada carga, e é feita para ser burra de propósito: acrescenta o que
+ * falta e não toca no que existe. Nenhuma ordem some, nenhum lote muda de
+ * custo, nenhum histórico é reescrito — só aparecem campos novos com valor
+ * neutro, para o código novo não ter de perguntar `if (existe)` em toda linha.
+ */
+export function migrarIndustrialV2(db) {
+  prepararIndustrial(db);
+  const ind = db.industrial;
+  const antes = num(ind.versao) || 1;
+  const feitas = [];
+
+  /* 1. equipamentos ganham os campos de custo hora (V2 §9), zerados: quem não
+        preencher continua caindo no parâmetro geral da fábrica */
+  let equipamentos = 0;
+  for (const eq of db.equipamentos || []) {
+    if (eq.custoHoraDetalhado !== undefined) continue;
+    Object.assign(eq, {
+      custoAquisicao: num(eq.custoAquisicao),
+      vidaUtilMeses: num(eq.vidaUtilMeses),
+      valorResidual: num(eq.valorResidual),
+      manutencaoMensal: num(eq.manutencaoMensal),
+      energiaHora: num(eq.energiaHora),
+      outrosCustosMensais: num(eq.outrosCustosMensais),
+      horasDisponiveisMes: num(eq.horasDisponiveisMes),
+      custoHoraDetalhado: false,
+    });
+    equipamentos += 1;
+  }
+  if (equipamentos) feitas.push(`${equipamentos} equipamento(s) com campos de custo hora`);
+
+  /* 2. colaboradores ganham benefícios e provisões (V2 §10), também zerados */
+  let pessoas = 0;
+  for (const c of db.colaboradores || []) {
+    if (c.beneficiosMensais !== undefined) continue;
+    c.beneficiosMensais = num(c.beneficiosMensais);
+    c.outrosCustosMensais = num(c.outrosCustosMensais);
+    pessoas += 1;
+  }
+  if (pessoas) feitas.push(`${pessoas} colaborador(es) com benefícios e outros custos`);
+
+  /* 3. itens produzidos ganham situação (V2 §16) */
+  let itens = 0;
+  for (const i of ind.itens || []) {
+    if (i.situacao !== undefined) continue;
+    i.situacao = 'disponivel';
+    itens += 1;
+  }
+  if (itens) feitas.push(`${itens} item(ns) com situação`);
+
+  /* 4. ordens de processo ganham os campos do fluxo novo (V2 §52) */
+  let ordens = 0;
+  for (const o of ind.ordens || []) {
+    if (o.reservaFeita !== undefined) continue;
+    o.reservaFeita = false;
+    o.motivoCancelamento = o.motivoCancelamento || '';
+    ordens += 1;
+  }
+  if (ordens) feitas.push(`${ordens} ordem(ns) de processo com controle de reserva`);
+
+  /* 5. execuções antigas: a parcela de material do almoxarifado passou a ser
+        separada da que veio do processo. Onde não existir, a conta antiga
+        continua valendo — não se reescreve custo histórico (V2 §32/§53). */
+  let execucoes = 0;
+  for (const e of ind.execucoes || []) {
+    if (!e.custos || e.custos.materialAlmoxarifado !== undefined) continue;
+    e.custos.materialAlmoxarifado = num(e.custos.material);
+    e.custos.materialProcesso = 0;
+    e.custos.migradoV2 = true;
+    execucoes += 1;
+  }
+  if (execucoes) feitas.push(`${execucoes} execução(ões) com material separado por origem`);
+
+  ind.parametros = { ...parametrosPadrao(), ...(ind.parametros || {}) };
+  ind.versao = 2;
+  if (antes < 2 && feitas.length) {
+    registrarHistorico(db, {
+      tipo: 'migracao', usuario: 'Sistema',
+      valorAnterior: `versão ${antes}`, valorNovo: 'versão 2',
+      motivo: feitas.join(' · '),
+    });
+  }
+  return { de: antes, para: 2, feitas };
 }
 
 /* =================================================== fábricas de registro

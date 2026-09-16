@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # o teste do §54, ponta a ponta
+node --test "industrial/testes/*.test.mjs"        # 52 testes: fluxo, cadastro, ordens e V2
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=produtos,producao --com-industrial
@@ -158,6 +158,22 @@ ESTAMPADA"*), produção, produto acabado, custo acumulado, perdas, WIP, budget,
 desvio — mais a conferência de que nenhum saldo de processo fica negativo e de que o saldo
 é sempre o acumulado dos movimentos.
 
+## V2 — o que a segunda versão trouxe
+
+| § | o que mudou |
+|---|---|
+| §42 | `migrarIndustrialV2()` roda a cada carga: acrescenta coleções e campos, não apaga nem recalcula nada |
+| §6/§51 | **reserva de material** por ordem — físico, reservado, disponível e disponível-para-esta-ordem deixam de ser o mesmo número |
+| §5 | **MRP V2**: desconta reserva de outras ordens e pedido em aberto, e classifica cada linha (OK · estoque insuficiente · compra necessária · compra programada · abaixo do mínimo · bloqueado) |
+| §7/§8 | **compras**: requisição → pedido (agrupado por fornecedor) → recebimento (parcial ou total) → estoque → reserva, com lead time e data limite de compra |
+| §9 | **custo hora por máquina**: depreciação + manutenção + energia + outros, com queda para o parâmetro geral quando o equipamento não tem números |
+| §10 | **mão de obra**: benefícios e outros custos entram por fora do percentual de encargos, que já cobre férias, 13º e FGTS |
+| §4 | **quatro budgets**: industrial, de consumo, de compras e de caixa — custo industrial ≠ valor de compra ≠ necessidade de caixa |
+| §22 | **rastreabilidade para frente**: deste rolo, o que saiu, até o produto acabado |
+| §33/§34 | **auditoria** (`auditarIndustrial`) e **reconciliação** (`reconciliarEstoqueIndustrial`), que relatam e não corrigem sozinhas |
+| §47 | **bateria de 20 testes** (`testarIndustrialV2`), que roda no Node e dentro do sistema, sobre uma cópia da base |
+| §52 | a ordem **reserva ao abrir** e **devolve ao cancelar**; o consumo baixa a reserva |
+
 ## Um módulo só, sete sub-abas
 
 Cadastro de produto e ordem de produção **não são módulos à parte**: são o que alimenta o
@@ -193,13 +209,15 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 
 | sub-aba | o que mostra |
 |---|---|
-| Painel | carteira, produzido, custo planejado × real, peças em processo, alertas e o WIP setor a setor |
+| Painel | o painel executivo (§54): carteira, produzido, em processo, budget, realizado, compras, necessidade de caixa e gargalo principal — mais alertas, WIP e saúde do módulo |
 | Produtos | produtos com custo padrão e situação da engenharia, itens, transformações e a ficha com a árvore |
 | Carteira | as linhas de pedido, o lançamento de um pedido novo, a consolidação e a geração do plano |
 | Ordens | todas as ordens — abertas aqui ou vindas da carteira — com o detalhe da cadeia, conferência, apontamento, cancelamento e encerramento |
-| Plano e budget | MRP com o que falta comprar, capacidade por setor com o gargalo, budget aberto em parcelas e a simulação de três tamanhos de lote |
+| Plano e budget | MRP V2 com as cinco quantidades separadas e a data limite de compra, budget de consumo, custo industrial × necessidade de caixa, capacidade com déficit, budget industrial aberto em parcelas e a simulação |
+| Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
 | Produção | as demandas por processo, o estoque entre processos e as perdas |
 | Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
+| Auditoria | erros e alertas da varredura, reconciliação de estoque e a bateria de 20 testes rodando dentro do sistema |
 
 Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000
 camisetas — é um clique, e serve para conhecer o módulo com número de verdade.

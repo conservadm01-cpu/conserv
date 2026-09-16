@@ -23,6 +23,8 @@ import {
 } from './motores.mjs';
 import { conferirEngenharia } from './cadastro.mjs';
 import { novaLinhaCarteira } from './modelo.mjs';
+import { reservarParaOrdem, liberarReservasDaOrdem, reservasDaOrdem } from './reservas.mjs';
+import { gerarRequisicoes } from './compras.mjs';
 
 const itemDaOrdem = (db, id) => (db.industrial.itens || []).find((i) => i.id === id) || null;
 const setorDaOrdem = (db, id) => (db.departamentos || []).find((d) => d.id === id) || null;
@@ -102,9 +104,47 @@ export function abrirOrdem(db, dados, usuario) {
     };
   }
 
+  /* V2 §52 — a ordem reserva o material que existe assim que nasce. Sem isso,
+     duas ordens contam com a mesma malha e a segunda descobre no corte. */
+  const parametros = db.industrial.parametros || {};
+  let reserva = { feitas: [], faltantes: [] };
+  if (parametros.reservarAoAbrirOrdem !== false) {
+    const mrp = plano.planos[0].mrp;
+    reserva = reservarParaOrdem(db, consolidacao.consolidacao.id,
+      mrp.linhas.filter((l) => l.materialId).map((l) => ({
+        materialId: l.materialId, itemId: l.itemId, nome: l.nome, unidade: l.unidade,
+        /* reserva o que a ordem vai consumir, limitado ao que existe */
+        quantidade: arredondar(Math.min(num(l.bruta), num(l.fisico)), 4),
+      })), usuario);
+    consolidacao.consolidacao.status = reserva.faltantes.length === 0 ? 'reservada' : 'em_producao';
+    for (const ordem of plano.planos[0].ordens) {
+      ordem.reservaFeita = reserva.faltantes.length === 0;
+      if (ordem.reservaFeita && ordem.status === 'planejada') ordem.status = 'reservada';
+    }
+  }
+
+  /* V2 §7 — o que faltou vira requisição de compra, não atalho de recebimento */
+  let requisicoes = { criadas: [], puladas: [] };
+  if (dados.gerarRequisicoes !== false) {
+    const mrp = plano.planos[0].mrp;
+    const faltas = mrp.linhas.filter((l) => l.comprar > 0);
+    if (faltas.length) {
+      requisicoes = gerarRequisicoes(db, {
+        linhas: faltas,
+        consolidacaoId: consolidacao.consolidacao.id,
+        dataNecessidade: dados.entrega || '',
+        prioridade: num(dados.prioridade) || 5,
+        origem: 'ordem',
+      }, usuario);
+      if (requisicoes.erro) requisicoes = { criadas: [], puladas: [], erro: requisicoes.erro };
+    }
+  }
+
   registrarHistorico(db, {
     tipo: 'ordem', itemId: produto.id, quantidade, usuario: usuario?.nome || '',
-    motivo: `${consolidacao.consolidacao.codigoOrdem} aberta: ${quantidade} ${produto.nome}`,
+    motivo: `${consolidacao.consolidacao.codigoOrdem} aberta: ${quantidade} ${produto.nome}`
+      + `${reserva.feitas.length ? ` · ${reserva.feitas.length} material(is) reservado(s)` : ''}`
+      + `${requisicoes.criadas.length ? ` · ${requisicoes.criadas.length} requisição(ões)` : ''}`,
   });
 
   return {
@@ -112,6 +152,8 @@ export function abrirOrdem(db, dados, usuario) {
     plano: plano.planos[0],
     alertas: plano.alertas,
     custoPlanejado: plano.custoPlanejado,
+    reserva,
+    requisicoes,
   };
 }
 
@@ -211,10 +253,14 @@ export function resumoDaOrdem(db, consolidacaoId) {
   }
   if (!comparacao.erro) alertas.push(...comparacao.alertas);
 
+  const reservas = reservasDaOrdem(db, consolidacaoId);
   return {
     ordem,
     codigo: ordem.codigoOrdem || ordem.codigo,
     origem: ordem.origem === 'ordem' ? 'ordem' : 'carteira',
+    reservas,
+    materialReservado: arredondar(reservas.filter((r) => r.status === 'ativa')
+      .reduce((s, r) => s + num(r.saldo), 0), 3),
     produto: produto ? produto.nome : '',
     produtoId: produto ? produto.id : '',
     quantidade,
@@ -282,6 +328,8 @@ export function cancelarOrdem(db, consolidacaoId, motivo, usuario) {
   ordem.status = 'cancelada';
   ordem.canceladaEm = agoraISO();
   ordem.motivoCancelamento = String(motivo).trim();
+  /* V2 §52 — cancelar devolve o material reservado ao estoque livre */
+  const devolvido = liberarReservasDaOrdem(db, consolidacaoId, `Ordem cancelada: ${motivo}`, usuario);
   for (const d of db.industrial.demandas || []) {
     if (d.consolidacaoId === consolidacaoId) d.status = 'cancelada';
   }
@@ -294,9 +342,10 @@ export function cancelarOrdem(db, consolidacaoId, motivo, usuario) {
   registrarHistorico(db, {
     tipo: 'ordem', usuario: usuario?.nome || '',
     valorAnterior: 'em produção', valorNovo: 'cancelada',
-    motivo: `${ordem.codigoOrdem || ordem.codigo}: ${String(motivo).trim()}`,
+    motivo: `${ordem.codigoOrdem || ordem.codigo}: ${String(motivo).trim()}`
+      + `${devolvido.reservas ? ` · ${devolvido.reservas} reserva(s) liberada(s)` : ''}`,
   });
-  return { ordem };
+  return { ordem, reservasLiberadas: devolvido.reservas, materialDevolvido: devolvido.liberado };
 }
 
 /**
@@ -321,6 +370,8 @@ export function encerrarOrdem(db, consolidacaoId, dados, usuario) {
   ordem.status = 'concluida';
   ordem.encerradaEm = agoraISO();
   ordem.saldoNaoProduzido = saldo;
+  /* o que sobrou reservado volta a ser estoque livre */
+  const devolvido = liberarReservasDaOrdem(db, consolidacaoId, 'Ordem encerrada', usuario);
   ordem.motivoEncerramento = String((dados || {}).motivo || '').trim();
   for (const l of db.industrial.carteira || []) {
     if (l.consolidacaoId === consolidacaoId) l.status = 'concluida';
@@ -334,7 +385,8 @@ export function encerrarOrdem(db, consolidacaoId, dados, usuario) {
     motivo: `${resumo.codigo}: ${resumo.acabadas} de ${resumo.quantidade}`
       + `${saldo > 0 ? ` · saldo ${saldo} — ${ordem.motivoEncerramento}` : ''}`,
   });
-  return { ordem, acabadas: resumo.acabadas, saldo };
+  return { ordem, acabadas: resumo.acabadas, saldo,
+    reservasLiberadas: devolvido.reservas, materialDevolvido: devolvido.liberado };
 }
 
 /** Conferência de componentes de uma etapa (§35), pelo id da ordem de processo. */

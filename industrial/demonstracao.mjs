@@ -26,6 +26,7 @@ import {
   prepararIndustrial, novoItem, novaEstrutura, novaTransformacao, novaLinhaCarteira,
   num, arredondar, uid, agoraISO, hojeISO,
 } from './modelo.mjs';
+import { entradaDeMaterial } from './compras.mjs';
 
 const CONSUMO_MALHA_KG = 0.55;     // §7 — 5.500 kg para 10.000 camisetas
 
@@ -279,6 +280,33 @@ export function montarDemonstracao(db, opcoes = {}) {
     lotePadrao: 50,
   }), 'transformação do acabamento');
 
+  /* ------------------------------------ V2 §9: custo hora das máquinas
+     Números de máquina de confecção de porte médio — servem para a conta de
+     custo hora sair do equipamento, e não de um parâmetro geral. */
+  const CUSTOS_MAQUINA = {
+    'Cortadeira vertical 8\"': { custoAquisicao: 4200, vidaUtilMeses: 120, valorResidual: 400,
+      manutencaoMensal: 90, energiaHora: 1.1, horasDisponiveisMes: 176 },
+    'Carrossel silk 6 cores': { custoAquisicao: 38000, vidaUtilMeses: 144, valorResidual: 4000,
+      manutencaoMensal: 320, energiaHora: 2.4, horasDisponiveisMes: 176 },
+    'Prensa térmica 40x50': { custoAquisicao: 6500, vidaUtilMeses: 96, valorResidual: 600,
+      manutencaoMensal: 110, energiaHora: 4.2, horasDisponiveisMes: 176 },
+    'Bordadeira 6 cabeças': { custoAquisicao: 96000, vidaUtilMeses: 180, valorResidual: 12000,
+      manutencaoMensal: 850, energiaHora: 3.1, horasDisponiveisMes: 176 },
+    'Reta 01': { custoAquisicao: 3200, vidaUtilMeses: 120, valorResidual: 300,
+      manutencaoMensal: 60, energiaHora: 0.5, horasDisponiveisMes: 176 },
+    'Reta 02': { custoAquisicao: 3200, vidaUtilMeses: 120, valorResidual: 300,
+      manutencaoMensal: 60, energiaHora: 0.5, horasDisponiveisMes: 176 },
+    'Overloque 01': { custoAquisicao: 4800, vidaUtilMeses: 120, valorResidual: 450,
+      manutencaoMensal: 80, energiaHora: 0.7, horasDisponiveisMes: 176 },
+    'Galoneira 01': { custoAquisicao: 7400, vidaUtilMeses: 120, valorResidual: 700,
+      manutencaoMensal: 95, energiaHora: 0.8, horasDisponiveisMes: 176 },
+  };
+  for (const eq of db.equipamentos || []) {
+    const custos = CUSTOS_MAQUINA[eq.nome];
+    if (!custos) continue;
+    Object.assign(eq, custos, { custoHoraDetalhado: true });
+  }
+
   /* ----------------------------------------------- §2 carteira 10.000
      Três clientes, o mesmo produto: a consolidação evita enfestar três
      vezes o mesmo tecido. */
@@ -319,44 +347,17 @@ export function montarDemonstracao(db, opcoes = {}) {
 }
 
 /**
- * Entrada de material no almoxarifado, no mesmo formato que o sistema usa —
- * serve para a demonstração receber a compra que o MRP pediu.
+ * Entrada de material no almoxarifado — atalho da demonstração para receber o
+ * que o MRP pediu. A porta de entrada é uma só: `entradaDeMaterial`, em
+ * compras.mjs, a mesma que o recebimento de pedido usa.
  */
 export function receberCompra(db, materialId, quantidade, opcoes = {}) {
-  const mat = (db.materiais || []).find((m) => m.id === materialId);
-  if (!mat) return { erro: 'Material não encontrado.' };
-  const estoque = (db.estoques || []).find((e) => e.padrao) || (db.estoques || [])[0];
-  if (!estoque) return { erro: 'Nenhum local de estoque cadastrado.' };
-
-  db.movimentacoes = db.movimentacoes || [];
-  const movimento = {
-    id: uid(),
-    numero: `MOV-IND-${String(db.movimentacoes.length + 1).padStart(5, '0')}`,
-    quando: agoraISO(),
-    materialId: mat.id,
-    estoqueId: estoque.id,
-    tipo: 'entrada_compra',
-    sinal: 1,
-    quantidade: num(quantidade),
-    unidade: mat.unidadeEstoque,
-    custoUnitario: num(opcoes.custoUnitario) || num(mat.custoMedio),
-    custoTotal: arredondar(num(quantidade) * (num(opcoes.custoUnitario) || num(mat.custoMedio)), 2),
-    fornecedorId: mat.fornecedorPadraoId || '',
-    origemTipo: 'recebimento',
+  return entradaDeMaterial(db, {
+    materialId,
+    quantidade,
+    custoUnitario: opcoes.custoUnitario,
     documento: opcoes.documento || '',
     observacao: opcoes.observacao || 'Recebimento gerado pela necessidade do MRP.',
-    usuario: opcoes.usuario?.nome || '',
-  };
-  db.movimentacoes.push(movimento);
-
-  db.saldos = db.saldos || [];
-  const saldo = db.saldos.find((s) => s.materialId === mat.id && s.estoqueId === estoque.id);
-  if (saldo) saldo.fisico = arredondar(num(saldo.fisico) + num(quantidade));
-  else {
-    db.saldos.push({
-      id: uid(), materialId: mat.id, estoqueId: estoque.id,
-      fisico: num(quantidade), reservado: 0, comprometido: 0, transito: 0,
-    });
-  }
-  return { movimento };
+    origemTipo: 'recebimento',
+  }, opcoes.usuario);
 }
