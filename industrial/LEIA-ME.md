@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 75 testes: fluxo, cadastro, ordens, V2, V3, produto e ordem
+node --test "industrial/testes/*.test.mjs"        # 78 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=producao --com-industrial
@@ -44,11 +44,12 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `demonstracao.mjs` | a demonstração do §49: camiseta básica, 10.000 peças, três clientes, cinco processos |
 | `cadastro.mjs` | cadastro de produto: item, estrutura versionada, transformação, conferência da engenharia, custo padrão, árvore e cópia de produto |
 | `ordens.mjs` | ordens de produção: abrir a cadeia, o estado de cada etapa, cancelar, encerrar e a conferência de componentes |
-| `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
+| `interface.mjs` | a aba Industrial: as cinco sub-abas, o painel, o plano e budget da ordem, o chão de fábrica e o apontamento |
 | `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
 | `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
 | `ordens-sistema.mjs` | a ordem de produção: abre em `db.ordens` no formato do sistema e planeja no motor; também traz para o motor a ordem aberta antes no módulo Produção |
-| `telas-ordens-sistema.mjs` | a sub-aba **Ordens**: abrir, planejar e acompanhar, com a composição do produto conferida antes de abrir |
+| `telas-ordens-sistema.mjs` | a sub-aba **Ordens**: abrir, planejar, agrupar e acompanhar — com o MRP e o budget da ordem aberta ali mesmo |
+| `telas-integracao.mjs` | a sub-aba **Conferência**: saúde da cadeia, rastreio do lote, ficha industrial e auditoria, em quatro vistas de uma aba só |
 | `engenharia.mjs` | a ponte com o cadastro de produto do sistema: lê `db.produtos` (ficha técnica e roteiro) e **deriva** itens, estrutura e uma transformação por setor, com vínculo vivo e detecção de divergência |
 | `integracao.mjs` | **V3**: `resolverMaterialIndustrial` (a ponte item ↔ material), custo vigente, conversão de unidade, auditoria da cadeia, indicadores de integração e o mapa dos elos |
 | `telas-integracao.mjs` | **V3**: a sub-aba Integração — saúde da engenharia industrial com a prova de cada ponto, mapa clicável e o botão do fluxo completo |
@@ -224,24 +225,26 @@ mostra **Ver ficha do produto**; a carteira consolidada vira ordem e o botão le
 carteira consolidada no Plano e uma ordem aberta em Ordens são a mesma coisa para a fábrica —
 as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem anotada.
 
-## As sub-abas
+## Cinco lugares, um por pergunta
 
-| sub-aba | o que mostra |
-|---|---|
-| Painel | o painel executivo (§54): carteira, produzido, em processo, budget, realizado, compras, necessidade de caixa e gargalo principal — mais alertas, WIP e saúde do módulo |
-| Ficha industrial | o que veio da ficha do produto: a cadeia derivada, os itens, as transformações e o ajuste do ciclo e dos tempos que a ficha não expressa |
-| Carteira | as linhas de pedido, o lançamento de um pedido novo, a consolidação e a geração do plano |
-| Ordens | abrir a ordem a partir do produto, com a composição já multiplicada pela quantidade, e acompanhar o plano de cada uma |
-| Plano e budget | MRP V2 com as cinco quantidades separadas e a data limite de compra, budget de consumo, custo industrial × necessidade de caixa, capacidade com déficit, budget industrial aberto em parcelas e a simulação |
-| Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
-| Produção | as demandas por processo, o estoque entre processos e as perdas |
-| Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
-| Da Engenharia | os produtos do sistema com o estado do vínculo, o botão de trazer e a lista do que a ficha mudou |
-| Integração | a saúde da cadeia material → engenharia → industrial, com a prova de cada ponto, o mapa dos quinze elos e o fluxo completo de 30 passos rodando dentro do sistema |
-| Auditoria | erros e alertas da varredura, reconciliação de estoque e a bateria de 20 testes rodando dentro do sistema |
+| aba | a pergunta que ela responde | o que tem dentro |
+|---|---|---|
+| **Painel** | como estamos? | carteira, produzido, WIP, budget × realizado, compras, caixa, gargalo e alertas |
+| **Ordens** | o que produzir, e o que isso exige? | abrir a ordem a partir do produto, planejar as que já existiam, agrupar ordens do mesmo produto num lote, e — dentro da ordem aberta — as etapas, o MRP, os quatro budgets, a capacidade e a simulação |
+| **Compras** | o que falta comprar? | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial) e o que está atrasado |
+| **Produção** | o que a fábrica fez? | as demandas por processo, o apontamento, o estoque entre setores e as perdas |
+| **Conferência** | está tudo ligado e rastreado? | saúde da cadeia, rastreio do lote, ficha industrial derivada e a auditoria com as baterias de teste |
 
-Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000
-camisetas — é um clique, e serve para conhecer o módulo com número de verdade.
+Eram dez abas — Carteira, Plano e budget, Ficha industrial, Rastreio, Integração e Auditoria
+viraram parte de onde já se precisava delas. Nenhuma conta mudou: mudou o número de lugares
+onde procurar.
+
+**Agrupar ordens** é o que sobrou da carteira, e no lugar certo: duas ordens do mesmo produto
+rendem mais num enfesto só — o setup acontece uma vez e o custo por peça cai. `agruparOrdens`
+desfaz os planos individuais (devolvendo reserva e cancelando as requisições que nasceram
+deles), junta as linhas num lote e replaneja. As ordens continuam existindo, cada cliente com
+a sua; o que muda é que passam a ser produzidas juntas. Ordem com produção já apontada não
+entra — agrupar apagaria o que aconteceu.
 
 ## O produto não se cadastra duas vezes
 

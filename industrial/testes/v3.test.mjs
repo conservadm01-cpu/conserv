@@ -29,7 +29,9 @@ import {
 import {
   ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes, planoDaOrdemDoSistema,
   abrirOrdemDeProducao, versaoVigenteDoProduto, tarefasDaOrdem,
+  ordensAgrupaveis, agruparOrdens,
 } from '../ordens-sistema.mjs';
+import { saldoReservado } from '../reservas.mjs';
 import { encerrarOrdem } from '../ordens.mjs';
 
 /**
@@ -511,4 +513,86 @@ test('Ordem: encerrar no industrial fecha a ordem do sistema', () => {
 
   /* e sai da lista de abertas */
   assert.ok(!ordensDoSistema(db).linhas.some((l) => l.ordemId === depois.id));
+});
+
+/* ============================ agrupar ordens num lote só */
+
+test('Agrupar: duas ordens do mesmo produto viram um lote, e sai mais barato', () => {
+  const db = nova();
+  planejarOrdensPendentes(db, { nome: 'Teste' });
+
+  const grupos = ordensAgrupaveis(db);
+  assert.ok(grupos.length >= 1, 'a base tem ordens repetidas do mesmo produto');
+  const alvo = grupos.find((g) => g.codigos.includes('OP-0002'));
+  assert.deepEqual(alvo.codigos.sort(), ['OP-0002', 'OP-0007']);
+  assert.equal(alvo.pecas, 2300, '1.500 + 800');
+
+  /* o custo separado, antes de agrupar */
+  const separado = alvo.ordemIds.reduce(
+    (soma, id) => soma + num((db.industrial.budgets || [])
+      .find((b) => b.consolidacaoId === planoDaOrdemDoSistema(db, id).id)?.custoIndustrial), 0);
+
+  const r = agruparOrdens(db, alvo.ordemIds, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  assert.equal(r.pecas, 2300);
+  assert.equal(r.plano.ordens.length, 5);
+
+  /* o setup acontece uma vez só: o lote é mais barato que as duas somadas */
+  assert.ok(num(r.custoPlanejado) < separado,
+    `lote R$ ${r.custoPlanejado} não ficou abaixo de R$ ${separado}`);
+
+  /* as duas ordens continuam existindo, e apontam para o mesmo lote */
+  for (const id of alvo.ordemIds) {
+    const ordem = db.ordens.find((o) => o.id === id);
+    assert.equal(ordem.situacao, 'aberta', 'agrupar não pode fechar a ordem');
+    assert.equal(planoDaOrdemDoSistema(db, id).id, r.ordem.id);
+  }
+  assert.equal(ordensDoSistema(db).semPlano, 0, 'alguma ordem ficou sem plano depois de agrupar');
+});
+
+test('Agrupar: a reserva antiga volta ao estoque e não fica duplicada', () => {
+  const db = nova();
+  planejarOrdensPendentes(db, { nome: 'Teste' });
+  const malha = db.materiais.find((m) => m.nome.includes('MALHA PV'));
+  const antes = num(saldoReservado(db, malha.id).total);
+
+  const alvo = ordensAgrupaveis(db).find((g) => g.codigos.includes('OP-0002'));
+  agruparOrdens(db, alvo.ordemIds, { nome: 'Teste' });
+
+  const depois = saldoReservado(db, malha.id);
+  assert.equal(num(depois.total), antes, 'a reserva mudou de tamanho ao agrupar');
+  assert.equal(depois.reservas.length, 1, 'ficou mais de uma reserva para a mesma malha');
+
+  /* as requisições dos planos desfeitos foram canceladas junto com eles:
+     nenhuma requisição em aberto pode apontar para um plano que não existe
+     mais — senão o comprador compra para uma ordem que foi refeita */
+  const abertas = db.industrial.requisicoesCompra.filter(
+    (r) => !['recebida', 'cancelada'].includes(r.status));
+  for (const r of abertas) {
+    const consolidacao = db.industrial.consolidacoes.find((c) => c.id === r.consolidacaoId);
+    assert.ok(!consolidacao || consolidacao.status !== 'cancelada',
+      `${r.codigo} continua aberta apontando para um plano desfeito`);
+  }
+  /* e o lote novo gerou as suas */
+  assert.ok(abertas.some((r) => r.consolidacaoId === planoDaOrdemDoSistema(db, alvo.ordemIds[0]).id),
+    'o lote agrupado não requisitou o que falta');
+});
+
+test('Agrupar: recusa ordem já agrupada, de outro produto ou já apontada', () => {
+  const db = nova();
+  planejarOrdensPendentes(db, { nome: 'Teste' });
+  const grupos = ordensAgrupaveis(db);
+  const camiseta = grupos.find((g) => g.codigos.includes('OP-0002'));
+  const jaleco = grupos.find((g) => g.codigos.includes('OP-0003'));
+
+  assert.match(agruparOrdens(db, [camiseta.ordemIds[0]], { nome: 'Teste' }).erro, /duas ordens/);
+  assert.match(
+    agruparOrdens(db, [camiseta.ordemIds[0], jaleco.ordemIds[0]], { nome: 'Teste' }).erro,
+    /mesmo produto/);
+
+  agruparOrdens(db, camiseta.ordemIds, { nome: 'Teste' });
+  assert.match(agruparOrdens(db, camiseta.ordemIds, { nome: 'Teste' }).erro, /já está num lote/);
+
+  /* e o que já foi agrupado sai da lista de agrupáveis */
+  assert.ok(!ordensAgrupaveis(db).some((g) => g.codigos.includes('OP-0002')));
 });

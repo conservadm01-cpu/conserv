@@ -21,7 +21,10 @@ import {
   prepararIndustrial, registrarHistorico, novaLinhaCarteira, proximoCodigo,
   num, arredondar, agoraISO, hojeISO, uid,
 } from './modelo.mjs';
-import { planejarLinhaDeCarteira, resumoDaOrdem } from './ordens.mjs';
+import { planejarLinhaDeCarteira, planejarConsolidacao, resumoDaOrdem } from './ordens.mjs';
+import { consolidarCarteira } from './motores.mjs';
+import { liberarReservasDaOrdem } from './reservas.mjs';
+import { cancelarRequisicao } from './compras.mjs';
 import {
   derivarProdutoDaEngenharia, nomeDoProduto, rotuloCurtoDoProduto, divergenciasDaFicha,
 } from './engenharia.mjs';
@@ -34,7 +37,9 @@ const ordemDoSistema = (db, id) => (db.ordens || []).find((o) => o.id === id) ||
 
 /** A consolidação industrial que corresponde a esta ordem do sistema. */
 export const planoDaOrdemDoSistema = (db, ordemId) =>
-  (db.industrial?.consolidacoes || []).find((c) => c.ordemSistemaId === ordemId) || null;
+  (db.industrial?.consolidacoes || []).find(
+    (c) => c.status !== 'cancelada'
+      && (c.ordemSistemaId === ordemId || (c.ordensSistemaIds || []).includes(ordemId))) || null;
 
 /** O item industrial que corresponde a este produto do sistema. */
 const itemIndustrialDoProduto = (db, produtoId) => (db.industrial?.itens || []).find(
@@ -168,6 +173,8 @@ export function ordensDoSistema(db, opcoes = {}) {
         /* o que o industrial acrescenta */
         planejada: !!consolidacao,
         consolidacaoId: consolidacao ? consolidacao.id : '',
+        agrupadaCom: consolidacao
+          ? (consolidacao.ordensSistemaIds || []).filter((x) => x !== ordem.id).length : 0,
         itemId: item ? item.id : '',
         noIndustrial: !!item,
         fichaEmDia: ficha.emDia !== false,
@@ -191,13 +198,21 @@ export function ordensDoSistema(db, opcoes = {}) {
     l.estado = !l.planejada ? 'sem_plano' : (l.faltas > 0 ? 'faltando' : 'planejada');
   }
 
+  /* duas ordens agrupadas dividem o mesmo plano: somar o custo das duas
+     contaria o lote duas vezes */
+  const porPlano = new Map();
+  for (const l of linhas) {
+    if (l.consolidacaoId) porPlano.set(l.consolidacaoId, num(l.custoPlanejado));
+  }
+
   return {
     linhas,
     total: linhas.length,
     planejadas: linhas.filter((l) => l.planejada).length,
     semPlano: linhas.filter((l) => !l.planejada).length,
     comFalta: linhas.filter((l) => l.estado === 'faltando').length,
-    custoPlanejado: arredondar(linhas.reduce((s, l) => s + num(l.custoPlanejado), 0), 2),
+    lotes: porPlano.size,
+    custoPlanejado: arredondar([...porPlano.values()].reduce((s, v) => s + v, 0), 2),
   };
 }
 
@@ -345,4 +360,137 @@ export function situacaoDaOrdem(db, consolidacaoId, situacao, usuario) {
     motivo: `${ordem.codigo}: ${antes} → ${situacao}`,
   });
   return { ok: true, ordem };
+}
+
+
+/* ============================================ agrupar ordens num lote só */
+
+/**
+ * Desfaz o plano industrial de uma ordem, sem apagar a ordem: devolve a
+ * reserva ao estoque livre, cancela as etapas e as requisições que nasceram
+ * dela e solta a linha de carteira. É o que permite refazer o planejamento
+ * com outra combinação.
+ */
+function desfazerPlano(db, consolidacao, motivo, usuario) {
+  liberarReservasDaOrdem(db, consolidacao.id, motivo, usuario);
+  for (const d of db.industrial.demandas || []) {
+    if (d.consolidacaoId === consolidacao.id) d.status = 'cancelada';
+  }
+  for (const o of db.industrial.ordens || []) {
+    if (o.consolidacaoId === consolidacao.id) o.status = 'cancelada';
+  }
+  for (const r of db.industrial.requisicoesCompra || []) {
+    if (r.consolidacaoId === consolidacao.id && !['recebida', 'cancelada'].includes(r.status)) {
+      cancelarRequisicao(db, r.id, motivo, usuario);
+    }
+  }
+  consolidacao.status = 'cancelada';
+  consolidacao.motivoCancelamento = motivo;
+}
+
+/**
+ * Junta ordens do mesmo produto num lote de produção só.
+ *
+ * Duas ordens de camiseta rendem mais num enfesto só: o setup acontece uma
+ * vez, e o custo por peça cai. As ordens continuam existindo — cada cliente
+ * tem a sua — mas passam a ser produzidas juntas, num plano comum.
+ *
+ * Ordem com produção já apontada não entra: agrupar apagaria o que aconteceu.
+ */
+export function agruparOrdens(db, ordemIds, usuario) {
+  prepararIndustrial(db);
+  const ordens = (ordemIds || []).map((id) => ordemDoSistema(db, id)).filter(Boolean);
+  if (ordens.length < 2) return { erro: 'Escolha ao menos duas ordens para agrupar.' };
+
+  const produtos = new Set(ordens.map((o) => o.produtoId));
+  if (produtos.size > 1) return { erro: 'Só ordens do mesmo produto entram no mesmo lote.' };
+
+  const produto = (db.produtos || []).find((p) => p.id === ordens[0].produtoId);
+  if (!produto) return { erro: 'O produto destas ordens não existe mais no cadastro.' };
+
+  const planos = [];
+  for (const o of ordens) {
+    if (!VIVAS.includes(o.situacao)) {
+      return { erro: `${o.codigo} está ${o.situacao} — só ordem em aberto entra num lote.` };
+    }
+    const c = planoDaOrdemDoSistema(db, o.id);
+    if (c && (c.ordensSistemaIds || []).length > 1) {
+      return { erro: `${o.codigo} já está num lote agrupado.` };
+    }
+    if (c && (db.industrial.execucoes || []).some((e) => e.consolidacaoId === c.id)) {
+      return {
+        erro: `${o.codigo} já tem produção apontada — agrupar apagaria uma história que aconteceu.`,
+      };
+    }
+    planos.push(c);
+  }
+
+  /* 1. desfaz os planos individuais e solta as linhas de carteira */
+  const motivo = `Agrupada com ${ordens.map((o) => o.codigo).join(', ')}`;
+  const linhaIds = [];
+  for (let i = 0; i < ordens.length; i += 1) {
+    if (planos[i]) desfazerPlano(db, planos[i], motivo, usuario);
+    const linha = (db.industrial.carteira || []).find(
+      (l) => l.ordemSistemaId === ordens[i].id && l.status !== 'cancelada');
+    if (!linha) return { erro: `${ordens[i].codigo} não tem linha de carteira para agrupar.` };
+    linha.status = 'aberta';
+    linha.consolidacaoId = '';
+    linhaIds.push(linha.id);
+  }
+
+  /* 2. um lote só, com a soma das ordens */
+  const pecas = ordens.reduce((s, o) => s + num(o.quantidade), 0);
+  const nova = consolidarCarteira(db, {
+    linhaIds,
+    nome: `${rotuloCurtoDoProduto(db, produto)} · ${ordens.length} ordens`,
+  });
+  if (nova.erro) return nova;
+
+  const entrega = ordens.map((o) => o.entrega).filter(Boolean).sort()[0] || '';
+  const prioridade = Math.min(...ordens.map((o) => num(o.prioridade) || 5));
+  const plano = planejarConsolidacao(db, nova.consolidacao, {
+    codigoOrdem: ordens.map((o) => o.codigo).join(' + '),
+    ordensSistemaIds: ordens.map((o) => o.id),
+    entrega,
+    prioridade,
+  }, usuario);
+  if (plano.erro) return plano;
+
+  for (const o of ordens) o.industrialId = plano.ordem.id;
+
+  registrarHistorico(db, {
+    tipo: 'ordem', quantidade: pecas, usuario: usuario?.nome || '',
+    motivo: `${ordens.length} ordens agrupadas num lote de ${pecas} peça(s): `
+      + ordens.map((o) => o.codigo).join(', '),
+  });
+
+  return { ...plano, ordens, pecas };
+}
+
+/** As ordens em aberto que poderiam render num lote só, por produto. */
+export function ordensAgrupaveis(db) {
+  prepararIndustrial(db);
+  const porProduto = new Map();
+  for (const ordem of db.ordens || []) {
+    if (!VIVAS.includes(ordem.situacao)) continue;
+    const consolidacao = planoDaOrdemDoSistema(db, ordem.id);
+    if (!consolidacao) continue;                         // sem plano, primeiro planeje
+    if ((consolidacao.ordensSistemaIds || []).length > 1) continue;   // já agrupada
+    if ((db.industrial.execucoes || []).some((e) => e.consolidacaoId === consolidacao.id)) continue;
+    const produto = (db.produtos || []).find((p) => p.id === ordem.produtoId);
+    if (!produto) continue;
+    if (!porProduto.has(ordem.produtoId)) {
+      porProduto.set(ordem.produtoId, {
+        produtoId: ordem.produtoId,
+        produto: rotuloCurtoDoProduto(db, produto),
+        ordens: [], codigos: [], ordemIds: [], pecas: 0,
+      });
+    }
+    const g = porProduto.get(ordem.produtoId);
+    g.ordens.push(ordem);
+    g.codigos.push(ordem.codigo);
+    g.ordemIds.push(ordem.id);
+    g.pecas = arredondar(g.pecas + num(ordem.quantidade), 3);
+  }
+  return [...porProduto.values()].filter((g) => g.ordens.length > 1);
 }

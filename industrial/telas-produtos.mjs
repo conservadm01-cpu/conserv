@@ -232,7 +232,7 @@ function listaEngenharia({ db, engenharia, mexer, usuario, setFicha, setSub }) {
               + `${r.reusados.itens.length} item(ns) reaproveitado(s).`),
         }, l.derivado ? 'Atualizar da ficha' : 'Trazer para o industrial'),
       l.itemId ? h('button', {
-        className: 'btn ghost sm', onClick: () => { if (setSub) setSub('produtos'); setFicha(l.itemId); },
+        className: 'btn ghost sm', onClick: () => setFicha(l.itemId),
       }, 'Ver ficha industrial') : null),
   ]));
 

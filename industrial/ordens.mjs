@@ -116,19 +116,37 @@ export function planejarLinhaDeCarteira(db, registroLinha, dados, usuario) {
   const produto = itemDaOrdem(db, registroLinha.itemId);
   if (!produto) return { erro: 'Produto da linha não encontrado.' };
   const quantidade = num(registroLinha.quantidade);
-  const linha = { registro: registroLinha };
 
   const consolidacao = consolidarCarteira(db, {
-    linhaIds: [linha.registro.id],
+    linhaIds: [registroLinha.id],
     nome: dados.nomeDaOrdem || `${produto.nome} · ${quantidade}`,
   });
   if (consolidacao.erro) return consolidacao;
+  return planejarConsolidacao(db, consolidacao.consolidacao, dados, usuario);
+}
+
+/**
+ * O planejamento de uma consolidação: plano por setor, reserva do que existe e
+ * requisição do que falta. Serve tanto para a ordem sozinha quanto para o lote
+ * que junta várias ordens do mesmo produto.
+ */
+export function planejarConsolidacao(db, registroConsolidacao, dados, usuario) {
+  prepararIndustrial(db);
+  const consolidacao = { consolidacao: registroConsolidacao };
+  const primeiro = (registroConsolidacao.produtos || [])[0] || {};
+  const produto = itemDaOrdem(db, primeiro.itemId);
+  if (!produto) return { erro: 'Produto da ordem não encontrado.' };
+  const quantidade = num(primeiro.quantidade);
+
   consolidacao.consolidacao.tipo = 'ordem';
   consolidacao.consolidacao.origem = 'ordem';
   /* uma ordem aberta no módulo Produção traz o próprio código (OP-0001): o
      industrial não inventa um segundo número para a mesma ordem */
   consolidacao.consolidacao.codigoOrdem = dados.codigoOrdem || proximoCodigoOrdem(db);
   consolidacao.consolidacao.ordemSistemaId = dados.ordemSistemaId || '';
+  /* um lote pode atender várias ordens do mesmo produto */
+  consolidacao.consolidacao.ordensSistemaIds = dados.ordensSistemaIds
+    || (dados.ordemSistemaId ? [dados.ordemSistemaId] : []);
 
   const plano = planoDeProducao(db, { consolidacaoId: consolidacao.consolidacao.id, usuario });
   if (plano.erro) return plano;

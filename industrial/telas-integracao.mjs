@@ -13,13 +13,18 @@
  * base, sem encostar em nada de verdade.
  */
 
-import { h, selo, pequeno, kpi, bloco, tabela, linha } from './interface.mjs';
+import {
+  h, moeda, inteiro, decimal, dataBR, selo, vazio, pequeno, kpi, bloco, tabela, linha,
+} from './interface.mjs';
 import { num, arredondar } from './modelo.mjs';
+import { rastrear, custoAcumulado } from './motores.mjs';
 import {
   indicadoresDeIntegracao, mapaDaCadeia,
   auditarIntegracaoMateriaisEngenhariaIndustrial, resolverMaterialIndustrial,
 } from './integracao.mjs';
 import { testarFluxoCompletoERPIndustrial } from './testes-v3.mjs';
+import { TelaAuditoria } from './telas-compras.mjs';
+import { GrupoProdutosIndustriais } from './telas-produtos.mjs';
 
 const tomDaNota = (n) => (n >= 95 ? 'ok' : n >= 80 ? 'warn' : 'bad');
 const corDaNota = (n) => (n >= 95 ? 'var(--ok)' : n >= 80 ? 'var(--warn)' : 'var(--bad)');
@@ -36,7 +41,7 @@ const barra = (percentual, cor) => h('div', {
   },
 }));
 
-export function TelaIntegracao({ db, usuario, setSub }) {
+export function TelaIntegracao({ db, usuario, setSub, setVista }) {
   const [fluxo, setFluxo] = React.useState(null);
   const [rodando, setRodando] = React.useState(false);
 
@@ -163,7 +168,7 @@ export function TelaIntegracao({ db, usuario, setSub }) {
           [p.codigo, 'small muted'],
           p.nome,
           h('button', {
-            className: 'btn ghost sm', onClick: () => setSub && setSub('produtos'),
+            className: 'btn ghost sm', onClick: () => setVista && setVista('ficha'),
           }, 'Abrir cadastro'),
         ]))),
     ]);
@@ -192,4 +197,128 @@ export function TelaIntegracao({ db, usuario, setSub }) {
     listaAchados,
     duplicados,
     sugestoes);
+}
+
+
+/* ====================================================== a aba Conferência
+
+   Quatro perguntas de quem confere, num lugar só:
+
+     Saúde           a cadeia está inteira?
+     Rastreio        de onde veio esta peça, e para onde foi?
+     Ficha industrial o que o motor entendeu da ficha do produto?
+     Auditoria       o que está errado agora?
+
+   São telas que já existiam em quatro abas do menu. Juntá-las não mudou
+   nenhuma conta: mudou o número de lugares onde procurar.
+*/
+
+const VISTAS = [
+  { id: 'saude', label: 'Saúde da cadeia' },
+  { id: 'rastreio', label: 'Rastreio' },
+  { id: 'ficha', label: 'Ficha industrial' },
+  { id: 'auditoria', label: 'Auditoria e testes' },
+];
+
+/* ---------------------------------------------- §32 rastreio do lote */
+
+function TelaRastreioConferencia({ db, ind, item, loteAberto, setLoteAberto }) {
+  const lotes = (ind.lotes || []).slice().reverse();
+  if (lotes.length === 0) return vazio('Nenhum lote produzido ainda. Aponte uma execução na aba Produção.');
+
+  const arvore = loteAberto ? rastrear(db, loteAberto) : null;
+  const custo = loteAberto ? custoAcumulado(db, loteAberto) : null;
+
+  const desenhar = (no, nivel, chave) => {
+    if (!no) return null;
+    const recuo = { paddingLeft: nivel * 18, lineHeight: 1.8 };
+    if (no.tipo === 'almoxarifado') {
+      return h('div', { key: chave, style: recuo },
+        h('span', { className: 'small muted' }, '← '),
+        h('span', { className: 'small' }, `${decimal(no.quantidade)} ${no.unidade} de ${no.item}`),
+        h('span', { className: 'small muted' }, ` · almoxarifado, sem lote · ${moeda(no.custoUnitario)}`));
+    }
+    /* V3 §26 — a ponta de cima: a nota fiscal do fornecedor, ou o saldo que
+       já estava lá quando o módulo começou */
+    if (no.tipo === 'compra') {
+      return h('div', { key: chave, style: recuo },
+        h('span', { className: 'small muted' }, '← '),
+        h('span', { className: 'small' }, `comprado de ${no.fornecedor}`),
+        h('span', { className: 'small muted' },
+          ` · ${no.documento || 'sem documento'} · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
+    }
+    if (no.tipo === 'abertura') {
+      return h('div', { key: chave, style: recuo },
+        h('span', { className: 'small muted' }, '← '),
+        h('span', { className: 'small' }, 'saldo de abertura do almoxarifado'),
+        h('span', { className: 'small muted' }, ` · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
+    }
+    const filhos = (no.origens || []).map((o, i) => desenhar(o, nivel + 1, `${chave}-${i}`));
+    return h('div', { key: chave, style: recuo },
+      h('span', { className: 'small' }, h('strong', null, no.lote), ` · ${inteiro(no.quantidade)} ${no.item}`),
+      no.departamento ? h('span', { className: 'small muted' }, ` · ${no.departamento} · ${dataBR(no.data)}`) : null,
+      h('span', { className: 'small muted' }, ` · ${moeda(no.custoUnitario)}/un`),
+      ...filhos);
+  };
+
+  /* V3 §13 — o lote do almoxarifado é do material, não de um item produzido:
+     o nome vem do cadastro de materiais, e a origem diz se veio de nota
+     fiscal, de produção ou do saldo de abertura. */
+  const ORIGEM = { compra: ['ok', 'compra'], producao: ['idle', 'produção'], ajuste: ['warn', 'abertura'] };
+  const nomeDoLote = (l) => (item(l.itemId) || {}).nome
+    || ((db.materiais || []).find((m) => m.id === l.materialId) || {}).nome || '—';
+
+  const tabelaLotes = tabela(
+    ['Lote', 'Item', 'Origem', ['Quantidade', 'num'], ['Saldo', 'num'], ['Custo unitário', 'num'], 'Data', ''],
+    lotes.map((l) => linha(l.id, [
+      l.codigo,
+      nomeDoLote(l),
+      selo(...(ORIGEM[l.origem] || ['idle', l.origem || '—'])),
+      [decimal(l.quantidade), 'num'],
+      [l.origem === 'producao' ? '—' : decimal(l.saldo), 'num'],
+      [moeda(l.custoUnitario), 'num'],
+      dataBR(l.data),
+      h('button', { className: 'btn ghost sm', onClick: () => setLoteAberto(l.id) }, 'Ver árvore'),
+    ])));
+
+  const blocoArvore = arvore && !arvore.erro ? bloco(`Árvore de transformação · ${arvore.lote}`, '§33', [
+    desenhar(arvore, 0, 'raiz'),
+    custo && !custo.erro ? h('div', { style: { marginTop: 16 } },
+      h('h3', null, 'Custo acumulado'),
+      tabela(['Etapa', 'Setor', ['Material', 'num'], ['Conversão', 'num'], ['Total', 'num']],
+        custo.etapas.map((e) => linha(e.execucaoId, [
+          [e.execucao, 'small muted'],
+          e.departamento,
+          [moeda(e.material), 'num'],
+          [moeda(e.conversao), 'num'],
+          [moeda(e.total), 'num'],
+        ]))),
+      pequeno(`Custo unitário do lote: ${moeda(custo.custoUnitario)} · material `
+        + `${moeda(custo.materialTotal)} + conversão ${moeda(custo.conversaoTotal)}.`)) : null,
+  ]) : null;
+
+  return h('div', null, bloco('Lotes', '§11', [tabelaLotes]), blocoArvore);
+}
+
+export function TelaConferencia(contexto) {
+  const [vista, setVista] = React.useState('saude');
+  const { db, update, usuario } = contexto;
+
+  const telas = {
+    saude: () => h(TelaIntegracao, { ...contexto, setVista }),
+    rastreio: () => h(TelaRastreioConferencia, contexto),
+    ficha: () => h(GrupoProdutosIndustriais, {
+      db, update, usuario, embutido: true,
+      irPara: (aba) => (aba === 'ordens' ? contexto.setSub('ordens') : setVista('ficha')),
+    }),
+    auditoria: () => h(TelaAuditoria, contexto),
+  };
+
+  return h('div', null,
+    h('div', { className: 'tabs-strip', style: { marginBottom: 16 } },
+      ...VISTAS.map((v) => h('button', {
+        key: v.id, className: vista === v.id ? 'active' : '',
+        onClick: () => setVista(v.id),
+      }, v.label))),
+    (telas[vista] || telas.saude)());
 }

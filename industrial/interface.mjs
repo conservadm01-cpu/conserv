@@ -12,19 +12,17 @@
  */
 
 import {
-  prepararIndustrial, disponivelEmProcesso, novaLinhaCarteira,
-  num, arredondar, MOTIVOS_PERDA, TIPOS_ITEM,
+  prepararIndustrial, disponivelEmProcesso,
+  num, arredondar, MOTIVOS_PERDA,
 } from './modelo.mjs';
 import {
-  consolidarCarteira, explodirBOM, calcularMRP, calcularCapacidade, calcularBudget,
-  planoDeProducao, executarTransformacao, liberarParaCostura, wipDaCarteira,
-  realizadoVersusBudget, custoAcumulado, rastrear, rastrearParaFrente, simular,
-  budgetsDaCarteira,
+  explodirBOM, calcularCapacidade, executarTransformacao, liberarParaCostura,
+  wipDaCarteira, realizadoVersusBudget, simular, budgetsDaCarteira,
 } from './motores.mjs';
 import { gerarRequisicoes, painelCompras } from './compras.mjs';
 import { auditarIndustrial } from './auditoria.mjs';
-import { TelaCompras, TelaAuditoria } from './telas-compras.mjs';
-import { TelaIntegracao } from './telas-integracao.mjs';
+import { TelaCompras } from './telas-compras.mjs';
+import { TelaConferencia } from './telas-integracao.mjs';
 import { TelaOrdensDoSistema } from './telas-ordens-sistema.mjs';
 import { ordensDoSistema, planejarOrdensPendentes } from './ordens-sistema.mjs';
 import { indicadoresDeIntegracao } from './integracao.mjs';
@@ -132,20 +130,19 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
      duas telas que a fábrica já conhece. Aqui fica o motor — plano, MRP,
      reserva, compra, custo e rastro. */
   const doSistema = ordensDoSistema(db);
+  /* Cinco lugares, um por pergunta que alguém faz na fábrica:
+       Painel      como estamos?
+       Ordens      o que produzir, e o que isso exige (MRP, budget, etapas)
+       Compras     o que falta comprar, e em que pé está
+       Produção    o que a fábrica fez hoje
+       Conferência a cadeia está inteira? de onde veio esta peça? */
   const abas = [
     { id: 'painel', label: 'Painel' },
     { id: 'ordens', label: `Ordens (${doSistema.planejadas}/${doSistema.total})` },
-    { id: 'carteira', label: `Carteira (${(ind.carteira || []).length})` },
-    { id: 'engenharia', label: `Ficha industrial (${itens.filter((x) => x.tipo === 'PRODUTO_ACABADO').length})` },
-    { id: 'plano', label: 'Plano e budget' },
     { id: 'compras', label: `Compras (${(ind.requisicoesCompra || []).filter(
       (r) => !['recebida', 'cancelada'].includes(r.status)).length})` },
     { id: 'producao', label: `Produção (${(ind.demandas || []).filter((d) => d.status !== 'atendida').length})` },
-    { id: 'rastreio', label: `Rastreio (${(ind.lotes || []).length})` },
-    /* V3 §30 — a nota da cadeia fica na própria aba: quem abre o módulo já vê
-       se material, engenharia e industrial continuam ligados */
-    { id: 'integracao', label: `Integração (${saudeDaCadeia(db)}%)` },
-    { id: 'auditoria', label: 'Auditoria' },
+    { id: 'conferencia', label: `Conferência (${saudeDaCadeia(db)}%)` },
   ];
 
   const recado = (texto, cor, fundo) => h('div', {
@@ -160,21 +157,14 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
   });
 
   const telas = {
-    /* base sem nada cadastrado: o painel vira o convite, mas as sub-abas
-       continuam à mão — quem quer cadastrar o próprio produto vai direto
-       para Produtos, sem passar pela demonstração */
+    /* base sem nada cadastrado: o painel vira o convite */
     painel: () => (vazioAinda
-      ? boasVindas(db, mexer, usuario, erro, () => setSub('engenharia'))
+      ? boasVindas(db, mexer, usuario, erro, () => setSub('ordens'))
       : h(TelaPainel, contexto)),
-    engenharia: () => embutir(GrupoProdutosIndustriais),
-    carteira: () => h(TelaCarteira, contexto),
     ordens: () => h(TelaOrdensDoSistema, { ...contexto, setEscolhida }),
-    plano: () => h(TelaPlano, contexto),
     compras: () => h(TelaCompras, contexto),
     producao: () => h(TelaProducao, contexto),
-    rastreio: () => h(TelaRastreio, contexto),
-    integracao: () => h(TelaIntegracao, contexto),
-    auditoria: () => h(TelaAuditoria, contexto),
+    conferencia: () => h(TelaConferencia, { ...contexto, update }),
   };
 
   return h('div', null,
@@ -341,7 +331,7 @@ function TelaPainel({ db, ind, atual, item, setSub }) {
           h('strong', null, inteiro((ind.reservas || []).filter((r) => r.status === 'ativa').length),
             ' reserva(s) ativa(s)'))),
       auditoria.erros.length ? h('button', {
-        className: 'btn ghost sm', style: { marginTop: 10 }, onClick: () => setSub('auditoria'),
+        className: 'btn ghost sm', style: { marginTop: 10 }, onClick: () => setSub('conferencia'),
       }, 'Ver na auditoria') : null,
     ])
     : null;
@@ -378,138 +368,11 @@ function TelaPainel({ db, ind, atual, item, setSub }) {
 
 /* ========================================================== §2 carteira */
 
-function TelaCarteira({ db, ind, item, mexer, setSub, usuario, irPara }) {
-  const [novo, setNovo] = React.useState(null);
-  const linhas = (ind.carteira || []).filter((l) => l.status !== 'cancelada');
-  const produtos = (ind.itens || []).filter((i) => i.tipo === 'PRODUTO_ACABADO' && i.ativo !== false);
-  const abertas = linhas.filter((l) => l.status === 'aberta');
-  const nomeCliente = (id) => {
-    const c = (db.clientes || []).find((x) => x.id === id);
-    return c ? (c.nomeFantasia || c.nome) : '—';
-  };
-
-  const tabelaCarteira = linhas.length === 0 ? vazio('Nenhuma linha de carteira.') : tabela(
-    ['Pedido', 'Cliente', 'Produto', ['Quantidade', 'num'], 'Entrega', ['Prioridade', 'num'], 'Situação'],
-    linhas.map((l) => linha(l.id, [
-      l.pedido || l.codigo,
-      nomeCliente(l.clienteId),
-      (item(l.itemId) || {}).nome || '—',
-      [inteiro(l.quantidade), 'num'],
-      dataBR(l.dataPrometida),
-      [l.prioridade, 'num'],
-      selo(l.status === 'aberta' ? 'idle' : 'info', l.status),
-    ])));
-
-  const botaoConsolidar = h('div', { className: 'row-actions', style: { marginTop: 14 } },
-    h('button', {
-      className: 'btn ghost', disabled: produtos.length === 0,
-      onClick: () => setNovo({ itemId: (produtos[0] || {}).id || '', quantidade: 100 }),
-    }, '+ Pedido na carteira'),
-    h('button', {
-      className: 'btn', disabled: abertas.length === 0,
-      onClick: () => mexer((d) => consolidarCarteira(d, {}), (r) =>
-        `${r.consolidacao.codigo}: `
-        + `${inteiro(r.consolidacao.produtos.reduce((s, p) => s + num(p.quantidade), 0))} peças consolidadas.`),
-    }, `Consolidar ${abertas.length} pedido(s) aberto(s)`));
-
-  const consolidadas = (ind.consolidacoes || []).length === 0
-    ? vazio('Nenhuma consolidação ainda.')
-    : tabela(['Código', 'Nome', 'Produto', ['Peças', 'num'], 'Entrega', 'Situação', ''],
-      (ind.consolidacoes || []).map((c) => {
-        const temPlano = (ind.demandas || []).some((d) => d.consolidacaoId === c.id);
-        const acao = temPlano
-          ? h('button', {
-            className: 'btn ghost sm',
-            onClick: () => irEComBilhete(irPara, 'ordens', { ordemId: c.id }),
-          }, `Acompanhar ${c.codigoOrdem || 'ordem'}`)
-          : h('button', {
-            className: 'btn accent sm',
-            onClick: () => {
-              mexer((d) => planoDeProducao(d, { consolidacaoId: c.id }), (r) =>
-                `${r.consolidacao.codigoOrdem} aberta: ${r.planos[0].demandas.length} etapas · `
-                + `custo planejado ${moeda(r.custoPlanejado)}. `
-                + 'A ordem está no ambiente Ordens, e o plano, aqui ao lado.');
-              setSub('plano');
-            },
-          }, 'Gerar plano de produção');
-        return linha(c.id, [
-          c.codigo, c.nome,
-          c.produtos.map((p) => (item(p.itemId) || {}).nome).join(', '),
-          [inteiro(c.produtos.reduce((s, p) => s + num(p.quantidade), 0)), 'num'],
-          dataBR(c.produtos[0] && c.produtos[0].prazo),
-          selo(c.status === 'em_producao' ? 'ok' : 'idle', c.status),
-          acao,
-        ]);
-      }));
-
-  return h('div', null,
-    bloco('Carteira de produção', `${inteiro(linhas.reduce((s, l) => s + num(l.quantidade), 0))} peças`, [
-      pequeno('Consolidar junta o mesmo produto de clientes diferentes num lote só — é o que evita '
-        + 'enfestar três vezes o mesmo tecido. Gerar o plano abre a ordem, que passa a ser '
-        + 'acompanhada no ambiente Ordens.', { marginTop: -6 }),
-      tabelaCarteira,
-      botaoConsolidar,
-    ]),
-    bloco('Carteiras consolidadas', null, [consolidadas]),
-    novo ? h(ModalPedidoCarteira, {
-      db, produtos, dados: novo,
-      onFechar: () => setNovo(null),
-      onSalvar: (dados) => {
-        const r = mexer((d) => novaLinhaCarteira(d, dados),
-          (resp) => `Pedido ${resp.registro.codigo} lançado na carteira.`);
-        if (r && !r.erro) setNovo(null);
-      },
-    }) : null);
-}
-
-/** Uma linha de carteira para um produto já cadastrado no ambiente Produtos. */
-function ModalPedidoCarteira({ db, produtos, dados, onFechar, onSalvar }) {
-  const [f, setF] = React.useState({
-    itemId: dados.itemId || '',
-    quantidade: dados.quantidade || 100,
-    clienteId: '',
-    pedido: '',
-    dataPrometida: '',
-    prioridade: 5,
-  });
-  const set = (campo, valor) => setF((p) => ({ ...p, [campo]: valor }));
-
-  return h(Modal, { title: 'Novo pedido na carteira', onClose: onFechar },
-    pequeno('A carteira é a origem da demanda: vários pedidos do mesmo produto se consolidam num '
-      + 'lote de produção só.'),
-    h('div', { className: 'field' },
-      h('label', null, 'Produto'),
-      h('select', { value: f.itemId, onChange: (e) => set('itemId', e.target.value) },
-        h('option', { value: '' }, 'escolha o produto…'),
-        ...produtos.map((p) => h('option', { key: p.id, value: p.id }, `${p.codigo} · ${p.nome}`)))),
-    h('div', { className: 'grid2' },
-      h('div', { className: 'field' },
-        h('label', null, 'Quantidade'),
-        h('input', { type: 'number', min: 1, value: f.quantidade,
-          onChange: (e) => set('quantidade', e.target.value) })),
-      h('div', { className: 'field' },
-        h('label', null, 'Entrega'),
-        h('input', { type: 'date', value: f.dataPrometida,
-          onChange: (e) => set('dataPrometida', e.target.value) }))),
-    h('div', { className: 'grid2' },
-      h('div', { className: 'field' },
-        h('label', null, 'Cliente'),
-        h('select', { value: f.clienteId, onChange: (e) => set('clienteId', e.target.value) },
-          h('option', { value: '' }, 'produção para estoque'),
-          ...(db.clientes || []).map((c) => h('option', { key: c.id, value: c.id },
-            c.nomeFantasia || c.nome)))),
-      h('div', { className: 'field' },
-        h('label', null, 'Pedido'),
-        h('input', { value: f.pedido, onChange: (e) => set('pedido', e.target.value) }))),
-    h('div', { className: 'modal-actions' },
-      h('button', { className: 'btn ghost', onClick: onFechar }, 'Cancelar'),
-      h('button', { className: 'btn accent', onClick: () => onSalvar(f) }, 'Lançar pedido')));
-}
 
 /* ================================================ §3/§25/§27 plano e budget */
 
-function TelaPlano({ db, ind, atual, item, mexer, usuario, setSub }) {
-  if (!atual) return vazio('Consolide a carteira primeiro.');
+export function TelaPlano({ db, ind, atual, item, mexer, usuario, setSub }) {
+  if (!atual) return vazio('Abra uma ordem para ver o MRP e o budget dela.');
   const produto = atual.produtos[0];
   const explosao = explodirBOM(db, produto.itemId, produto.quantidade, { consolidacaoId: atual.id });
   if (explosao.erro) return vazio(explosao.erro);
@@ -751,83 +614,6 @@ function TelaProducao({ db, ind, atual, item, depNome, mexer, usuario, setAponta
 
 /* ==================================================== §32/§33 rastreio */
 
-function TelaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
-  const lotes = (ind.lotes || []).slice().reverse();
-  if (lotes.length === 0) return vazio('Nenhum lote produzido ainda. Aponte uma execução na aba Produção.');
-
-  const arvore = loteAberto ? rastrear(db, loteAberto) : null;
-  const custo = loteAberto ? custoAcumulado(db, loteAberto) : null;
-
-  const desenhar = (no, nivel, chave) => {
-    if (!no) return null;
-    const recuo = { paddingLeft: nivel * 18, lineHeight: 1.8 };
-    if (no.tipo === 'almoxarifado') {
-      return h('div', { key: chave, style: recuo },
-        h('span', { className: 'small muted' }, '← '),
-        h('span', { className: 'small' }, `${decimal(no.quantidade)} ${no.unidade} de ${no.item}`),
-        h('span', { className: 'small muted' }, ` · almoxarifado, sem lote · ${moeda(no.custoUnitario)}`));
-    }
-    /* V3 §26 — a ponta de cima: a nota fiscal do fornecedor, ou o saldo que
-       já estava lá quando o módulo começou */
-    if (no.tipo === 'compra') {
-      return h('div', { key: chave, style: recuo },
-        h('span', { className: 'small muted' }, '← '),
-        h('span', { className: 'small' }, `comprado de ${no.fornecedor}`),
-        h('span', { className: 'small muted' },
-          ` · ${no.documento || 'sem documento'} · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
-    }
-    if (no.tipo === 'abertura') {
-      return h('div', { key: chave, style: recuo },
-        h('span', { className: 'small muted' }, '← '),
-        h('span', { className: 'small' }, 'saldo de abertura do almoxarifado'),
-        h('span', { className: 'small muted' }, ` · ${dataBR(no.data)} · ${moeda(no.custoUnitario)}`));
-    }
-    const filhos = (no.origens || []).map((o, i) => desenhar(o, nivel + 1, `${chave}-${i}`));
-    return h('div', { key: chave, style: recuo },
-      h('span', { className: 'small' }, h('strong', null, no.lote), ` · ${inteiro(no.quantidade)} ${no.item}`),
-      no.departamento ? h('span', { className: 'small muted' }, ` · ${no.departamento} · ${dataBR(no.data)}`) : null,
-      h('span', { className: 'small muted' }, ` · ${moeda(no.custoUnitario)}/un`),
-      ...filhos);
-  };
-
-  /* V3 §13 — o lote do almoxarifado é do material, não de um item produzido:
-     o nome vem do cadastro de materiais, e a origem diz se veio de nota
-     fiscal, de produção ou do saldo de abertura. */
-  const ORIGEM = { compra: ['ok', 'compra'], producao: ['idle', 'produção'], ajuste: ['warn', 'abertura'] };
-  const nomeDoLote = (l) => (item(l.itemId) || {}).nome
-    || ((db.materiais || []).find((m) => m.id === l.materialId) || {}).nome || '—';
-
-  const tabelaLotes = tabela(
-    ['Lote', 'Item', 'Origem', ['Quantidade', 'num'], ['Saldo', 'num'], ['Custo unitário', 'num'], 'Data', ''],
-    lotes.map((l) => linha(l.id, [
-      l.codigo,
-      nomeDoLote(l),
-      selo(...(ORIGEM[l.origem] || ['idle', l.origem || '—'])),
-      [decimal(l.quantidade), 'num'],
-      [l.origem === 'producao' ? '—' : decimal(l.saldo), 'num'],
-      [moeda(l.custoUnitario), 'num'],
-      dataBR(l.data),
-      h('button', { className: 'btn ghost sm', onClick: () => setLoteAberto(l.id) }, 'Ver árvore'),
-    ])));
-
-  const blocoArvore = arvore && !arvore.erro ? bloco(`Árvore de transformação · ${arvore.lote}`, '§33', [
-    desenhar(arvore, 0, 'raiz'),
-    custo && !custo.erro ? h('div', { style: { marginTop: 16 } },
-      h('h3', null, 'Custo acumulado'),
-      tabela(['Etapa', 'Setor', ['Material', 'num'], ['Conversão', 'num'], ['Total', 'num']],
-        custo.etapas.map((e) => linha(e.execucaoId, [
-          [e.execucao, 'small muted'],
-          e.departamento,
-          [moeda(e.material), 'num'],
-          [moeda(e.conversao), 'num'],
-          [moeda(e.total), 'num'],
-        ]))),
-      pequeno(`Custo unitário do lote: ${moeda(custo.custoUnitario)} · material `
-        + `${moeda(custo.materialTotal)} + conversão ${moeda(custo.conversaoTotal)}.`)) : null,
-  ]) : null;
-
-  return h('div', null, bloco('Lotes', '§11', [tabelaLotes]), blocoArvore);
-}
 
 /* ================================================= §36 apontar produção */
 

@@ -14,10 +14,11 @@ import {
 import { num } from './modelo.mjs';
 import {
   ordensDoSistema, planejarOrdemDoSistema, planejarOrdensPendentes,
-  abrirOrdemDeProducao, versaoVigenteDoProduto, tarefasDaOrdem,
+  abrirOrdemDeProducao, versaoVigenteDoProduto, ordensAgrupaveis, agruparOrdens,
 } from './ordens-sistema.mjs';
 import { lerFichaDoProduto, nomeDoProduto } from './engenharia.mjs';
 import { resumoDaOrdem } from './ordens.mjs';
+import { TelaPlano } from './interface.mjs';
 
 const ESTADO = {
   sem_plano: ['idle', 'sem plano industrial'],
@@ -33,13 +34,20 @@ const SITUACAO_SISTEMA = {
   cancelada: ['bad', 'cancelada'],
 };
 
-export function TelaOrdensDoSistema({ db, mexer, usuario, setSub, setEscolhida }) {
+export function TelaOrdensDoSistema(contexto) {
+  const { db, ind, mexer, usuario, setSub, setEscolhida } = contexto;
   const [todas, setTodas] = React.useState(false);
   const [aberta, setAberta] = React.useState('');
   const [nova, setNova] = React.useState(null);
 
   const lista = ordensDoSistema(db, { todas });
   const detalhe = aberta ? resumoDaOrdem(db, aberta) : null;
+  const consolidacaoAberta = aberta
+    ? (db.industrial?.consolidacoes || []).find((c) => c.id === aberta) || null
+    : null;
+
+  /* o ganho de PCP que a carteira dava, sem a carteira como lugar à parte */
+  const agrupaveis = ordensAgrupaveis(db);
 
   const planejar = (l) => mexer(
     (d) => planejarOrdemDoSistema(d, l.ordemId, usuario),
@@ -58,24 +66,24 @@ export function TelaOrdensDoSistema({ db, mexer, usuario, setSub, setEscolhida }
     [dataBR(l.entrega), 'small muted', { whiteSpace: 'nowrap' }],
     selo(...(SITUACAO_SISTEMA[l.situacao] || ['idle', l.situacao])),
     selo(...(ESTADO[l.estado] || ['idle', l.estado])),
-    [l.planejada ? `${l.etapas} etapa(s)` : '—', 'small muted', { whiteSpace: 'nowrap' }],
+    [l.planejada
+      ? `${l.etapas} etapa(s)${l.agrupadaCom ? ` · em lote com +${l.agrupadaCom}` : ''}`
+      : '—', 'small muted'],
     [l.planejada ? moeda(l.custoPlanejado) : '—', 'num', { whiteSpace: 'nowrap' }],
     h('div', { className: 'row-actions' },
       l.planejada
         ? h('button', {
           className: 'btn ghost sm',
           onClick: () => { setAberta(l.consolidacaoId); if (setEscolhida) setEscolhida(l.consolidacaoId); },
-        }, 'Ver plano')
+        }, aberta === l.consolidacaoId ? 'Fechar' : 'Plano, MRP e budget')
         : h('button', { className: 'btn sm', onClick: () => planejar(l) }, 'Planejar no industrial'),
-      l.planejada ? h('button', {
-        className: 'btn ghost sm',
-        onClick: () => { if (setEscolhida) setEscolhida(l.consolidacaoId); if (setSub) setSub('plano'); },
-      }, 'MRP e budget') : null),
+      null),
   ]));
 
   const cartoes = h('div', { className: 'kpis' },
     kpi('Ordens em aberto', inteiro(lista.total), 'em produção agora'),
-    kpi('Planejadas aqui', inteiro(lista.planejadas), 'com plano, reserva e MRP'),
+    kpi('Planejadas aqui', inteiro(lista.planejadas),
+      `${lista.lotes} lote(s) de produção`),
     kpi('Sem plano', inteiro(lista.semPlano), 'abertas antes, fora do motor', lista.semPlano > 0),
     kpi('Custo planejado', moeda(lista.custoPlanejado), 'soma das ordens planejadas'));
 
@@ -102,7 +110,7 @@ export function TelaOrdensDoSistema({ db, mexer, usuario, setSub, setEscolhida }
         }, 'Ir para o apontamento'),
         h('button', {
           className: 'btn ghost sm', onClick: () => setAberta(''),
-        }, 'Fechar plano')),
+        }, 'Fechar')),
     ]);
 
   return h('div', null,
@@ -135,6 +143,30 @@ export function TelaOrdensDoSistema({ db, mexer, usuario, setSub, setEscolhida }
     ]),
 
     detalhePlano,
+
+    /* o MRP, o budget e a capacidade da ordem aberta — o que antes era uma
+       aba à parte, e que só faz sentido olhando para uma ordem */
+    aberta ? h(TelaPlano, { ...contexto, atual: consolidacaoAberta }) : null,
+
+    agrupaveis.length > 1 ? bloco('Agrupar ordens num lote só', null, [
+      pequeno('Duas ordens do mesmo produto rendem mais num enfesto só: o setup acontece uma vez, '
+        + 'e o custo por peça cai. Agrupar não apaga as ordens — junta o que elas pedem num plano '
+        + 'de produção comum.', { marginTop: -6 }),
+      tabela(['Produto', ['Ordens', 'num'], ['Peças', 'num'], ''],
+        agrupaveis.map((g) => linha(g.produtoId, [
+          h('div', null, g.produto,
+            h('div', { className: 'small muted' }, g.codigos.join(' · '))),
+          [inteiro(g.ordens.length), 'num'],
+          [inteiro(g.pecas), 'num'],
+          h('button', {
+            className: 'btn ghost sm',
+            onClick: () => mexer(
+              (d) => agruparOrdens(d, g.ordemIds, usuario),
+              (r) => `${g.codigos.join(' + ')} agrupadas: ${inteiro(r.pecas)} peças num lote só · `
+                + `${r.plano.ordens.length} etapa(s) · custo planejado R$ ${r.custoPlanejado}.`),
+          }, 'Agrupar'),
+        ]))),
+    ]) : null,
 
     nova ? h(ModalNovaOrdem, {
       db, dados: nova,
