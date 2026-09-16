@@ -8,7 +8,7 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 62 testes: fluxo, cadastro, ordens, V2 e V3
+node --test "industrial/testes/*.test.mjs"        # 67 testes: fluxo, cadastro, ordens, V2, V3 e Engenharia
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
   --sem-modulos=produtos,producao --com-industrial
@@ -47,6 +47,7 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
 | `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
 | `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
+| `engenharia.mjs` | a ponte com a Engenharia do sistema: lê `db.produtos` (ficha técnica e roteiro) e **deriva** itens, estrutura e uma transformação por setor, com vínculo vivo e detecção de divergência |
 | `integracao.mjs` | **V3**: `resolverMaterialIndustrial` (a ponte item ↔ material), custo vigente, conversão de unidade, auditoria da cadeia, indicadores de integração e o mapa dos elos |
 | `telas-integracao.mjs` | **V3**: a sub-aba Integração — saúde da engenharia industrial com a prova de cada ponto, mapa clicável e o botão do fluxo completo |
 | `testes-v3.mjs` | **V3**: `testarFluxoCompletoERPIndustrial` — 30 passos sobre uma cópia, do cadastro ao rastro |
@@ -222,11 +223,42 @@ as duas ganham código `OP-AAAA-NNNN` e aparecem na mesma lista, com a origem an
 | Compras | requisições (aprovar, cancelar, agrupar em pedido), pedidos (receber total ou parcial, cancelar) e o que está atrasado |
 | Produção | as demandas por processo, o estoque entre processos e as perdas |
 | Rastreio | os lotes, a árvore de transformação e o custo acumulado etapa a etapa |
+| Da Engenharia | os produtos do sistema com o estado do vínculo, o botão de trazer e a lista do que a ficha mudou |
 | Integração | a saúde da cadeia material → engenharia → industrial, com a prova de cada ponto, o mapa dos quinze elos e o fluxo completo de 30 passos rodando dentro do sistema |
 | Auditoria | erros e alertas da varredura, reconciliação de estoque e a bateria de 20 testes rodando dentro do sistema |
 
 Base sem estrutura industrial abre com um convite para carregar a demonstração de 10.000
 camisetas — é um clique, e serve para conhecer o módulo com número de verdade.
+
+## O produto não se cadastra duas vezes
+
+`db.produtos` já guarda a ficha técnica (`tecidos[]`: material e consumo por peça) e o
+roteiro (`processo[]`: setor, etapa, tempo, pessoas, e quais materiais entram em cada etapa).
+O industrial **não** recadastra isso: ele deriva.
+
+```
+db.produtos[].tecidos[]   →  itens comprados (um por material, nunca dois) + estrutura
+db.produtos[].processo[]  →  uma transformação por setor, encadeadas pelo subproduto
+etapa.modo                →  ciclo: 'projeto' = uma vez por ordem (0) · 'pessoa' = por peça (1)
+```
+
+O que só o industrial sabe — coproduto, os sete tipos de tempo, o rendimento do ciclo — fica
+gravado aqui e **sobrevive à reimportação**. O item do produto acabado guarda `produtoId` e a
+assinatura da ficha de onde veio: quando a Engenharia muda a ficha,
+`divergenciasDaFicha` diz o que mudou em português e a auditoria trata como **erro**, não como
+detalhe.
+
+| função | o que faz |
+|---|---|
+| `produtosDaEngenharia(db)` | todo produto do sistema com o estado do vínculo: fora · em dia · divergente |
+| `lerFichaDoProduto(db, id)` | a ficha na forma que o industrial entende, com o roteiro agrupado por setor |
+| `derivarProdutoDaEngenharia(db, id)` | traz o produto; rodar duas vezes não duplica nada |
+| `divergenciasDaFicha(db, id)` | o que a Engenharia mudou e o industrial ainda não copiou |
+| `transformacoesDoProduto(db, itemId)` | a cadeia deste produto — a mesma linha de costura entra em cinco fichas |
+
+Na tela: **Industrial → Produtos → Da Engenharia**. Com a base sem estrutura industrial, o
+próprio convite inicial oferece *Trazer os produtos da Engenharia*, e a nota da integração
+começa em 50% justamente porque os produtos estão fora.
 
 ## V3 — uma cadeia só
 

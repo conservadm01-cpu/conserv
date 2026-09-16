@@ -19,6 +19,7 @@ import {
   conferirEngenharia, custoPadrao, arvoreDoProduto, clonarProduto,
 } from './cadastro.mjs';
 import { resolverMaterialIndustrial } from './integracao.mjs';
+import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
 import {
   h, moeda, inteiro, decimal, selo, vazio, pequeno, kpi, bloco, tabela, linha,
   navegacao, irEComBilhete,
@@ -62,14 +63,19 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
     className: 'panel', style: { borderColor: cor, background: fundo, marginBottom: 14 },
   }, h('strong', { className: 'small' }, texto));
 
+  const engenharia = produtosDaEngenharia(db);
   const abas = [
     { id: 'produtos', label: `Produtos (${produtos.length})` },
+    /* a Engenharia é a origem: aqui se vê quantos produtos já cadastrados o
+       industrial enxerga, e quantos ainda estão de fora */
+    { id: 'engenharia', label: `Da Engenharia (${engenharia.derivados}/${engenharia.total})` },
     { id: 'itens', label: `Itens (${itens.length})` },
     { id: 'receitas', label: `Transformações (${(ind.transformacoes || []).filter((t) => t.ativa !== false).length})` },
   ];
 
   const contexto = { db, ind, itens, produtos, item, depNome, mexer, usuario,
-    setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha, irPara };
+    setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha, irPara,
+    engenharia, setSub };
 
   /* Embutido no ambiente Industrial, o cabeçalho é o de lá: aqui sobram os
      botões de cadastro, que são o que esta tela oferece. */
@@ -96,6 +102,7 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
     aviso ? recado(aviso, 'var(--ok)', 'var(--ok-bg)') : null,
 
     sub === 'produtos' && listaProdutos(contexto),
+    sub === 'engenharia' && listaEngenharia(contexto),
     sub === 'itens' && listaItens(contexto),
     sub === 'receitas' && listaReceitas(contexto),
 
@@ -185,6 +192,91 @@ function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem, ir
         + 'padrão, que a ordem depois compara com o realizado.', { marginTop: -6 }),
       tabela(['Código', 'Produto', ['Custo/peça', 'num'], ['Min/peça', 'num'], 'Engenharia', ''], linhas),
     ]));
+}
+
+/**
+ * A ponte com a Engenharia: o produto já está cadastrado lá, com ficha
+ * técnica e roteiro. Aqui ele é trazido — não redigitado.
+ */
+function listaEngenharia({ db, engenharia, mexer, usuario, setFicha, setSub }) {
+  const SITUACAO = {
+    fora: ['idle', 'fora do industrial'],
+    em_dia: ['ok', 'em dia com a ficha'],
+    divergente: ['warn', 'a ficha mudou'],
+  };
+
+  const linhas = engenharia.linhas.map((l) => linha(l.produtoId, [
+    [l.codigo, 'small muted'],
+    l.nome,
+    [`${l.materiais} material(is)`, 'small muted'],
+    [l.setores.join(' → ') || '—', 'small muted'],
+    [decimal(l.minutosPorPeca), 'num'],
+    selo(...(SITUACAO[l.situacao] || ['idle', l.situacao])),
+    h('div', { className: 'row-actions' },
+      l.pendencias.length
+        ? h('span', { className: 'small', style: { color: 'var(--bad)' }, title: l.pendencias.join(' · ') },
+          l.pendencias[0])
+        : h('button', {
+          className: l.derivado ? 'btn ghost sm' : 'btn sm',
+          onClick: () => mexer(
+            (d) => derivarProdutoDaEngenharia(d, l.produtoId, usuario),
+            (r) => `${l.codigo} trazido: ${r.criados.itens.length} item(ns), `
+              + `${r.criados.subprodutos.length} subproduto(s) e `
+              + `${r.criados.transformacoes.length} transformação(ões) criados; `
+              + `${r.reusados.itens.length} item(ns) reaproveitado(s).`),
+        }, l.derivado ? 'Atualizar da ficha' : 'Trazer para o industrial'),
+      l.itemId ? h('button', {
+        className: 'btn ghost sm', onClick: () => { if (setSub) setSub('produtos'); setFicha(l.itemId); },
+      }, 'Ver ficha industrial') : null),
+  ]));
+
+  const divergentes = engenharia.linhas.filter((l) => l.situacao === 'divergente');
+
+  return h('div', null,
+    h('div', { className: 'kpis' },
+      kpi('Produtos na Engenharia', inteiro(engenharia.total), 'cadastrados no sistema'),
+      kpi('Já no industrial', inteiro(engenharia.derivados), 'com estrutura e roteiro derivados'),
+      kpi('Fora', inteiro(engenharia.fora), 'ainda não trazidos', engenharia.fora > 0),
+      kpi('Ficha mudou', inteiro(engenharia.divergentes), 'precisam ser atualizados',
+        engenharia.divergentes > 0)),
+
+    engenharia.total > 0 && engenharia.derivados < engenharia.total ? h('div', {
+      className: 'row-actions', style: { marginBottom: 14 },
+    },
+    h('button', {
+      className: 'btn accent',
+      onClick: () => mexer((d) => {
+        const feitos = [];
+        const falhas = [];
+        for (const l of produtosDaEngenharia(d).linhas) {
+          if (l.derivado || l.pendencias.length) continue;
+          const r = derivarProdutoDaEngenharia(d, l.produtoId, usuario);
+          if (r.erro) falhas.push(`${l.codigo}: ${r.erro}`);
+          else feitos.push(l.codigo);
+        }
+        return { feitos, falhas, erro: feitos.length === 0 && falhas.length ? falhas[0] : '' };
+      }, (r) => `${r.feitos.length} produto(s) trazido(s): ${r.feitos.join(', ')}.`
+        + (r.falhas.length ? ` ${r.falhas.length} não vieram.` : '')),
+    }, `Trazer os ${engenharia.fora} produtos que faltam`)) : null,
+
+    bloco('Produtos cadastrados na Engenharia', null, [
+      pequeno('A ficha técnica diz o que a peça leva e o roteiro diz por onde ela passa — os dois já '
+        + 'existem. O industrial deriva daí a estrutura e uma transformação por setor, e completa só '
+        + 'o que a ficha não sabe dizer: o ciclo de cada operação, os tipos de tempo e o coproduto. '
+        + 'Um material da ficha nunca vira um item novo se já houver item apontando para ele.',
+      { marginTop: -6, maxWidth: 780, lineHeight: 1.6 }),
+      tabela(['Código', 'Produto', 'Ficha', 'Roteiro', ['Min/peça', 'num'], 'Vínculo', ''], linhas),
+    ]),
+
+    divergentes.length ? bloco('A ficha mudou depois de trazida', null, [
+      pequeno('O que a Engenharia alterou e o industrial ainda não copiou. Atualizar refaz a '
+        + 'derivação sem perder os tempos que você ajustou aqui.', { marginTop: -6 }),
+      tabela(['Produto', 'Diferença'], divergentes.flatMap((l) =>
+        l.divergencias.map((d, i) => linha(`${l.produtoId}-${i}`, [
+          [i === 0 ? l.codigo : '', 'small muted'],
+          [d, 'small'],
+        ])))),
+    ]) : null);
 }
 
 function listaItens({ db, ind, itens, depNome, mexer, usuario, setFormItem }) {

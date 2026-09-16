@@ -85,6 +85,12 @@ export function montarDemonstracao(db, opcoes = {}) {
      continuam sendo os do cadastro, não uma cópia. */
   const doAlmoxarifado = (trecho, tipo, nome) => {
     const mat = exigir(material(db, trecho), `Material "${trecho}" não existe na base.`);
+    /* V3 §37 — um item por material. Se a base já tem um item apontando para
+       este material (trazido da Engenharia, por exemplo), a demonstração usa
+       o que existe em vez de criar um segundo. */
+    const existente = (db.industrial.itens || []).find(
+      (i) => i.ativo !== false && i.materialId === mat.id);
+    if (existente) return existente;
     return criar(novoItem(db, {
       nome: nome || mat.nome, tipo, materialId: mat.id, unidade: mat.unidadeEstoque,
     }), `item ${trecho}`);

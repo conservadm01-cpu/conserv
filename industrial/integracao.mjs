@@ -20,6 +20,7 @@ import {
 } from './modelo.mjs';
 import { disponivelParaOrdem, saldoReservado, estoqueFisico } from './reservas.mjs';
 import { entradasProgramadasDe } from './compras.mjs';
+import { produtosDaEngenharia } from './engenharia.mjs';
 
 /* ============================================ §4 a ponte item ↔ material */
 
@@ -358,9 +359,33 @@ export function auditarIntegracaoMateriaisEngenhariaIndustrial(db) {
     }
   }
 
+  /* ---------------- ENGENHARIA DO SISTEMA ----------------
+     O produto cadastrado na Engenharia é a origem. Produto que a fábrica tem
+     e o industrial não enxerga é cadastro partido; ficha alterada depois da
+     derivação é o industrial calculando com o número de ontem. */
+  const engenharia = produtosDaEngenharia(db);
+  for (const linha of engenharia.linhas) {
+    if (!linha.derivado) {
+      alertas.push(registro('alerta', 'produto_fora_do_industrial',
+        `${linha.codigo} ${linha.nome} está cadastrado na Engenharia e não existe no industrial — `
+        + 'nenhuma ordem pode ser aberta para ele.', { produtoId: linha.produtoId }));
+      orfaos.push({ tipo: 'produto', id: linha.produtoId, nome: linha.codigo, motivo: 'fora do industrial' });
+      sugestoes.push(`Traga ${linha.codigo} da Engenharia em Produtos → Da Engenharia.`);
+      continue;
+    }
+    if (linha.situacao === 'divergente') {
+      erros.push(registro('erro', 'ficha_divergente',
+        `${linha.codigo} ${linha.nome}: a ficha mudou e o industrial não acompanhou — `
+        + linha.divergencias[0], { produtoId: linha.produtoId, itemId: linha.itemId }));
+      inconsistencias.push({ tipo: 'ficha', item: linha.codigo, diferencas: linha.divergencias });
+      sugestoes.push(`Atualize ${linha.codigo} a partir da ficha em Produtos → Da Engenharia.`);
+    }
+  }
+
   const ok = erros.length === 0;
   return {
     ok, erros, alertas, inconsistencias, orfaos, duplicidades,
+    engenharia,
     sugestoes: [...new Set(sugestoes)],
     verificadoEm: agoraISO(),
   };
@@ -426,6 +451,10 @@ export function indicadoresDeIntegracao(db) {
         .filter((c) => c.origem === 'almoxarifado')).length,
       ok: (ind.execucoes || []).flatMap((e) => (e.consumos || [])
         .filter((c) => c.origem === 'almoxarifado' && (c.loteId || (c.lotes || []).length > 0))).length },
+    { id: 'produtos_da_engenharia', nome: 'Produtos da Engenharia no industrial',
+      total: auditoria.engenharia ? auditoria.engenharia.total : 0,
+      ok: auditoria.engenharia
+        ? auditoria.engenharia.linhas.filter((l) => l.situacao === 'em_dia').length : 0 },
     { id: 'demandas_com_engenharia', nome: 'Demandas ligadas a transformação',
       total: (ind.demandas || []).length,
       ok: (ind.demandas || []).filter((d) => (ind.transformacoes || [])
@@ -500,6 +529,10 @@ export function mapaDaCadeia(db) {
     { id: 'estoque', nome: 'Estoque', aba: 'plano',
       registros: (db.saldos || []).filter((s) => num(s.fisico) > 0).length,
       problemas: 0, nota: 'físico, reservado e disponível' },
+    { id: 'engenharia_sistema', nome: 'Produto (Engenharia)', aba: 'produtos',
+      registros: (db.produtos || []).filter((p) => p.ativo !== false).length,
+      problemas: problemasDe('produto_fora_do_industrial', 'ficha_divergente'),
+      nota: 'ficha técnica e roteiro' },
     { id: 'itens', nome: 'Item industrial', aba: 'produtos',
       registros: itens.length,
       problemas: problemasDe('item_sem_material', 'unidade_divergente',

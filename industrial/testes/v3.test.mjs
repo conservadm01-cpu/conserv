@@ -15,6 +15,7 @@ import path from 'node:path';
 
 import { prepararIndustrial, migrarIndustrialV3, num } from '../modelo.mjs';
 import { explodirBOM, calcularMRP } from '../motores.mjs';
+import { conferirEngenharia, custoPadrao } from '../cadastro.mjs';
 import { montarDemonstracao } from '../demonstracao.mjs';
 import {
   resolverMaterialIndustrial, custoVigenteDoMaterial, converterUnidadeMaterial,
@@ -22,6 +23,19 @@ import {
 } from '../integracao.mjs';
 import { testarFluxoCompletoERPIndustrial } from '../testes-v3.mjs';
 import { testarIndustrialV2 } from '../testes-v2.mjs';
+import {
+  produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto, divergenciasDaFicha,
+} from '../engenharia.mjs';
+
+/** Traz para o industrial os produtos que a Engenharia já tem cadastrados. */
+const ligarEngenharia = (db) => {
+  for (const l of produtosDaEngenharia(db).linhas) {
+    if (l.derivado || l.pendencias.length) continue;
+    const r = derivarProdutoDaEngenharia(db, l.produtoId, { nome: 'Teste' });
+    assert.ok(!r.erro, `${l.codigo}: ${r.erro}`);
+  }
+  return db;
+};
 
 const raiz = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 const base = JSON.parse(fs.readFileSync(path.join(raiz, 'docs/teste/confeccao/base-teste.json'), 'utf8'));
@@ -125,8 +139,18 @@ test('V3 §27 — a auditoria de integração vê a cadeia partida', () => {
 test('V3 §30 — a saúde da engenharia industrial é um número com prova', () => {
   const db = nova();
   const cenario = montarDemonstracao(db);
+
+  /* produto cadastrado na Engenharia e ausente do industrial derruba a nota:
+     é cadastro partido, e o número precisa dizer isso */
+  const partido = indicadoresDeIntegracao(db);
+  assert.ok(partido.integracao < 100,
+    'com 6 produtos da Engenharia fora do industrial a nota continuou cheia');
+  assert.equal(partido.provas.find((p) => p.id === 'produtos_da_engenharia').ok, 0);
+
+  ligarEngenharia(db);
   const cheio = indicadoresDeIntegracao(db);
   assert.equal(cheio.integracao, 100);
+  assert.equal(cheio.provas.find((p) => p.id === 'produtos_da_engenharia').percentual, 100);
   assert.ok(cheio.provas.length >= 5);
   for (const p of cheio.provas) {
     assert.equal(p.percentual, p.total > 0 ? Number(((p.ok / p.total) * 100).toFixed(1)) : 100);
@@ -145,6 +169,7 @@ test('V3 §30 — a saúde da engenharia industrial é um número com prova', ()
 test('V3 §31 — o mapa da cadeia cobre os quinze elos, com aba de destino', () => {
   const db = nova();
   montarDemonstracao(db);
+  ligarEngenharia(db);
   const mapa = mapaDaCadeia(db);
   assert.ok(mapa.blocos.length >= 12, `${mapa.blocos.length} blocos`);
   for (const b of mapa.blocos) {
@@ -155,6 +180,7 @@ test('V3 §31 — o mapa da cadeia cobre os quinze elos, com aba de destino', ()
   }
   assert.equal(mapa.integracao, 100);
   assert.ok(mapa.blocos.some((b) => b.id === 'materiais'));
+  assert.ok(mapa.blocos.some((b) => b.id === 'engenharia_sistema'));
   assert.ok(mapa.blocos.some((b) => b.id === 'acabado'));
 });
 
@@ -181,4 +207,130 @@ test('V3 §28 — testarFluxoCompletoERPIndustrial: 30 passos, 10.000 camisetas'
   assert.equal(r.total, 30);
   assert.equal(r.falhas, 0, JSON.stringify(r.detalhesFalhas, null, 2));
   assert.equal(r.indicadores.integracao, 100);
+});
+
+/* ===================================== a ponte com a Engenharia do sistema */
+
+test('Engenharia → industrial: a ficha é lida como estrutura e roteiro', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const ficha = lerFichaDoProduto(db, prd.id);
+
+  assert.equal(ficha.materiais.length, 5);
+  const malha = ficha.materiais.find((m) => m.nome.includes('MALHA PV'));
+  assert.equal(malha.quantidade, 0.21);
+  assert.equal(malha.tipo, 'MATERIA_PRIMA', 'malha está no grupo Tecidos → matéria-prima');
+  assert.equal(ficha.materiais.find((m) => m.nome.includes('LINHA')).tipo, 'AVIAMENTO');
+  assert.equal(ficha.materiais.find((m) => m.nome.includes('TINTA')).tipo, 'INSUMO');
+  assert.equal(ficha.materiais.find((m) => m.nome.includes('SACO')).tipo, 'EMBALAGEM');
+
+  /* 13 etapas em 5 setores, na ordem em que a peça anda */
+  assert.deepEqual(ficha.blocos.map((b) => b.departamento),
+    ['Corte', 'Estamparia', 'Costura', 'Acabamento', 'Embalagem']);
+
+  /* o modo da etapa vira o ciclo: 'projeto' é uma vez por ordem */
+  const corte = ficha.blocos[0];
+  assert.equal(corte.operacoes.find((o) => o.nome === 'Enfesto').porCiclo, 0);
+  assert.equal(corte.operacoes.find((o) => o.nome === 'Corte').porCiclo, 1);
+  assert.equal(corte.minutosPorPeca, 0.7);
+  assert.equal(corte.minutosPorOrdem, 28);
+});
+
+test('Engenharia → industrial: derivar não duplica material nem cadastro', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const r = derivarProdutoDaEngenharia(db, prd.id, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+
+  /* um item industrial por material — nunca dois */
+  const porMaterial = new Map();
+  for (const i of db.industrial.itens.filter((x) => x.materialId)) {
+    porMaterial.set(i.materialId, num(porMaterial.get(i.materialId)) + 1);
+  }
+  assert.ok([...porMaterial.values()].every((n) => n === 1), 'material com dois itens industriais');
+
+  /* o vínculo ficou gravado */
+  assert.equal(r.item.produtoId, prd.id);
+  assert.equal(r.item.origem, 'engenharia');
+  assert.ok(r.item.fichaAssinatura);
+
+  /* a cadeia tem uma transformação por setor, encadeadas */
+  assert.equal(r.criados.transformacoes.length, 5);
+  assert.equal(r.criados.subprodutos.length, 4, 'quatro subprodutos: os cinco setores menos o último');
+
+  /* e a engenharia fecha: dá para abrir ordem */
+  const conferencia = conferirEngenharia(db, r.item.id);
+  assert.ok(conferencia.pronto, conferencia.pendencias.join(' | '));
+
+  /* derivar de novo não cria nada */
+  const itensAntes = db.industrial.itens.length;
+  const trfAntes = db.industrial.transformacoes.length;
+  const outra = derivarProdutoDaEngenharia(db, prd.id, { nome: 'Teste' });
+  assert.ok(!outra.erro, outra.erro);
+  assert.equal(db.industrial.itens.length, itensAntes);
+  assert.equal(db.industrial.transformacoes.length, trfAntes);
+});
+
+test('Engenharia → industrial: a necessidade bate com a ficha, peça por peça', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const r = derivarProdutoDaEngenharia(db, prd.id, { nome: 'Teste' });
+  const explosao = explodirBOM(db, r.item.id, 500, { considerarEstoque: false });
+  assert.ok(!explosao.erro, explosao.erro);
+
+  /* o nome do produto acabado do sistema traz o tecido dentro ("CAMISETA …
+     MALHA PV 30/1 …"), então a busca é pelo material, não pelo nome */
+  const doMaterial = (trecho) => {
+    const material = db.materiais.find((m) => m.nome.includes(trecho));
+    return explosao.necessidades.find((l) => l.item.materialId === material.id);
+  };
+  const acha = doMaterial;
+  assert.equal(acha('MALHA PV').bruta, 105, '0,21 kg × 500');
+  assert.equal(acha('LINHA 120').bruta, 7.5, '0,015 × 500');
+  assert.equal(acha('TINTA BASE').bruta, 6, '0,012 × 500');
+  assert.equal(acha('SACO PL').bruta, 500);
+  assert.equal(explosao.producao.length, 5, 'cinco setores no plano');
+});
+
+test('Engenharia → industrial: mexer na ficha acusa divergência, e atualizar resolve', () => {
+  const db = nova();
+  const prd = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  derivarProdutoDaEngenharia(db, prd.id, { nome: 'Teste' });
+  assert.equal(divergenciasDaFicha(db, prd.id).emDia, true);
+
+  /* a Engenharia muda o consumo de tecido */
+  prd.tecidos[0].quantidade = 0.28;
+  const depois = divergenciasDaFicha(db, prd.id);
+  assert.equal(depois.emDia, false);
+  assert.equal(depois.divergencias.length, 1, JSON.stringify(depois.divergencias));
+  assert.match(depois.divergencias[0], /0\.28.*0\.21/);
+
+  /* a auditoria de integração trata isso como erro, não como detalhe */
+  const auditoria = auditarIntegracaoMateriaisEngenhariaIndustrial(db);
+  assert.ok(auditoria.erros.some((e) => e.tipo === 'ficha_divergente'));
+
+  /* atualizar refaz a derivação e zera a diferença */
+  const r = derivarProdutoDaEngenharia(db, prd.id, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  assert.equal(divergenciasDaFicha(db, prd.id).emDia, true);
+  const explosao = explodirBOM(db, r.item.id, 1000, { considerarEstoque: false });
+  const malha = db.materiais.find((m) => m.nome.includes('MALHA PV'));
+  assert.equal(explosao.necessidades.find((l) => l.item.materialId === malha.id).bruta, 280);
+});
+
+test('Engenharia → industrial: os seis produtos da base viram ordens de verdade', () => {
+  const db = nova();
+  ligarEngenharia(db);
+  const estado = produtosDaEngenharia(db);
+  assert.equal(estado.total, 6);
+  assert.equal(estado.derivados, 6);
+  assert.equal(estado.divergentes, 0);
+
+  for (const l of estado.linhas) {
+    const conferencia = conferirEngenharia(db, l.itemId);
+    assert.ok(conferencia.pronto, `${l.codigo}: ${conferencia.pendencias.join(' | ')}`);
+    const custo = custoPadrao(db, l.itemId, 1000);
+    assert.ok(!custo.erro, `${l.codigo}: ${custo.erro}`);
+    assert.ok(num(custo.porPeca) > 0, `${l.codigo} saiu com custo zero`);
+  }
 });

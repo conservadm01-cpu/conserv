@@ -36,6 +36,7 @@ import {
   auditarIntegracaoMateriaisEngenhariaIndustrial, indicadoresDeIntegracao,
 } from './integracao.mjs';
 import { montarDemonstracao } from './demonstracao.mjs';
+import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
 
 /* Os nomes com que a demonstração batiza cada peça: é por eles que o cenário
    é reconhecido quando já está na base. */
@@ -132,7 +133,22 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
     return { detalhe: `versão ${db.industrial.versao} · ${(db.materiais || []).length} materiais no almoxarifado` };
   });
 
-  /* 2 */ passo(2, `Cenário de ${quantidade} camisetas montado`, () => {
+  /* 2 */ passo(2, `Engenharia do sistema ligada e cenário de ${quantidade} camisetas montado`, () => {
+    /* o produto cadastrado na Engenharia é a origem: antes de qualquer coisa,
+       o que a fábrica já tem cadastrado entra no industrial — derivado, não
+       redigitado */
+    const antes = produtosDaEngenharia(db);
+    for (const l of antes.linhas) {
+      if (l.derivado || l.pendencias.length) continue;
+      const r = derivarProdutoDaEngenharia(db, l.produtoId, usuario);
+      exigir(!r.erro, `derivar ${l.codigo}: ${r.erro}`);
+    }
+    const depois = produtosDaEngenharia(db);
+    exigir(depois.derivados === depois.total,
+      `${depois.derivados} de ${depois.total} produtos da Engenharia no industrial`);
+    exigir(depois.divergentes === 0, `${depois.divergentes} produto(s) divergindo da ficha`);
+    ctx.engenharia = depois;
+
     /* se a base já tem o cenário, ele é reaproveitado: montar de novo criaria
        um segundo item para cada material, que é exatamente a duplicidade que
        a V3 existe para impedir (§37) */
@@ -144,7 +160,8 @@ export function testarFluxoCompletoERPIndustrial(baseOriginal, opcoes = {}) {
     exigir(Object.keys(transformacoes).length === 5, 'o cenário precisa dos cinco processos');
     exigir(Object.keys(itens).length >= 14, `${Object.keys(itens).length} itens no cenário`);
     return {
-      detalhe: `${Object.keys(itens).length} itens · 5 transformações · `
+      detalhe: `${ctx.engenharia.total} produto(s) da Engenharia derivado(s) · `
+        + `${Object.keys(itens).length} itens do cenário · 5 transformações · `
         + `${ctx.reaproveitado ? 'cenário já existente reaproveitado' : `${ctx.cenario.carteira.length} linhas de carteira criadas`}`,
     };
   });

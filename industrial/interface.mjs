@@ -27,6 +27,7 @@ import { TelaCompras, TelaAuditoria } from './telas-compras.mjs';
 import { TelaIntegracao } from './telas-integracao.mjs';
 import { indicadoresDeIntegracao } from './integracao.mjs';
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
+import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
 
 export const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
 
@@ -159,7 +160,7 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
        continuam à mão — quem quer cadastrar o próprio produto vai direto
        para Produtos, sem passar pela demonstração */
     painel: () => (vazioAinda
-      ? boasVindas(mexer, erro, () => setSub('produtos'))
+      ? boasVindas(db, mexer, usuario, erro, () => setSub('produtos'))
       : h(TelaPainel, contexto)),
     produtos: () => embutir(GrupoProdutosIndustriais),
     carteira: () => h(TelaCarteira, contexto),
@@ -197,7 +198,9 @@ function saudeDaCadeia(db) {
 
 /* ------------------------------------------------- base sem o módulo */
 
-function boasVindas(mexer, erro, irParaProdutos) {
+function boasVindas(db, mexer, usuario, erro, irParaProdutos) {
+  /* o caminho mais curto: o produto já está cadastrado na Engenharia */
+  const engenharia = produtosDaEngenharia(db);
   /* Os quatro passos que ligam a fábrica, na ordem em que cada um destrava o
      seguinte. Quem chega aqui precisa saber por onde começar — e o começo é
      um material do almoxarifado, não uma tela deste módulo. */
@@ -219,7 +222,30 @@ function boasVindas(mexer, erro, irParaProdutos) {
       + 'o próximo.', { maxWidth: 640, lineHeight: 1.6 }),
     erro ? h('p', { className: 'small', style: { color: 'var(--bad)' } }, erro) : null,
 
-    h('h3', { style: { marginTop: 18 } }, 'Para alimentar a base com o seu produto'),
+    engenharia.fora > 0 ? h('div', {
+      className: 'panel',
+      style: { background: 'var(--ok-bg)', borderColor: 'var(--ok)', marginTop: 16 },
+    },
+    h('h3', null, `${engenharia.fora} produto(s) já cadastrado(s) na Engenharia`),
+    pequeno('Ficha técnica e roteiro já existem. O industrial deriva daí a estrutura e uma '
+      + 'transformação por setor — você não digita nada de novo.', { marginTop: -6 }),
+    h('div', { className: 'small muted', style: { marginBottom: 10 } },
+      engenharia.linhas.filter((l) => !l.derivado).slice(0, 6)
+        .map((l) => `${l.codigo} ${l.nome}`).join(' · ')),
+    h('button', {
+      className: 'btn accent',
+      onClick: () => mexer((d) => {
+        const feitos = [];
+        for (const l of produtosDaEngenharia(d).linhas) {
+          if (l.derivado || l.pendencias.length) continue;
+          const r = derivarProdutoDaEngenharia(d, l.produtoId, usuario);
+          if (!r.erro) feitos.push(l.codigo);
+        }
+        return feitos.length ? { feitos } : { erro: 'Nenhum produto da Engenharia pôde ser trazido.' };
+      }, (r) => `${r.feitos.length} produto(s) trazido(s) da Engenharia: ${r.feitos.join(', ')}.`),
+    }, 'Trazer os produtos da Engenharia')) : null,
+
+    h('h3', { style: { marginTop: 18 } }, 'Ou cadastrar um produto novo'),
     passo(1, 'Material no almoxarifado — aba Materiais',
       'Tecido, aviamento e embalagem são cadastrados lá, com unidade, preço, estoque mínimo e prazo '
       + 'de entrega. O industrial não duplica esse cadastro: ele aponta para ele.'),

@@ -16,7 +16,7 @@ const pasta = path.dirname(new URL(import.meta.url).pathname);
 /* a ordem importa: quem define vem antes de quem usa */
 const ARQUIVOS = [
   'modelo.mjs', 'reservas.mjs', 'compras.mjs', 'integracao.mjs', 'motores.mjs',
-  'cadastro.mjs', 'ordens.mjs', 'auditoria.mjs', 'demonstracao.mjs',
+  'cadastro.mjs', 'engenharia.mjs', 'ordens.mjs', 'auditoria.mjs', 'demonstracao.mjs',
   'testes-v2.mjs', 'testes-v3.mjs',
   'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs', 'telas-compras.mjs',
   'telas-integracao.mjs',
@@ -97,6 +97,9 @@ ${partes.join('\n')}
     auditarIntegracaoMateriaisEngenhariaIndustrial, indicadoresDeIntegracao,
     mapaDaCadeia, itensDaArvore, lotesDeCompraDisponiveis,
     testarFluxoCompletoERPIndustrial,
+    /* a ponte com a Engenharia: o produto do sistema é a origem */
+    produtosDaEngenharia, derivarProdutoDaEngenharia, lerFichaDoProduto,
+    divergenciasDaFicha, transformacoesDoProduto,
   };
   window.GrupoIndustrial = GrupoIndustrial;
   window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;
