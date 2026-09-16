@@ -21,31 +21,31 @@ import {
 } from './motores.mjs';
 import { montarDemonstracao, receberCompra } from './demonstracao.mjs';
 
-const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
+export const h = (tipo, props, ...filhos) => React.createElement(tipo, props, ...filhos);
 
-const moeda = (v) => num(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const inteiro = (v) => num(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-const decimal = (v, casas = 3) => num(v).toLocaleString('pt-BR', { maximumFractionDigits: casas });
-const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
+export const moeda = (v) => num(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+export const inteiro = (v) => num(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+export const decimal = (v, casas = 3) => num(v).toLocaleString('pt-BR', { maximumFractionDigits: casas });
+export const dataBR = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
 
-const SELO = { normal: 'ok', risco: 'warn', gargalo: 'bad', sem_equipe: 'bad' };
-const selo = (tom, texto) => h('span', { className: `badge ${tom}` }, h('span', { className: 'dot' }), texto);
-const vazio = (texto) => h('div', { className: 'empty' }, texto);
-const pequeno = (texto, estilo) => h('p', { className: 'small muted', style: estilo }, texto);
+export const SELO = { normal: 'ok', risco: 'warn', gargalo: 'bad', sem_equipe: 'bad' };
+export const selo = (tom, texto) => h('span', { className: `badge ${tom}` }, h('span', { className: 'dot' }), texto);
+export const vazio = (texto) => h('div', { className: 'empty' }, texto);
+export const pequeno = (texto, estilo) => h('p', { className: 'small muted', style: estilo }, texto);
 
-const kpi = (rotulo, valor, apoio, destaque) => h('div', {
+export const kpi = (rotulo, valor, apoio, destaque) => h('div', {
   className: `kpi${destaque ? ' accent' : ''}`, key: rotulo,
 }, h('div', { className: 'lbl' }, rotulo),
    h('div', { className: 'val' }, valor),
    apoio ? h('div', { className: 'small', style: { opacity: .75, marginTop: 2 } }, apoio) : null);
 
 /** Painel com título, selo opcional e os filhos que vierem. */
-const bloco = (titulo, chip, filhos, props) => h('div', Object.assign({ className: 'panel' }, props || {}),
+export const bloco = (titulo, chip, filhos, props) => h('div', Object.assign({ className: 'panel' }, props || {}),
   h('h3', null, titulo, chip ? h('span', { className: 'chip' }, chip) : null),
   ...filhos.filter(Boolean));
 
 /** Tabela: cabeçalhos como ['Item', ['Valor','num']] e linhas já montadas. */
-const tabela = (cabecalhos, linhas) => h('table', null,
+export const tabela = (cabecalhos, linhas) => h('table', null,
   h('thead', null, h('tr', null, ...cabecalhos.map((c, i) => {
     const [texto, classe] = Array.isArray(c) ? c : [c, ''];
     return h('th', { key: i, className: classe }, texto);
@@ -53,7 +53,7 @@ const tabela = (cabecalhos, linhas) => h('table', null,
   h('tbody', null, ...linhas));
 
 /** Linha: células como ['texto'] ou [valor, 'num'] ou [elemento]. */
-const linha = (chave, celulas) => h('tr', { key: chave }, ...celulas.map((c, i) => {
+export const linha = (chave, celulas) => h('tr', { key: chave }, ...celulas.map((c, i) => {
   const [conteudo, classe, estilo] = Array.isArray(c) ? c : [c, ''];
   return h('td', { key: i, className: classe || '', style: estilo || null }, conteudo);
 }));
@@ -567,7 +567,7 @@ function telaRastreio({ db, ind, item, loteAberto, setLoteAberto }) {
 
 /* ================================================= §36 apontar produção */
 
-function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onConfirmar }) {
+export function ModalExecucao({ db, ind, demanda, item, usuario, onFechar, onConfirmar }) {
   const trf = (ind.transformacoes || []).find((t) => t.id === demanda.transformacaoId);
   const restante = Math.max(num(demanda.quantidade) - num(demanda.produzido), 0);
   const [quantidade, setQuantidade] = React.useState(restante);

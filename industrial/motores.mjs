@@ -212,9 +212,14 @@ export function explodirBOM(db, itemIdRaiz, quantidade, opcoes = {}) {
     if (!it) return null;
     const bruta = arredondar(num(brutas.get(id)), 4);
     if (!(bruta > 0)) return null;
-    const disponivel = considerarEstoque ? disponivelDoItem(db, it) : 0;
-    const programadas = considerarEstoque ? entradasProgramadas(db, it) : 0;
-    const seguranca = considerarEstoque ? estoqueSeguranca(db, it, parametros) : 0;
+    /* O produto da ponta não desconta estoque: a ordem diz "produza 500", e
+       500 camisetas paradas no estoque de outra ordem não produzem estas. O
+       desconto vale para o que está no meio do caminho — subproduto cortado
+       que sobrou de ontem é subproduto que não precisa cortar de novo. */
+    const netar = considerarEstoque && !(n === 0 && id === raiz.id && opcoes.netarRaiz !== true);
+    const disponivel = netar ? disponivelDoItem(db, it) : 0;
+    const programadas = netar ? entradasProgramadas(db, it) : 0;
+    const seguranca = netar ? estoqueSeguranca(db, it, parametros) : 0;
     const liquida = Math.max(arredondar(bruta - disponivel - programadas + seguranca, 4), 0);
     const linha = {
       itemId: id, item: it, nivel: n, unidade: it.unidade, tipo: it.tipo,

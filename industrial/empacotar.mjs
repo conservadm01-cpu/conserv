@@ -14,7 +14,10 @@ import path from 'node:path';
 const pasta = path.dirname(new URL(import.meta.url).pathname);
 
 /* a ordem importa: quem define vem antes de quem usa */
-const ARQUIVOS = ['modelo.mjs', 'motores.mjs', 'demonstracao.mjs', 'interface.mjs'];
+const ARQUIVOS = [
+  'modelo.mjs', 'motores.mjs', 'cadastro.mjs', 'ordens.mjs', 'demonstracao.mjs',
+  'interface.mjs', 'telas-produtos.mjs', 'telas-ordens.mjs',
+];
 
 /** Tira `import ... from '...';` e o prefixo `export` das declarações. */
 function paraScriptClassico(codigo) {
@@ -68,8 +71,16 @@ ${partes.join('\n')}
     planoDeProducao, executarTransformacao, liberarParaCostura, wipDaCarteira,
     realizadoVersusBudget, custoAcumulado, rastrear, simular,
     recalcularEstoquesProcesso,
+    /* cadastro de produto */
+    salvarItem, salvarEstrutura, salvarTransformacao, inativarItem, inativarTransformacao,
+    conferirEngenharia, custoPadrao, arvoreDoProduto, clonarProduto,
+    /* ordens de produção */
+    abrirOrdem, resumoDaOrdem, ordensDeProducao, cancelarOrdem, encerrarOrdem,
+    conferirComponentes, materiaisDaOrdem, capacidadeDaOrdem,
   };
   window.GrupoIndustrial = GrupoIndustrial;
+  window.GrupoProdutosIndustriais = GrupoProdutosIndustriais;
+  window.GrupoOrdens = GrupoOrdens;
 })();
 </script>
 `;

@@ -42,7 +42,11 @@ tempo do que entrou — é por isso que a camiseta acabada sabe quanto custou de
 | `modelo.mjs` | tipos de item, unidades e conversões, tipos de tempo, perdas, retalhos, alertas, as coleções novas e as fábricas de registro (item, estrutura, transformação, carteira, lote, movimento de processo) |
 | `motores.mjs` | consolidação, explosão da BOM, MRP, capacidade, budget, plano de produção, execução da transformação, custeio, custo acumulado, liberação da costura, WIP, realizado × budget, rastreabilidade e simulação |
 | `demonstracao.mjs` | a demonstração do §49: camiseta básica, 10.000 peças, três clientes, cinco processos |
+| `cadastro.mjs` | cadastro de produto: item, estrutura versionada, transformação, conferência da engenharia, custo padrão, árvore e cópia de produto |
+| `ordens.mjs` | ordens de produção: abrir a cadeia, o estado de cada etapa, cancelar, encerrar e a conferência de componentes |
 | `interface.mjs` | a aba Industrial: painel, carteira, plano e budget, produção, estrutura e rastreio |
+| `telas-produtos.mjs` | o ambiente **Produtos**: listas, ficha com a árvore e os formulários de item, estrutura e transformação |
+| `telas-ordens.mjs` | o ambiente **Ordens**: abertura com validação de engenharia, detalhe da cadeia e apontamento |
 | `empacotar.mjs` | junta os quatro num `<script>` clássico, dentro de um IIFE, e recusa nome declarado duas vezes |
 | `testes/fluxo-industrial.test.mjs` | o teste obrigatório do §54, com os 17 pontos de validação |
 
@@ -154,6 +158,27 @@ ESTAMPADA"*), produção, produto acabado, custo acumulado, perdas, WIP, budget,
 desvio — mais a conferência de que nenhum saldo de processo fica negativo e de que o saldo
 é sempre o acumulado dos movimentos.
 
+## Os três ambientes
+
+**Produtos** — a engenharia de cada peça. Cadastra o item (comprado, apontando para o material do
+almoxarifado, ou produzido, dizendo em que setor nasce), a estrutura (o que a peça leva dentro,
+versionada a cada gravação) e a transformação (o que entra, o que sai, em que setor e com que
+tempos). A ficha mostra a árvore inteira — a camiseta é feita de frente estampada, costas, mangas
+e gola preparada; a gola preparada vem da gola cortada; a gola cortada vem da malha — com o custo
+padrão por peça e, quando falta alguma coisa, a lista do que impede a ordem de abrir.
+
+O cadastro recusa o que quebraria a fábrica depois: nome repetido, item produzido sem setor,
+estrutura em laço, dois donos para o mesmo item (só uma transformação produz cada peça),
+transformação sem tempo, e a saída de uma receita que seja um item comprado.
+
+**Ordens** — abrir uma ordem cria a cadeia inteira: uma ordem de processo por etapa, cada uma
+dependendo da anterior. A tela mostra onde a ordem está, separa a falta de verdade (material que
+não existe) da fila normal (a costura esperando o corte), confere componentes antes de liberar,
+aponta a execução e fecha a ordem — cancelar só antes de produzir; depois disso o caminho é
+encerrar, com motivo quando sobra saldo.
+
+**Industrial** — a visão da fábrica: carteira consolidada, plano, MRP, budget, WIP e rastreio.
+
 ## A aba Industrial
 
 | sub-aba | o que mostra |
@@ -173,6 +198,5 @@ camisetas — é um clique, e serve para conhecer o módulo com número de verda
 1. Dashboards por departamento (§29–§31), com a visão própria do corte, da preparação e da costura.
 2. Permissões por departamento (§51) sobre o cadastro de níveis que o sistema já tem.
 3. Compras: gravar pedido em aberto como entrada programada, fechando o ciclo do MRP — hoje o
-   recebimento do plano é um atalho lançado direto no almoxarifado.
-4. Cadastro pela tela: item, estrutura e transformação ainda se criam por código ou pela
-   demonstração.
+   recebimento é um atalho lançado direto no almoxarifado.
+4. Programação do dia: distribuir as etapas da ordem entre as pessoas e as máquinas do setor.

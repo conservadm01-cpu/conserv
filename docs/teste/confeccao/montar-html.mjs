@@ -144,23 +144,28 @@ function encaixarIndustrial(texto) {
     encaixe(de, para, `loadDb (${alvo})`);
   }
 
-  /* 3. a aba no menu */
+  /* 3. as abas no menu: cadastro do produto, ordens e a visão da fábrica */
   encaixe(`{\n  id: 'canal',\n  label: 'Conversa aberta'\n}`,
-    `{\n  id: 'industrial',\n  label: 'Industrial'\n}, {\n  id: 'canal',\n  label: 'Conversa aberta'\n}`,
+    `{\n  id: 'produtosind',\n  label: 'Produtos'\n}, `
+    + `{\n  id: 'ordens',\n  label: 'Ordens'\n}, `
+    + `{\n  id: 'industrial',\n  label: 'Industrial'\n}, `
+    + `{\n  id: 'canal',\n  label: 'Conversa aberta'\n}`,
     'ABAS_SISTEMA');
 
-  /* 4. quem já enxerga engenharia passa a enxergar industrial */
+  /* 4. quem já enxerga engenharia passa a enxergar as três abas novas */
   saida = saida.replace(/abas: \[([^\]]*)\]/g, (todo, dentro) => {
     if (!dentro.includes(`'engenharia'`) || dentro.includes(`'industrial'`)) return todo;
-    return todo.replace(`'engenharia'`, `'engenharia', 'industrial'`);
+    return todo.replace(`'engenharia'`, `'engenharia', 'produtosind', 'ordens', 'industrial'`);
   });
 
-  /* 5. a tela, desenhada quando a aba está ativa */
+  /* 5. as telas, desenhadas quando a aba está ativa */
+  const props = `\n    db: db,\n    update: update,\n    usuario: usuarioAtual,\n    perm: perm\n  })`;
   encaixe(`}), tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
-    `}), tabAtual === 'industrial' && /*#__PURE__*/React.createElement(GrupoIndustrial, {\n`
-    + `    db: db,\n    update: update,\n    usuario: usuarioAtual,\n    perm: perm\n`
-    + `  }), tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
-    'render da aba');
+    `}), tabAtual === 'produtosind' && /*#__PURE__*/React.createElement(GrupoProdutosIndustriais, {${props}`
+    + `, tabAtual === 'ordens' && /*#__PURE__*/React.createElement(GrupoOrdens, {${props}`
+    + `, tabAtual === 'industrial' && /*#__PURE__*/React.createElement(GrupoIndustrial, {${props}`
+    + `, tabAtual === 'canal' && /*#__PURE__*/React.createElement(GrupoCanal, {`,
+    'render das abas');
 
   return saida;
 }
