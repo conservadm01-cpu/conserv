@@ -123,7 +123,7 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
         `${c.codigoOrdem || c.codigo} · ${c.nome}`)))
       : null);
 
-  if (itens.length === 0) return h('div', null, cabeca, boasVindas(mexer, erro));
+  const vazioAinda = itens.length === 0;
 
   const ordensAbertas = (ind.consolidacoes || []).filter(
     (c) => c.codigoOrdem && c.status !== 'concluida' && c.status !== 'cancelada').length;
@@ -155,7 +155,12 @@ export function GrupoIndustrial({ db, update, usuario, irPara }) {
   });
 
   const telas = {
-    painel: () => h(TelaPainel, contexto),
+    /* base sem nada cadastrado: o painel vira o convite, mas as sub-abas
+       continuam à mão — quem quer cadastrar o próprio produto vai direto
+       para Produtos, sem passar pela demonstração */
+    painel: () => (vazioAinda
+      ? boasVindas(mexer, erro, () => setSub('produtos'))
+      : h(TelaPainel, contexto)),
     produtos: () => embutir(GrupoProdutosIndustriais),
     carteira: () => h(TelaCarteira, contexto),
     ordens: () => embutir(GrupoOrdens),
@@ -192,23 +197,55 @@ function saudeDaCadeia(db) {
 
 /* ------------------------------------------------- base sem o módulo */
 
-function boasVindas(mexer, erro) {
+function boasVindas(mexer, erro, irParaProdutos) {
+  /* Os quatro passos que ligam a fábrica, na ordem em que cada um destrava o
+     seguinte. Quem chega aqui precisa saber por onde começar — e o começo é
+     um material do almoxarifado, não uma tela deste módulo. */
+  const passo = (n, titulo, texto) => h('div', { key: n, style: { display: 'flex', gap: 10, marginTop: 10 } },
+    h('div', {
+      style: {
+        width: 24, height: 24, borderRadius: 12, background: 'var(--accent)', color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, fontWeight: 600, flexShrink: 0,
+      },
+    }, n),
+    h('div', null,
+      h('strong', { className: 'small' }, titulo),
+      h('div', { className: 'small muted', style: { lineHeight: 1.5 } }, texto)));
+
   return bloco('O módulo industrial ainda não tem estrutura cadastrada', null, [
     pequeno('Aqui moram a carteira de produção, o budget industrial, o MRP e o caminho que a peça '
       + 'faz de um setor para o outro — cada departamento recebendo, transformando e entregando para '
-      + 'o próximo. Para conhecer o módulo com número de verdade, carregue a demonstração: uma '
-      + 'carteira de 10.000 camisetas de três clientes, com ficha técnica, roteiro e tempos dos '
-      + 'cinco processos.', { maxWidth: 640, lineHeight: 1.6 }),
+      + 'o próximo.', { maxWidth: 640, lineHeight: 1.6 }),
     erro ? h('p', { className: 'small', style: { color: 'var(--bad)' } }, erro) : null,
-    h('div', { className: 'row-actions' },
+
+    h('h3', { style: { marginTop: 18 } }, 'Para alimentar a base com o seu produto'),
+    passo(1, 'Material no almoxarifado — aba Materiais',
+      'Tecido, aviamento e embalagem são cadastrados lá, com unidade, preço, estoque mínimo e prazo '
+      + 'de entrega. O industrial não duplica esse cadastro: ele aponta para ele.'),
+    passo(2, 'Item e produto — sub-aba Produtos',
+      'O item comprado aponta para o material (herda unidade e custo). O produto acabado e os '
+      + 'subprodutos nascem aqui, cada um dizendo em que setor é feito.'),
+    passo(3, 'Estrutura e transformação — sub-aba Produtos',
+      'A estrutura diz o que a peça leva; a transformação diz o que entra, o que sai, em que setor '
+      + 'e com que tempos. Sem tempo não há budget, e sem budget a ordem não abre.'),
+    passo(4, 'Ordem de produção — sub-aba Ordens',
+      'Com a engenharia completa, a ordem abre a cadeia inteira: reserva material, gera requisição '
+      + 'do que falta e cria uma etapa por processo.'),
+
+    h('div', { className: 'row-actions', style: { marginTop: 18 } },
       h('button', {
         className: 'btn accent',
+        onClick: () => (irParaProdutos ? irParaProdutos() : null),
+      }, 'Cadastrar o meu produto'),
+      h('button', {
+        className: 'btn ghost',
         onClick: () => mexer((d) => {
           try { montarDemonstracao(d); return { ok: true }; } catch (e) { return { erro: e.message }; }
         }, 'Demonstração carregada: carteira de 10.000 camisetas em três pedidos.'),
       }, 'Carregar demonstração (10.000 camisetas)'),
       h('span', { className: 'small muted', style: { alignSelf: 'center' } },
-        'ou cadastre o seu produto no ambiente Produtos')),
+        'a demonstração mostra o módulo com número de verdade, e não atrapalha o seu cadastro')),
   ]);
 }
 

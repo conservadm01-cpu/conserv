@@ -23,9 +23,35 @@
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 
+/**
+ * Número vindo de qualquer lugar: do banco (já número), de um `input
+ * type=number` (o navegador sempre devolve `0.55`, com ponto) ou de texto
+ * digitado em português (`0,55`, `1.234,56`).
+ *
+ * A regra é uma só: **o último separador é o decimal**. Tratar todo ponto
+ * como milhar transformava `0.3` digitado na tela em `3` — meio quilo de
+ * malha virava cinco, e o budget saía dez vezes maior sem ninguém ver.
+ */
 export const num = (v) => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  const n = Number(String(v ?? '').replace(/\./g, '').replace(',', '.'));
+  const texto = String(v ?? '').trim();
+  if (!texto) return 0;
+
+  const ultimaVirgula = texto.lastIndexOf(',');
+  const ultimoPonto = texto.lastIndexOf('.');
+  let limpo = texto;
+  if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
+    /* os dois aparecem: quem vem por último é o decimal */
+    limpo = ultimaVirgula > ultimoPonto
+      ? texto.replace(/\./g, '').replace(',', '.')
+      : texto.replace(/,/g, '');
+  } else if (ultimaVirgula >= 0) {
+    limpo = texto.replace(/,/g, '.');
+  } else if (texto.split('.').length > 2) {
+    /* mais de um ponto só pode ser milhar: 1.234.567 */
+    limpo = texto.replace(/\./g, '');
+  }
+  const n = Number(limpo);
   return Number.isFinite(n) ? n : 0;
 };
 

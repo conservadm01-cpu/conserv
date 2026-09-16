@@ -323,8 +323,19 @@ function fichaDoProduto({ db, ind, item, ficha, setFicha, setFormEstrutura, setF
           estrutura ? `Editar estrutura (versão ${estrutura.versao})` : 'Cadastrar estrutura'),
         h('button', {
           className: 'btn ghost sm',
+          /* a estrutura já disse o que a peça leva: a transformação nasce com
+             essas entradas prontas, o setor do produto e uma operação em
+             branco — só faltam os tempos, que é o que ninguém pode adivinhar */
           onClick: () => setFormTrf(transformacaoQueProduz(db, produto.id)
-            || { saidas: [{ itemId: produto.id, quantidade: 1, principal: true }] }),
+            || {
+              nome: `${produto.nome} — montagem`,
+              departamentoId: produto.departamentoId || '',
+              entradas: (estrutura ? estrutura.componentes : []).map((c) => ({
+                itemId: c.itemId, quantidade: num(c.quantidade), perda: num(c.perda),
+              })),
+              saidas: [{ itemId: produto.id, quantidade: 1, principal: true }],
+              operacoes: [{ nome: 'Montagem', porCiclo: 1, pessoas: 1, tempos: {} }],
+            }),
         }, transformacaoQueProduz(db, produto.id) ? 'Editar transformação final' : 'Criar transformação final'))),
 
     custo.erro ? null : h('div', { className: 'panel', style: { background: '#fff' } },
