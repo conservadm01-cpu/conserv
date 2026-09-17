@@ -8,10 +8,10 @@ O módulo é código versionado aqui e testável no Node — não se edita o HTM
 injetada:
 
 ```sh
-node --test "industrial/testes/*.test.mjs"        # 84 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
+node --test "industrial/testes/*.test.mjs"        # 85 testes: fluxo, cadastro, ordens, V2, V3, produto, ordem e lote
 
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \
-  --sem-modulos=producao --com-industrial
+  --sem-modulos=produtos,producao --com-industrial
 ```
 
 ## A regra que organiza tudo
@@ -186,13 +186,20 @@ desvio — mais a conferência de que nenhum saldo de processo fica negativo e d
 
 ## Onde cada coisa é feita
 
-O industrial **substituiu o módulo Produção**. O cadastro continua fora; a produção é aqui:
+O industrial **substituiu os módulos Produtos e Produção**: os dois saem do menu, e o que
+eles faziam acontece aqui. O que continua fora é o que nunca foi do industrial — material,
+setores, jornada e custo da fábrica.
 
 | o quê | onde | o que o industrial faz com isso |
 |---|---|---|
 | material | **Materiais** | aponta para ele — preço, saldo e fornecedor continuam sendo os de lá |
-| produto e composição | **Produtos** | deriva estrutura e uma transformação por setor |
+| setor, etapa, jornada, custo do minuto | **Engenharia** | é de onde sai o custo de conversão |
+| produto e composição | **Industrial → Conferência → Ficha industrial** | copiar um produto que existe, ou cadastrar item, estrutura e transformação |
 | ordem de produção | **Industrial → Ordens** | abre, planeja, reserva, compra, aponta, custeia e rastreia |
+
+O registro do produto continua sendo o do sistema (`db.produtos`, com ficha e roteiro) e o da
+ordem também (`db.ordens`, com a versão da engenharia congelada). Reinstalar os módulos
+Produtos e Produção na montagem devolve as telas de lá sem converter nada: é a mesma base.
 
 A ordem nasce aqui, mas continua sendo **a ordem do sistema**: `abrirOrdemDeProducao` grava em
 `db.ordens`, no formato de sempre — código `OP-0010`, produto, versão da engenharia congelada,
@@ -283,9 +290,15 @@ Cadastrar a segunda camiseta custava **vinte formulários**: um do produto, um p
 (5) e um por etapa do roteiro (13), mais a liberação. Mas jaleco é jaleco — o roteiro da casa
 não muda a cada peça.
 
-Na lista de **Produtos**, cada linha ganhou o botão **⧉**: pergunta o que muda nesta peça
-("gola V", "manga curta", "sem bolso") e cria o produto novo com a ficha e o roteiro inteiros,
-já aberto para ajustar o que for diferente.
+Em **Conferência → Ficha industrial → Da Engenharia**, cada produto tem **Copiar**: um modal
+que mostra o roteiro que vem junto ("Corte (2) → Estamparia (3) → Costura (5) → Acabamento (1)
+→ Embalagem (2) · 10,6 min por peça") e pede só o que muda — o complemento do nome, o tecido
+de cada linha e o consumo por peça. O consumo é ajustado **na hora da cópia**, de propósito:
+sem o módulo Produtos no menu não há outra tela que mexa na ficha, e ficha e industrial
+discordando é o que a auditoria de integração acusa como erro.
+
+Quando o módulo Produtos está instalado, o mesmo caminho aparece como o botão **⧉** na lista
+de produtos, pedindo apenas o complemento.
 
 `copiarProdutoDoSistema(db, produtoId, dados)` copia por dentro:
 

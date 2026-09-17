@@ -19,7 +19,10 @@ import {
   conferirEngenharia, custoPadrao, arvoreDoProduto, clonarProduto,
 } from './cadastro.mjs';
 import { resolverMaterialIndustrial } from './integracao.mjs';
-import { produtosDaEngenharia, derivarProdutoDaEngenharia } from './engenharia.mjs';
+import {
+  produtosDaEngenharia, derivarProdutoDaEngenharia, copiarProdutoDoSistema,
+  lerFichaDoProduto, nomeDoProduto,
+} from './engenharia.mjs';
 import {
   h, moeda, inteiro, decimal, selo, vazio, pequeno, kpi, bloco, tabela, linha,
   navegacao, irEComBilhete,
@@ -38,6 +41,7 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
   const [formItem, setFormItem] = React.useState(null);   // item em edição
   const [formTrf, setFormTrf] = React.useState(null);     // transformação em edição
   const [formEstrutura, setFormEstrutura] = React.useState(null);
+  const [copia, setCopia] = React.useState(null);
   const [lote, setLote] = React.useState(1000);
 
   /* bilhete deixado por outro ambiente: abrir a ficha deste produto */
@@ -76,21 +80,20 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
 
   const contexto = { db, ind, itens, produtos, item, depNome, mexer, usuario,
     setFicha, setFormItem, setFormTrf, setFormEstrutura, lote, setLote, ficha, irPara,
-    engenharia, setSub };
+    engenharia, setSub, copia, setCopia };
 
-  /* O produto é cadastrado no módulo Produtos, na ficha técnica e no roteiro —
-     as telas que a fábrica já usa. Aqui não se cria produto: aqui se vê o que
-     veio de lá e se ajusta o que só o industrial sabe (o ciclo de cada
-     operação, os sete tipos de tempo, o coproduto). */
-  const acoes = h('div', {
-    className: 'panel',
-    style: { background: 'var(--canvas-panel)', marginBottom: 14, padding: '10px 14px' },
-  }, h('span', { className: 'small muted' },
-    'O produto é cadastrado no módulo ',
-    h('strong', null, 'Produtos'),
-    ' — ficha técnica e roteiro. O industrial deriva daí a estrutura e uma transformação por '
-    + 'setor; nesta aba você confere o que veio e ajusta o ciclo e os tempos que a ficha não '
-    + 'sabe dizer.'));
+  /* Com o módulo Produtos fora do menu, o cadastro do produto é aqui. Há dois
+     caminhos, e o primeiro é quase sempre o certo: copiar um produto que já
+     existe, em "Da Engenharia". Cadastrar peça por peça — item, estrutura,
+     transformação — é o caminho do produto que não parece com nada. */
+  const acoes = h('div', { className: 'row-actions', style: { marginBottom: 14 } },
+    h('button', { className: 'btn ghost', onClick: () => setFormItem({ tipo: 'MATERIA_PRIMA' }) }, '+ Item'),
+    h('button', { className: 'btn ghost', onClick: () => setFormTrf({}) }, '+ Transformação'),
+    h('button', {
+      className: 'btn accent', onClick: () => setFormItem({ tipo: 'PRODUTO_ACABADO' }),
+    }, '+ Produto'),
+    h('span', { className: 'small muted', style: { alignSelf: 'center' } },
+      'ou copie um produto que já existe, na aba Da Engenharia'));
 
   return h('div', null,
     embutido ? acoes : h('div', { className: 'page-head' },
@@ -131,6 +134,18 @@ export function GrupoProdutosIndustriais({ db, update, usuario, irPara, embutido
         const r = mexer((d) => salvarTransformacao(d, dados, usuario),
           (resp) => `${resp.transformacao.codigo} ${resp.transformacao.nome} salva.`);
         if (r && !r.erro) setFormTrf(null);
+      },
+    }) : null,
+
+    copia ? h(ModalCopiarProduto, {
+      db, produtoId: copia,
+      onFechar: () => setCopia(null),
+      onCopiar: (dados) => {
+        const r = mexer((d) => copiarProdutoDoSistema(d, copia, dados, usuario),
+          (resp) => `${resp.produto.codigo} ${resp.produto.nome} criado a partir de `
+            + `${resp.origem.codigo}: ${resp.materiais} material(is) e ${resp.etapas} etapa(s). `
+            + 'Nasce em desenvolvimento — traga para o industrial e confira a engenharia.');
+        if (r && !r.erro) setCopia(null);
       },
     }) : null,
 
@@ -204,7 +219,7 @@ function listaProdutos({ db, produtos, mexer, usuario, setFicha, setFormItem, ir
  * A ponte com a Engenharia: o produto já está cadastrado lá, com ficha
  * técnica e roteiro. Aqui ele é trazido — não redigitado.
  */
-function listaEngenharia({ db, engenharia, mexer, usuario, setFicha, setSub }) {
+function listaEngenharia({ db, engenharia, mexer, usuario, setFicha, setSub, setCopia }) {
   const SITUACAO = {
     fora: ['idle', 'fora do industrial'],
     em_dia: ['ok', 'em dia com a ficha'],
@@ -233,7 +248,11 @@ function listaEngenharia({ db, engenharia, mexer, usuario, setFicha, setSub }) {
         }, l.derivado ? 'Atualizar da ficha' : 'Trazer para o industrial'),
       l.itemId ? h('button', {
         className: 'btn ghost sm', onClick: () => setFicha(l.itemId),
-      }, 'Ver ficha industrial') : null),
+      }, 'Ver ficha industrial') : null,
+      h('button', {
+        className: 'btn ghost sm', title: 'Criar um produto novo a partir deste',
+        onClick: () => setCopia(l.produtoId),
+      }, 'Copiar')),
   ]));
 
   const divergentes = engenharia.linhas.filter((l) => l.situacao === 'divergente');
@@ -700,4 +719,88 @@ function ModalTransformacao({ db, ind, dados, depNome, onFechar, onSalvar }) {
         className: 'btn accent',
         onClick: () => onSalvar({ ...f, entradas, saidas, operacoes }),
       }, 'Salvar transformação')));
+}
+
+/* ------------------------------------------- copiar um produto que existe */
+
+/**
+ * A segunda peça do mesmo tipo. A ficha e o roteiro vêm inteiros; aqui se diz
+ * só o que muda — o que diferencia no nome, o tecido e o consumo.
+ *
+ * O consumo é ajustado aqui, e não depois, de propósito: sem o módulo
+ * Produtos no menu não há outra tela que mexa na ficha, e ficha e industrial
+ * discordando é o que a auditoria de integração acusa como erro.
+ */
+function ModalCopiarProduto({ db, produtoId, onFechar, onCopiar }) {
+  const origem = (db.produtos || []).find((p) => p.id === produtoId) || null;
+  const ficha = origem ? lerFichaDoProduto(db, produtoId) : { erro: 'Produto não encontrado.' };
+  const [complemento, setComplemento] = React.useState('');
+  const [trocas, setTrocas] = React.useState({});
+  const [consumos, setConsumos] = React.useState({});
+  if (!origem || ficha.erro) return null;
+
+  const materiais = (db.materiais || []).filter((m) => m.ativo !== false);
+  const materialAtual = (m) => trocas[m.materialId] || m.materialId;
+  const consumoAtual = (m) => {
+    const id = materialAtual(m);
+    return consumos[id] !== undefined ? consumos[id] : m.quantidade;
+  };
+
+  const linhas = ficha.materiais.map((m) => {
+    const id = materialAtual(m);
+    const trocado = id !== m.materialId;
+    const material = materiais.find((x) => x.id === id);
+    return h('div', { key: m.fichaId, className: 'grid3', style: { alignItems: 'end' } },
+      h('div', { className: 'field' },
+        h('label', null, trocado ? 'Material (trocado)' : 'Material'),
+        h('select', {
+          value: id,
+          onChange: (e) => setTrocas((p) => ({ ...p, [m.materialId]: e.target.value })),
+        }, ...materiais.map((x) => h('option', { key: x.id, value: x.id },
+          `${x.codigo} · ${x.nome} (${x.unidadeEstoque})`)))),
+      h('div', { className: 'field' },
+        h('label', null, `Consumo por peça${material ? ` (${material.unidadeEstoque})` : ''}`),
+        h('input', {
+          type: 'number', step: '0.0001', min: 0, value: consumoAtual(m),
+          onChange: (e) => setConsumos((p) => ({ ...p, [id]: e.target.value })),
+        })),
+      h('div', { className: 'field' },
+        h('label', null, 'Na origem'),
+        pequeno(`${decimal(m.quantidade, 4)} ${m.unidade} de ${m.nome}`, { marginTop: 6 })));
+  });
+
+  return h(Modal, { title: `Novo produto a partir de ${origem.codigo}`, onClose: onFechar, wide: true },
+    pequeno('A ficha e o roteiro vêm inteiros — os 5 materiais e as 13 etapas, com os tempos e os '
+      + 'setores. Diga o que muda nesta peça; o resto já está pronto. Ela nasce em desenvolvimento, '
+      + 'e liberar continua sendo decisão de gente.'),
+
+    h('div', { className: 'field' },
+      h('label', null, 'O que muda nesta peça'),
+      h('input', {
+        value: complemento, placeholder: 'gola V · manga curta · sem bolso',
+        onChange: (e) => setComplemento(e.target.value),
+      }),
+      pequeno('Entra no nome do produto, junto com grupo, tipo, medida e tecido.')),
+
+    h('div', { className: 'panel', style: { background: '#fff' } },
+      h('strong', { className: 'small' }, 'Roteiro que vem junto'),
+      h('div', { className: 'small muted', style: { marginTop: 4 } },
+        `${ficha.blocos.map((b) => `${b.departamento} (${b.operacoes.length})`).join(' → ')}`
+        + ` · ${decimal(ficha.minutosPorPeca)} min por peça`)),
+
+    h('h3', { style: { marginTop: 14 } }, 'Materiais e consumo'),
+    pequeno('Trocar o tecido aqui é fazer o mesmo modelo noutra malha — o nome se remonta sozinho.',
+      { marginTop: -6 }),
+    ...linhas,
+
+    h('div', { className: 'modal-actions' },
+      h('button', { className: 'btn ghost', onClick: onFechar }, 'Cancelar'),
+      h('button', {
+        className: 'btn accent', disabled: !String(complemento).trim(),
+        onClick: () => onCopiar({
+          complemento: String(complemento).trim(),
+          trocas,
+          consumos: Object.fromEntries(ficha.materiais.map((m) => [materialAtual(m), num(consumoAtual(m))])),
+        }),
+      }, 'Criar produto')));
 }

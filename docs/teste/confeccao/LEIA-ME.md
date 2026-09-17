@@ -55,7 +55,7 @@ node docs/teste/confeccao/conferir-base.mjs ~/confeccao-erp.html
 
 # 3. monta o HTML de teste com a base dentro (--com-industrial embute o motor industrial)
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/confeccao-erp-teste.html \
-  --sem-modulos=producao --com-industrial
+  --sem-modulos=produtos,producao --com-industrial
 
 # a montagem pode deixar módulos de fora — eles somem do menu e dos níveis de acesso
 node docs/teste/confeccao/montar-html.mjs ~/confeccao-erp.html /tmp/teste.html \

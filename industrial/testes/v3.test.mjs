@@ -778,3 +778,35 @@ test('Copiar produto: código pela sigla do grupo, e nome repetido é recusado',
   assert.match(repetido.erro, /Já existe/);
   assert.equal(db.produtos.filter((p) => p.nome === r.produto.nome).length, 1);
 });
+
+test('Copiar produto: a cópia com consumo ajustado não nasce divergindo da ficha', () => {
+  const db = nova();
+  const origem = db.produtos.find((p) => p.codigo === 'PRD-0002');
+  const ficha = lerFichaDoProduto(db, origem.id);
+
+  /* é o que a tela manda: o consumo de cada material, ajustado ou não */
+  const consumos = Object.fromEntries(ficha.materiais.map((m) => [m.materialId, m.quantidade]));
+  consumos[ficha.materiais[0].materialId] = 0.25;
+
+  const r = copiarProdutoDoSistema(db, origem.id,
+    { complemento: 'GOLA V', consumos }, { nome: 'Teste' });
+  assert.ok(!r.erro, r.erro);
+  assert.equal(lerFichaDoProduto(db, r.produto.id).materiais[0].quantidade, 0.25);
+
+  /* derivada, ficha e industrial contam a mesma história — senão a auditoria
+     de integração acusaria erro e não haveria tela para consertar a ficha */
+  const d = derivarProdutoDaEngenharia(db, r.produto.id, { nome: 'Teste' });
+  assert.ok(!d.erro, d.erro);
+  const estado = divergenciasDaFicha(db, r.produto.id);
+  assert.equal(estado.emDia, true, JSON.stringify(estado.divergencias));
+
+  const auditoria = auditarIntegracaoMateriaisEngenhariaIndustrial(db);
+  assert.ok(!auditoria.erros.some((e) => e.produtoId === r.produto.id),
+    JSON.stringify(auditoria.erros.filter((e) => e.produtoId === r.produto.id)));
+
+  /* e a necessidade sai com o consumo novo */
+  const explosao = explodirBOM(db, d.item.id, 1000, { considerarEstoque: false });
+  const material = db.materiais.find((m) => m.id === ficha.materiais[0].materialId);
+  assert.equal(
+    explosao.necessidades.find((l) => l.item.materialId === material.id).bruta, 250);
+});
